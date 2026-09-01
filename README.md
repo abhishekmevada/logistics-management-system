@@ -28,8 +28,3 @@ logistics operations.
 - Warehouse Manager
 - Driver
 - Customer
-
-## Project Structure
-
-client/ → Frontend
-server/ → Backend
