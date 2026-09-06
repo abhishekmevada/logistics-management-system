@@ -1,18 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 
 export default function VerifyOTP() {
   const navigate = useNavigate();
   const location = useLocation();
-  const email = location.state?.email || 'your email address';
+  const email = location.state?.email || "your email address";
 
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [error, setError] = useState('');
+  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [timer, setTimer] = useState(30);
+  const [timer, setTimer] = useState(600);
   const [resendSuccess, setResendSuccess] = useState(false);
 
   const inputRefs = useRef([]);
+
+  // Format seconds as MM:SS
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
 
   // Countdown timer for Resend OTP
   useEffect(() => {
@@ -40,48 +47,48 @@ export default function VerifyOTP() {
 
     const newOtp = [...otp];
     // Take the last character if multiple characters are entered
-    newOtp[index] = value ? value.slice(-1) : '';
+    newOtp[index] = value ? value.slice(-1) : "";
     setOtp(newOtp);
 
     if (error) {
-      setError('');
+      setError("");
     }
 
     // Auto-advance focus to next input if digit entered
-    if (value && index < 5) {
+    if (value && index < 3) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (e, index) => {
-    if (e.key === 'Backspace') {
+    if (e.key === "Backspace") {
       if (!otp[index] && index > 0) {
         // Move to previous input on backspace if current is empty
         inputRefs.current[index - 1]?.focus();
       }
-    } else if (e.key === 'ArrowLeft' && index > 0) {
+    } else if (e.key === "ArrowLeft" && index > 0) {
       inputRefs.current[index - 1]?.focus();
-    } else if (e.key === 'ArrowRight' && index < 5) {
+    } else if (e.key === "ArrowRight" && index < 3) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handlePaste = (e) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').trim();
+    const pastedData = e.clipboardData.getData("text").trim();
     // Extract only digits
-    const digits = pastedData.replace(/\D/g, '').slice(0, 6);
+    const digits = pastedData.replace(/\D/g, "").slice(0, 4);
 
     if (digits.length > 0) {
       const newOtp = [...otp];
-      for (let i = 0; i < 6; i++) {
-        newOtp[i] = digits[i] || '';
+      for (let i = 0; i < 4; i++) {
+        newOtp[i] = digits[i] || "";
       }
       setOtp(newOtp);
-      if (error) setError('');
+      if (error) setError("");
 
       // Focus the appropriate input box
-      const targetIndex = Math.min(digits.length, 5);
+      const targetIndex = Math.min(digits.length, 3);
       inputRefs.current[targetIndex]?.focus();
     }
   };
@@ -89,10 +96,10 @@ export default function VerifyOTP() {
   const handleResendOTP = async () => {
     if (timer > 0) return;
 
-    setTimer(30);
+    setTimer(600);
     setResendSuccess(true);
-    setError('');
-    setOtp(['', '', '', '', '', '']);
+    setError("");
+    setOtp(["", "", "", ""]);
 
     // Focus first input
     inputRefs.current[0]?.focus();
@@ -106,47 +113,72 @@ export default function VerifyOTP() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const otpCode = otp.join('');
+    const otpCode = otp.join("");
 
-    if (otpCode.length < 6) {
-      setError('Please enter the complete 6-digit verification code');
+    if (otpCode.length < 4) {
+      setError("Please enter the complete 4-digit verification code");
       return;
     }
 
     setIsSubmitting(true);
-    setError('');
+    setError("");
 
     try {
-      // Simulate API verification
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      const res = await fetch("http://localhost:5000/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: otpCode }),
+      });
 
-      // Navigate to Reset Password page
-      navigate('/reset-password', {
-        state: { email, verified: true },
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message);
+        return;
+      }
+
+      // Navigate to Reset Password page with the resetToken
+      navigate("/reset-password", {
+        state: { email, verified: true, resetToken: data.resetToken },
       });
     } catch (err) {
-      setError('Invalid verification code. Please try again.');
+      setError("Invalid verification code. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4" style={{ backgroundColor: 'var(--bg, #f4f3ee)', fontFamily: 'var(--primary-text)' }}>
+    <div
+      className="min-h-screen w-full flex items-center justify-center p-4"
+      style={{
+        backgroundColor: "var(--bg, #f4f3ee)",
+        fontFamily: "var(--primary-text)",
+      }}
+    >
       {/* Main Authentication Card */}
-      <div className="w-full max-w-[460px] bg-white rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-8 md:p-10 text-center border border-slate-100">
-        
+      <div className="w-full max-w-115 bg-white rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-8 md:p-10 text-center border border-slate-100">
         {/* Heading & Subtitle */}
         <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2 tracking-tight">
           Verify Your Account
         </h1>
         <p className="text-xs md:text-sm text-slate-500 mb-2 font-normal leading-relaxed">
-          We've sent a 6-digit verification code to your email address.
+          We've sent a 4-digit verification code to your email address.
         </p>
 
         {/* Display Email */}
         <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-xs text-slate-700 font-semibold mb-6 max-w-full truncate">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#338cff] shrink-0">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-[#338cff] shrink-0"
+          >
             <rect x="2" y="4" width="20" height="16" rx="2"></rect>
             <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
           </svg>
@@ -162,8 +194,11 @@ export default function VerifyOTP() {
 
         {/* OTP Verification Form */}
         <form onSubmit={handleSubmit} noValidate>
-          {/* 6 OTP Input Boxes */}
-          <div className="flex items-center justify-center gap-2 sm:gap-2.5 mb-4" onPaste={handlePaste}>
+          {/* 4 OTP Input Boxes */}
+          <div
+            className="flex items-center justify-center gap-2 sm:gap-2.5 mb-4"
+            onPaste={handlePaste}
+          >
             {otp.map((digit, index) => (
               <input
                 key={index}
@@ -174,16 +209,16 @@ export default function VerifyOTP() {
                 maxLength={1}
                 value={digit}
                 onChange={(e) => handleChange(e.target.value, index)}
-                onKeyDown={(e) => handleKeyDown(e.key ? e : { key: '' }, index)}
+                onKeyDown={(e) => handleKeyDown(e.key ? e : { key: "" }, index)}
                 disabled={isSubmitting}
                 className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-extrabold text-slate-800 bg-[#f4f7fb] rounded-xl border transition-all duration-200 outline-none
                   ${
                     error
-                      ? 'border-red-400 bg-red-50/50 focus:border-red-500 focus:ring-2 focus:ring-red-200'
-                      : 'border-slate-200 focus:border-[#338cff] focus:bg-white focus:ring-2 focus:ring-[#338cff]/20'
+                      ? "border-red-400 bg-red-50/50 focus:border-red-500 focus:ring-2 focus:ring-red-200"
+                      : "border-slate-200 focus:border-[#338cff] focus:bg-white focus:ring-2 focus:ring-[#338cff]/20"
                   }
-                  ${digit ? 'border-[#338cff] bg-white' : ''}
-                  ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}
+                  ${digit ? "border-[#338cff] bg-white" : ""}
+                  ${isSubmitting ? "opacity-60 cursor-not-allowed" : ""}
                 `}
                 aria-label={`OTP Digit ${index + 1}`}
               />
@@ -200,10 +235,14 @@ export default function VerifyOTP() {
           {/* Resend OTP Section */}
           <div className="text-xs text-slate-500 mb-6 font-normal">
             {timer > 0 ? (
-              <p>
-                Resend OTP in{' '}
-                <span className="font-bold text-[#338cff]">
-                  {timer}s
+              <p className="flex items-center justify-center gap-1.5">
+                <span>OTP expires in</span>
+                <span
+                  className={`font-bold tabular-nums ${
+                    timer <= 60 ? "text-red-500" : "text-[#338cff]"
+                  }`}
+                >
+                  {formatTime(timer)}
                 </span>
               </p>
             ) : (
@@ -233,7 +272,7 @@ export default function VerifyOTP() {
                 <span>VERIFYING...</span>
               </>
             ) : (
-              'VERIFY OTP'
+              "VERIFY OTP"
             )}
           </button>
         </form>
@@ -244,7 +283,16 @@ export default function VerifyOTP() {
             to="/forgot-password"
             className="inline-flex items-center gap-1 font-semibold text-slate-500 hover:text-[#338cff] transition-colors"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
@@ -258,7 +306,6 @@ export default function VerifyOTP() {
             Back to Login
           </Link>
         </div>
-
       </div>
     </div>
   );

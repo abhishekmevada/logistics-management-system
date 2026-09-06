@@ -1,0 +1,324 @@
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.dash-wrap {
+  box-sizing: border-box;
+}
+
+.dash {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 62px 1fr;
+  grid-template-areas:
+    "sidebar topbar"
+    "sidebar main";
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--color);
+  font-family: var(--secondary-text);
+  overflow: hidden;
+}
+
+.dash__main {
+  grid-area: main;
+  padding: 24px 26px 40px;
+  overflow-y: auto;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.dash-sidebar {
+  grid-area: sidebar;
+  background: var(--color);
+  color: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 12px;
+}
+
+.dash-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 22px;
+}
+
+.dash-sidebar__brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-color);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-family: var(--primary-text);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.dash-sidebar__brand-name {
+  font-family: var(--primary-text);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.dash-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: hsla(0, 0%, 100%, 0.68);
+  font-family: var(--primary-text);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.dash-sidebar__link:hover {
+  background: hsla(0, 0%, 100%, 0.08);
+  color: #fff;
+}
+
+.dash-sidebar__link--active {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+/* ── Topbar ──────────────────────────────────────────────────────────────── */
+
+.dash-topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.dash-topbar__title {
+  font-family: var(--primary-text);
+  font-weight: 600;
+  font-size: 17px;
+  margin: 0;
+}
+
+.dash-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dash-topbar__search {
+  width: 230px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  background: var(--bg);
+  color: var(--color);
+}
+
+.dash-topbar__icon-btn {
+  position: relative;
+  background: var(--gost-but);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  color: var(--color);
+}
+
+.dash-topbar__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--cta-but);
+  color: #fff;
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+}
+
+.dash-topbar__profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.dash-topbar__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-family: var(--primary-text);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.dash-topbar__username {
+  font-family: var(--primary-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Sidebar limited-access badge ────────────────────────────────────────── */
+
+.dash-sidebar__badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: hsla(0, 0%, 100%, 0.15);
+  color: hsla(0, 0%, 100%, 0.75);
+  white-space: nowrap;
+  text-transform: capitalize;
+  line-height: 1.4;
+}
+
+/* ── Topbar role pill ────────────────────────────────────────────────────── */
+
+.dash-topbar__role {
+  font-family: var(--primary-text);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: hsl(214, 100%, 93%);
+  color: var(--primary-color);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+/* ── Topbar left group ───────────────────────────────────────────────────── */
+
+.dash-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Hamburger — hidden on desktop, shown on mobile */
+.dash-topbar__hamburger {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  line-height: 0;
+}
+
+.dash-topbar__hamburger:hover {
+  background: var(--gost-but);
+}
+
+/* ── Sidebar overlay (mobile) ────────────────────────────────────────────── */
+
+.dash-sidebar__overlay {
+  display: none;
+}
+
+/* ── Responsive: Tablet ≤ 1024px ─────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  .dash-topbar__search {
+    width: 160px;
+  }
+}
+
+/* ── Responsive: Mobile ≤ 768px ──────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Collapse grid to single column */
+  .dash {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px 1fr;
+    grid-template-areas:
+      "topbar"
+      "main";
+  }
+
+  /* Sidebar slides in over the top as a fixed drawer */
+  .dash-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 240px;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+  }
+
+  .dash-sidebar--open {
+    transform: translateX(0);
+  }
+
+  /* Dark overlay behind open sidebar */
+  .dash-sidebar__overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 299;
+  }
+
+  /* Show hamburger button */
+  .dash-topbar__hamburger {
+    display: grid;
+    place-items: center;
+  }
+
+  /* Topbar spans full width */
+  .dash-topbar {
+    padding: 0 16px;
+  }
+
+  /* Hide search input on mobile */
+  .dash-topbar__search {
+    display: none;
+  }
+
+  /* Hide username text, keep avatar */
+  .dash-topbar__username {
+    display: none;
+  }
+
+  /* Main content full width */
+  .dash__main {
+    padding: 16px 14px 32px;
+  }
+}
+
+/* ── Responsive: XS ≤ 480px ──────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .dash-topbar__profile {
+    border-left: none;
+    padding-left: 0;
+  }
+}

@@ -4,7 +4,9 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const cors = require("cors");
 const jsonwebtoken = require("jsonwebtoken");
-const { User, Customer } = require("./db/db");
+const crypto = require("crypto");
+const { sendOtpEmail } = require("./utils/mailer");
+const { User, Customer, Shipment } = require("./db/db");
 
 const app = express();
 
@@ -275,7 +277,6 @@ app.post("/signup", async (req, res) => {
         email: cleanEmail,
         phonenumber,
         address,
-        password: hashedPassword,
       });
 
       // Save Customer
@@ -287,17 +288,11 @@ app.post("/signup", async (req, res) => {
       });
     }
 
-    // ==========================================
-    // OTHER ROLES
-    // ==========================================
-
     return res.status(201).json({
       message: "User signup successful",
       role: cleanRole,
     });
   } catch (error) {
-    console.error("SIGNUP ERROR:", error);
-
     return res.status(500).json({
       message: error.message,
     });
@@ -350,7 +345,7 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    if (existUser.status === false) {
+    if (existUser.status === "inactive") {
       return res.status(403).json({
         message: "Your account has been deactivated",
       });
@@ -381,8 +376,311 @@ app.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+});
 
+//forgotpassword
+app.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const emailError = validateEmail(email);
+
+    if (emailError) {
+      return res.status(400).json({
+        message: emailError,
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    const existUser = await User.findOne({
+      email: cleanEmail,
+    });
+
+    if (!existUser) {
+      return res.status(404).json({
+        message: "Email is not registered",
+      });
+    }
+
+    const otp = crypto.randomInt(1000, 10000).toString();
+
+    const otpHash = await bcrypt.hash(otp, 10);
+
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    existUser.resetOtpHash = otpHash;
+    existUser.resetOtpExpiresAt = otpExpiresAt;
+    existUser.resetOtpVerified = false;
+
+    await existUser.save();
+
+    await sendOtpEmail(cleanEmail, otp);
+
+    return res.status(200).json({
+      message: "OTP sent successfully",
+    });
+  } catch (error) {
+    console.error("FORGOT PASSWORD ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to send OTP",
+    });
+  }
+});
+
+//verifyotp
+app.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const emailError = validateEmail(email);
+
+    if (emailError) {
+      return res.status(400).json({
+        message: emailError,
+      });
+    }
+
+    if (!otp) {
+      return res.status(400).json({
+        message: "OTP is required",
+      });
+    }
+
+    if (typeof otp !== "string") {
+      return res.status(400).json({
+        message: "OTP must be a string",
+      });
+    }
+
+    if (!/^\d{4}$/.test(otp)) {
+      return res.status(400).json({
+        message: "OTP must be exactly 4 digits",
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    const existUser = await User.findOne({
+      email: cleanEmail,
+    });
+
+    if (!existUser) {
+      return res.status(404).json({
+        message: "Email is not registered",
+      });
+    }
+
+    if (!existUser.resetOtpHash || !existUser.resetOtpExpiresAt) {
+      return res.status(400).json({
+        message: "No OTP request found",
+      });
+    }
+
+    if (existUser.resetOtpExpiresAt.getTime() < Date.now()) {
+      existUser.resetOtpHash = null;
+      existUser.resetOtpExpiresAt = null;
+      existUser.resetOtpVerified = false;
+
+      await existUser.save();
+
+      return res.status(400).json({
+        message: "OTP has expired",
+      });
+    }
+
+    const otpMatch = await bcrypt.compare(otp, existUser.resetOtpHash);
+
+    if (!otpMatch) {
+      return res.status(400).json({
+        message: "Invalid OTP",
+      });
+    }
+
+    existUser.resetOtpVerified = true;
+
+    await existUser.save();
+
+    const resetToken = jsonwebtoken.sign(
+      {
+        userId: existUser._id,
+        purpose: "password-reset",
+      },
+      jwt,
+      {
+        expiresIn: "10m",
+      },
+    );
+
+    return res.status(200).json({
+      message: "OTP verified successfully",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("VERIFY OTP ERROR:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+});
+
+//resetpassword
+
+app.post("/reset-password", async (req, res) => {
+  try {
+    const { resetToken, newPassword, confirmPassword } = req.body;
+
+    if (!resetToken) {
+      return res.status(400).json({
+        message: "Reset token is required",
+      });
+    }
+
+    if (!newPassword) {
+      return res.status(400).json({
+        message: "New password is required",
+      });
+    }
+
+    if (!confirmPassword) {
+      return res.status(400).json({
+        message: "Confirm password is required",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: "Passwords do not match",
+      });
+    }
+
+    const passwordError = validatePassword(newPassword);
+
+    if (passwordError) {
+      return res.status(400).json({
+        message: passwordError,
+      });
+    }
+
+    let decoded;
+
+    try {
+      decoded = jsonwebtoken.verify(resetToken, jwt);
+    } catch (error) {
+      return res.status(401).json({
+        message: "Invalid or expired reset token",
+      });
+    }
+
+    if (decoded.purpose !== "password-reset") {
+      return res.status(401).json({
+        message: "Invalid reset token",
+      });
+    }
+
+    const existUser = await User.findById(decoded.userId);
+
+    if (!existUser) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    if (!existUser.resetOtpVerified) {
+      return res.status(401).json({
+        message: "OTP verification is required",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    existUser.password = hashedPassword;
+    existUser.resetOtpHash = null;
+    existUser.resetOtpExpiresAt = null;
+    existUser.resetOtpVerified = false;
+
+    await existUser.save();
+
+    return res.status(200).json({
+      message: "Password reset successfully",
+    });
+  } catch (error) {
+    console.error("RESET PASSWORD ERROR:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+});
+
+async function generateShipmentId() {
+  let shipmentId;
+  let exists = true;
+
+  while (exists) {
+    shipmentId = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const existingShipment = await Customer.findOne({
+      shipmentId,
+    });
+
+    exists = !!existingShipment;
+  }
+
+  return shipmentId;
+}
+
+app.post("/createshipment", authMiddleware, async (req, res) => {
+  const {
+    customerId,
+    senderName,
+    senderPhonenumber,
+    pickupaddress,
+    receiverName,
+    receiverPhonenumber,
+    deliveryaddress,
+    packageCount,
+    totalweight,
+    dimensions,
+    length,
+    width,
+    height,
+    packageDescription,
+    pickupDate,
+    expectedDeliveryDate,
+  } = req.body;
+
+  try {
+    const genshipmentId = await generateShipmentId();
+    const newShipment = new Shipment({
+      shipmentId: genshipmentId,
+      trackingId, // write a code for generate trackingId
+      customerId,
+      senderName,
+      senderPhonenumber,
+      pickupaddress,
+      receiverName,
+      receiverPhonenumber,
+      deliveryaddress,
+      packageCount,
+      totalweight,
+      dimensions,
+      length,
+      width,
+      height,
+      packageDescription,
+      pickupDate,
+      expectedDeliveryDate,
+    });
+
+    await newShipment.save();
+  } catch (error) {
     return res.status(500).json({
       message: "Internal server error",
     });

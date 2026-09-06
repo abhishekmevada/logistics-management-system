@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import InputField from '../../components/InputField';
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import InputField from "../../components/InputField";
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleInputChange = (e) => {
     setEmail(e.target.value);
     if (error) {
-      setError('');
+      setError("");
     }
   };
 
@@ -20,11 +20,11 @@ export default function ForgotPassword() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!trimmedEmail) {
-      setError('Email address is required');
+      setError("Email address is required");
       return false;
     }
     if (!emailRegex.test(trimmedEmail)) {
-      setError('Please enter a valid email address');
+      setError("Please enter a valid email address");
       return false;
     }
     return true;
@@ -40,35 +40,53 @@ export default function ForgotPassword() {
     setIsSubmitting(true);
 
     try {
-      // Simulate API call to send OTP
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      const res = await fetch("http://localhost:5000/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
 
-      // Navigate to OTP verification page with email in state
-      navigate('/verify-otp', {
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message);
+        return;
+      }
+      navigate("/verify-otp", {
         state: { email: email.trim() },
       });
     } catch (err) {
-      setError('Failed to send verification code. Please try again.');
+      setError("Failed to send verification code. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4" style={{ backgroundColor: 'var(--bg, #f4f3ee)', fontFamily: 'var(--primary-text)' }}>
+    <div
+      className="min-h-screen w-full flex items-center justify-center p-4"
+      style={{
+        backgroundColor: "var(--bg, #f4f3ee)",
+        fontFamily: "var(--primary-text)",
+      }}
+    >
       {/* Main Authentication Card */}
-      <div className="w-full max-w-[460px] bg-white rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-8 md:p-10 text-center border border-slate-100">
-        
+      <div className="w-full max-w-115 bg-white rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-8 md:p-10 text-center border border-slate-100">
         {/* Heading & Subtitle */}
         <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2 tracking-tight">
           Forgot Password?
         </h1>
         <p className="text-xs md:text-sm text-slate-500 mb-6 font-normal leading-relaxed">
-          Enter your registered email address and we'll send you a verification code.
+          Enter your registered email address and we'll send you a verification
+          code.
         </p>
 
         {/* Form */}
-        <form className="flex flex-col gap-4 text-left" onSubmit={handleSubmit} noValidate>
+        <form
+          className="flex flex-col gap-4 text-left"
+          onSubmit={handleSubmit}
+          noValidate
+        >
           <InputField
             label="Email Address"
             id="forgot-password-email"
@@ -82,7 +100,16 @@ export default function ForgotPassword() {
             autoComplete="email"
             disabled={isSubmitting}
             icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <rect x="2" y="4" width="20" height="16" rx="2"></rect>
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
               </svg>
@@ -102,7 +129,7 @@ export default function ForgotPassword() {
                 <span>SENDING OTP...</span>
               </>
             ) : (
-              'SEND OTP'
+              "SEND OTP"
             )}
           </button>
         </form>
@@ -114,14 +141,22 @@ export default function ForgotPassword() {
             id="back-to-login-link"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#338cff] transition-colors"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
             <span>Back to Login</span>
           </Link>
         </div>
-
       </div>
     </div>
   );

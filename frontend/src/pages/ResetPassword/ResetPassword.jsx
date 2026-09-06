@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
-import { Link, useLocation, Navigate } from 'react-router-dom';
-import PasswordInput from '../../components/PasswordInput';
+import React, { useState } from "react";
+import { Link, useLocation, Navigate } from "react-router-dom";
+import PasswordInput from "../../components/PasswordInput";
 
 export default function ResetPassword() {
   const location = useLocation();
 
   const [formData, setFormData] = useState({
-    password: '',
-    confirmPassword: '',
+    password: "",
+    confirmPassword: "",
   });
 
   const [errors, setErrors] = useState({});
@@ -18,6 +18,8 @@ export default function ResetPassword() {
   if (!location.state?.verified) {
     return <Navigate to="/forgot-password" replace />;
   }
+
+  const { resetToken } = location.state;
 
   // Dynamic password criteria validation checks
   const criteria = {
@@ -36,7 +38,7 @@ export default function ResetPassword() {
 
     // Clear error for active field
     if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
@@ -45,24 +47,27 @@ export default function ResetPassword() {
 
     // New password validation
     if (!formData.password) {
-      validationErrors.password = 'New password is required';
+      validationErrors.password = "New password is required";
     } else {
       if (!criteria.length) {
-        validationErrors.password = 'Password must contain at least 8 characters';
+        validationErrors.password =
+          "Password must contain at least 8 characters";
       } else if (!criteria.uppercase) {
-        validationErrors.password = 'Password must include at least one uppercase letter';
+        validationErrors.password =
+          "Password must include at least one uppercase letter";
       } else if (!criteria.lowercase) {
-        validationErrors.password = 'Password must include at least one lowercase letter';
+        validationErrors.password =
+          "Password must include at least one lowercase letter";
       } else if (!criteria.number) {
-        validationErrors.password = 'Password must include at least one number';
+        validationErrors.password = "Password must include at least one number";
       }
     }
 
     // Confirm password validation
     if (!formData.confirmPassword) {
-      validationErrors.confirmPassword = 'Confirm password is required';
+      validationErrors.confirmPassword = "Confirm password is required";
     } else if (formData.password !== formData.confirmPassword) {
-      validationErrors.confirmPassword = 'Passwords do not match';
+      validationErrors.confirmPassword = "Passwords do not match";
     }
 
     return validationErrors;
@@ -80,26 +85,43 @@ export default function ResetPassword() {
     setIsSubmitting(true);
 
     try {
-      // Simulate API call to reset password
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      setIsSuccess(true);
-      setFormData({
-        password: '',
-        confirmPassword: '',
+      const res = await fetch("http://localhost:5000/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resetToken,
+          newPassword: formData.password,
+          confirmPassword: formData.confirmPassword,
+        }),
       });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrors({ form: data.message });
+        return;
+      }
+
+      setIsSuccess(true);
+      setFormData({ password: "", confirmPassword: "" });
       setErrors({});
     } catch (err) {
-      setErrors({ form: 'Failed to reset password. Please try again.' });
+      setErrors({ form: "Failed to reset password. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4" style={{ backgroundColor: 'var(--bg, #f4f3ee)', fontFamily: 'var(--primary-text)' }}>
+    <div
+      className="min-h-screen w-full flex items-center justify-center p-4"
+      style={{
+        backgroundColor: "var(--bg, #f4f3ee)",
+        fontFamily: "var(--primary-text)",
+      }}
+    >
       {/* Main Authentication Card */}
-      <div className="w-full max-w-[460px] bg-white rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-8 md:p-10 text-center border border-slate-100">
-        
+      <div className="w-full max-w-115 bg-white rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.06)] p-8 md:p-10 text-center border border-slate-100">
         {!isSuccess ? (
           <>
             {/* Heading & Subtitle */}
@@ -111,7 +133,11 @@ export default function ResetPassword() {
             </p>
 
             {/* Reset Password Form */}
-            <form className="flex flex-col gap-4 text-left" onSubmit={handleSubmit} noValidate>
+            <form
+              className="flex flex-col gap-4 text-left"
+              onSubmit={handleSubmit}
+              noValidate
+            >
               {/* Form level error */}
               {errors.form && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium">
@@ -132,8 +158,24 @@ export default function ResetPassword() {
                 autoComplete="new-password"
                 disabled={isSubmitting}
                 icon={
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect
+                      x="3"
+                      y="11"
+                      width="18"
+                      height="11"
+                      rx="2"
+                      ry="2"
+                    ></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                   </svg>
                 }
@@ -141,12 +183,26 @@ export default function ResetPassword() {
 
               {/* Password Dynamic Requirements Checklist */}
               <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs text-slate-600">
-                <p className="font-semibold text-slate-700 mb-2">Password must contain:</p>
+                <p className="font-semibold text-slate-700 mb-2">
+                  Password must contain:
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {/* 8 characters */}
-                  <div className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.length ? 'text-[#338cff] font-semibold' : 'text-slate-500'}`}>
+                  <div
+                    className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.length ? "text-[#338cff] font-semibold" : "text-slate-500"}`}
+                  >
                     {criteria.length ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#338cff]">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="shrink-0 text-[#338cff]"
+                      >
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     ) : (
@@ -156,9 +212,21 @@ export default function ResetPassword() {
                   </div>
 
                   {/* One uppercase letter */}
-                  <div className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.uppercase ? 'text-[#338cff] font-semibold' : 'text-slate-500'}`}>
+                  <div
+                    className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.uppercase ? "text-[#338cff] font-semibold" : "text-slate-500"}`}
+                  >
                     {criteria.uppercase ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#338cff]">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="shrink-0 text-[#338cff]"
+                      >
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     ) : (
@@ -168,9 +236,21 @@ export default function ResetPassword() {
                   </div>
 
                   {/* One lowercase letter */}
-                  <div className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.lowercase ? 'text-[#338cff] font-semibold' : 'text-slate-500'}`}>
+                  <div
+                    className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.lowercase ? "text-[#338cff] font-semibold" : "text-slate-500"}`}
+                  >
                     {criteria.lowercase ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#338cff]">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="shrink-0 text-[#338cff]"
+                      >
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     ) : (
@@ -180,9 +260,21 @@ export default function ResetPassword() {
                   </div>
 
                   {/* One number */}
-                  <div className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.number ? 'text-[#338cff] font-semibold' : 'text-slate-500'}`}>
+                  <div
+                    className={`flex items-center gap-1.5 transition-colors duration-200 ${criteria.number ? "text-[#338cff] font-semibold" : "text-slate-500"}`}
+                  >
                     {criteria.number ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#338cff]">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="shrink-0 text-[#338cff]"
+                      >
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
                     ) : (
@@ -206,7 +298,16 @@ export default function ResetPassword() {
                 autoComplete="new-password"
                 disabled={isSubmitting}
                 icon={
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                   </svg>
                 }
@@ -225,7 +326,7 @@ export default function ResetPassword() {
                     <span>RESETTING PASSWORD...</span>
                   </>
                 ) : (
-                  'RESET PASSWORD'
+                  "RESET PASSWORD"
                 )}
               </button>
             </form>
@@ -237,7 +338,16 @@ export default function ResetPassword() {
                 id="back-to-login-link"
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#338cff] transition-colors"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <line x1="19" y1="12" x2="5" y2="12"></line>
                   <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
@@ -249,7 +359,16 @@ export default function ResetPassword() {
           /* Success State */
           <div className="py-4 flex flex-col items-center animate-fade-in">
             <div className="w-16 h-16 bg-blue-50 text-[#338cff] rounded-full flex items-center justify-center mb-4 border border-blue-200 shadow-sm">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
@@ -257,8 +376,9 @@ export default function ResetPassword() {
             <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 mb-2 tracking-tight">
               Password Reset Successfully
             </h2>
-            <p className="text-xs md:text-sm text-slate-500 max-w-[300px] mb-6 font-normal">
-              Your password has been updated successfully. You can now use your new password to sign in.
+            <p className="text-xs md:text-sm text-slate-500 max-w-75 mb-6 font-normal">
+              Your password has been updated successfully. You can now use your
+              new password to sign in.
             </p>
 
             <Link
@@ -270,7 +390,6 @@ export default function ResetPassword() {
             </Link>
           </div>
         )}
-
       </div>
     </div>
   );

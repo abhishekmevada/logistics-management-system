@@ -66,8 +66,15 @@ export default function Login() {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrors(data.message);
+        setStatusMessage({
+          type: "error",
+          text: data.message || "Login failed. Please check your credentials.",
+        });
+        return;
       }
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
       navigate("/dashboard");
 
       setFormData((prev) => ({ ...prev, password: "" }));
