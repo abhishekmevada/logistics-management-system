@@ -19,12 +19,12 @@ const userSchema = mongosse.Schema({
     type: String,
     required: true,
     enum: [
-      "admin",
-      "logistic manager",
-      "dispatcher",
-      "warehouse manager",
-      "griver",
-      "customer",
+      "Admin",
+      "Logistics Manager",
+      "Dispatcher",
+      "Warehouse Manager",
+      "Driver",
+      // "customer",
     ],
     default: "customer",
   },
@@ -42,12 +42,18 @@ const userSchema = mongosse.Schema({
 const User = mongosse.model("user", userSchema);
 
 const customerSchema = mongosse.Schema({
-  userId: { type: mongosse.Schema.Types.ObjectId, ref: "user", required: true },
-  customerId: { type: Number, required: true, unique: true },
+  // userId: { type: mongosse.Schema.Types.ObjectId, ref: "user", required: true },
+  customerId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   phonenumber: { type: Number, required: true },
   address: { type: String, required: true },
+  status: {
+    type: String,
+    required: true,
+    enum: ["active", "inactive"],
+    default: "active",
+  },
 });
 
 const Customer = mongosse.model("customer", customerSchema);
@@ -68,92 +74,44 @@ const shipmentSchema = new mongosse.Schema(
 
     customerId: {
       type: mongosse.Schema.Types.ObjectId,
-      ref: "Customer",
+      ref: "customer",
       required: true,
     },
 
-    senderName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    // ── Sender ──────────────────────────────────────────────────────────────
+    senderName: { type: String, required: true, trim: true },
+    senderPhoneNumber: { type: String, required: true, trim: true },
+    senderEmail: { type: String, default: "", trim: true },
+    senderAddress: { type: String, required: true, trim: true },
+    senderCity: { type: String, default: "", trim: true },
+    senderState: { type: String, default: "", trim: true },
+    senderpincode: { type: Number, default: 0 },
 
-    senderPhoneNumber: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    // ── Receiver ────────────────────────────────────────────────────────────
+    receiverName: { type: String, required: true, trim: true },
+    receiverPhoneNumber: { type: String, required: true, trim: true },
+    receiverEmail: { type: String, default: "", trim: true },
+    receiverAddress: { type: String, required: true, trim: true },
+    receiverCity: { type: String, default: "", trim: true },
+    receiverState: { type: String, default: "", trim: true },
+    receiverpincode: { type: Number, default: 0 },
 
-    pickupAddress: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    // ── Package ─────────────────────────────────────────────────────────────
 
-    receiverName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    receiverPhoneNumber: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    deliveryAddress: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    packageCount: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
-
-    totalWeight: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
+    packageCount: { type: Number, required: true, min: 1 },
+    totalWeight: { type: Number, required: true, min: 0 },
     dimensions: {
-      length: {
-        type: Number,
-        required: true,
-        min: 0,
-      },
-      width: {
-        type: Number,
-        required: true,
-        min: 0,
-      },
-      height: {
-        type: Number,
-        required: true,
-        min: 0,
-      },
+      length: { type: Number, required: true, min: 0 },
+      width: { type: Number, required: true, min: 0 },
+      height: { type: Number, required: true, min: 0 },
     },
+    packageDescription: { type: String, required: true, trim: true },
 
-    packageDescription: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    // ── Dates ────────────────────────────────────────────────────────────────
+    pickupDate: { type: Date, required: true },
+    expectedDeliveryDate: { type: Date, required: true },
 
-    pickupDate: {
-      type: Date,
-      required: true,
-    },
-
-    expectedDeliveryDate: {
-      type: Date,
-      required: true,
-    },
-
+    // ── Status & Priority ────────────────────────────────────────────────────
     status: {
       type: String,
       required: true,
@@ -170,6 +128,15 @@ const shipmentSchema = new mongosse.Schema(
       ],
       default: "created",
     },
+    priority: {
+      type: String,
+      required: true,
+      enum: ["Standard", "Express", "Same Day", "Overnight"],
+      default: "Standard",
+    },
+    driverName: { type: String, default: "", trim: true },
+    vehicleNo: { type: String, default: "", trim: true },
+    tripNo: { type: String, default: "", trim: true },
   },
   {
     timestamps: true,

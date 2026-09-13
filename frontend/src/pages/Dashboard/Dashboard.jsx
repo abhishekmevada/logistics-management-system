@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { UserPlus } from "lucide-react";
 import "../../styles/Dashboard.css";
 import DashboardOverview from "./Dashboardoverview";
 import DashboardCustomer from "./DashboardCustomer";
@@ -107,6 +109,7 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
 // ── Topbar ────────────────────────────────────────────────────────────────────
 
 function Topbar({ title, alertCount, username, role, onMenuClick }) {
+  const navigate = useNavigate();
   return (
     <header className="dash-topbar">
       <div className="dash-topbar__left">
@@ -137,6 +140,15 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
             <span className="dash-topbar__badge">{alertCount}</span>
           )}
         </button>
+        <button
+          type="button"
+          id="navbar-create-user-btn"
+          onClick={() => navigate("/register-user")}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span className="hidden sm:inline">Create User</span>
+        </button>
         <div className="dash-topbar__profile">
           <div className="dash-topbar__avatar">{username?.[0]}</div>
           <span className="dash-topbar__username">{username}</span>
@@ -151,10 +163,16 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function Dashboardx() {
+export default function Dashboardx({ initialTab = "dashboard" }) {
   const user = JSON.parse(localStorage.getItem("user") || "null");
   const role = user?.role ?? "";
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [alertCount] = useState(3);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
