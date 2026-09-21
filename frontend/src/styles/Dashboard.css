@@ -5,34 +5,47 @@
 }
 
 .dash {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  grid-template-rows: 62px 1fr;
-  grid-template-areas:
-    "sidebar topbar"
-    "sidebar main";
   min-height: 100vh;
   background: var(--bg);
   color: var(--color);
   font-family: var(--secondary-text);
-  overflow: hidden;
+  position: relative;
 }
 
 .dash__main {
-  grid-area: main;
-  padding: 24px 26px 40px;
-  overflow-y: auto;
+  margin-left: 220px;
+  padding: calc(62px + 24px) 26px 40px;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 
 .dash-sidebar {
-  grid-area: sidebar;
-  background: var(--color);
-  color: var(--bg);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 220px;
+  height: 100vh;
+  z-index: 30;
+  background: white;
+  color: black;
   display: flex;
   flex-direction: column;
   padding: 18px 12px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.dash-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dash-sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
 }
 
 .dash-sidebar__brand {
@@ -47,7 +60,7 @@
   height: 30px;
   border-radius: var(--radius-sm);
   background: var(--primary-color);
-  color: #fff;
+  color: white;
   display: grid;
   place-items: center;
   font-family: var(--primary-text);
@@ -74,7 +87,7 @@
   text-align: left;
   background: transparent;
   border: none;
-  color: hsla(0, 0%, 100%, 0.68);
+  color: black;
   font-family: var(--primary-text);
   font-size: 13px;
   padding: 8px 10px;
@@ -83,8 +96,8 @@
 }
 
 .dash-sidebar__link:hover {
-  background: hsla(0, 0%, 100%, 0.08);
-  color: #fff;
+  background: hsla(0, 0%, 95%);
+  color: black;
 }
 
 .dash-sidebar__link--active {
@@ -95,13 +108,19 @@
 /* ── Topbar ──────────────────────────────────────────────────────────────── */
 
 .dash-topbar {
-  grid-area: topbar;
+  position: fixed;
+  top: 0;
+  left: 220px;
+  right: 0;
+  height: 62px;
+  z-index: 25;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  box-sizing: border-box;
 }
 
 .dash-topbar__title {
@@ -252,15 +271,6 @@
 /* ── Responsive: Mobile ≤ 768px ──────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  /* Collapse grid to single column */
-  .dash {
-    grid-template-columns: 1fr;
-    grid-template-rows: 56px 1fr;
-    grid-template-areas:
-      "topbar"
-      "main";
-  }
-
   /* Sidebar slides in over the top as a fixed drawer */
   .dash-sidebar {
     position: fixed;
@@ -295,6 +305,8 @@
 
   /* Topbar spans full width */
   .dash-topbar {
+    left: 0;
+    height: 56px;
     padding: 0 16px;
   }
 
@@ -310,7 +322,8 @@
 
   /* Main content full width */
   .dash__main {
-    padding: 16px 14px 32px;
+    margin-left: 0;
+    padding: calc(56px + 16px) 14px 32px;
   }
 }
 

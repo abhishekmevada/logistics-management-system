@@ -1,0 +1,1142 @@
+.landingHeader {
+  position: fixed;
+  top: 0;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: white;
+  backdrop-filter: blur(15px);
+  gap: 10px;
+  z-index: 999;
+  width: 100%;
+}
+.navbarScrolled {
+  background-color: white;
+}
+.headerNav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.headerNavP {
+  padding: 10px 10px;
+}
+.HeroSection {
+  position: relative;
+  padding-top: 60px;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background-color: white;
+}
+.heroSectionContainera {
+  position: relative;
+  padding: 1rem;
+  padding-left: 2.5rem;
+  width: 85%;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  justify-content: center;
+  gap: 10px;
+}
+.heroSectionContaineramin {
+  padding: 5px;
+  border-radius: 20px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background-color: hsl(50, 21%, 97%);
+  width: max-content;
+}
+.heroSectionContaineraTitle {
+  font-size: 3rem;
+  line-height: 50px;
+}
+.heroSectionContaineraSubtitle {
+  font-size: 1.3rem;
+}
+.heroSectionContainerBox {
+  position: relative;
+  padding: 1rem;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 30px;
+  box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+}
+.ladingpageCtaa {
+  position: relative;
+  padding: 10px 10px;
+  background-color: hsl(30, 100%, 50%);
+  border: 1px solid hsl(30, 100%, 38%);
+  color: white;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: 1s;
+}
+.ladingpageCtaa:hover {
+  background-color: hsl(30, 100%, 60%);
+  cursor: pointer;
+}
+.ladingpageCtab {
+  position: relative;
+  padding: 10px 10px;
+  background-color: hsl(50, 21%, 99%);
+  border: 1px solid var(--border);
+  color: black;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.heroform {
+  position: relative;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.heroinputField {
+  padding: 10px 10px;
+  width: 100%;
+  outline: none;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: hsl(50, 21%, 97%);
+  font-size: 16px;
+}
+.heroSubmitBut {
+  padding: 10px 10px;
+  background-color: var(--secondary-color);
+  border-radius: 10px;
+  color: white;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: 1s;
+}
+.heroSubmitBut:hover {
+  background-color: var(--primary-color);
+}
+.formBox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.formBoxp {
+  font-size: 14px;
+}
+.heroSectionContainerBoxb {
+  position: relative;
+  padding: 5px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: hsla(214, 100%, 60%, 0.151);
+}
+.herosectioncontainerboxbp {
+  font-size: 13px;
+}
+.herosectiondot {
+  height: 14px;
+  width: 14px;
+}
+.ctaico {
+  height: 20px;
+  width: 20px;
+}
+.heroSectionContainerb {
+  position: relative;
+  padding: 1rem;
+  width: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.heroSectionContainerbCardCon {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background-color: #111317;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow:
+    0 25px 60px -15px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.heroSectionContainerbCardCon:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 30px 70px -15px rgba(0, 0, 0, 0.8),
+    0 0 35px rgba(0, 229, 201, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* Card Header */
+.heroSectionContainerbCardConHeader {
+  padding: 20px 22px 16px 22px;
+  background: linear-gradient(180deg, #181c24 0%, #121419 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  z-index: 10;
+}
+.trackingCardHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.trackingCardCategory {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #94a3b8;
+}
+.trackingCardIdRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.trackingCardCode {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+.trackingCardStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background-color: rgba(0, 229, 201, 0.12);
+  border: 1px solid rgba(0, 229, 201, 0.35);
+  color: #00e5c9;
+  font-size: 12px;
+  font-weight: 600;
+}
+.trackingCardStatusBadgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #00e5c9;
+  box-shadow: 0 0 8px #00e5c9;
+  animation: badgeDotPulse 2s infinite ease-in-out;
+}
+@keyframes badgeDotPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+.trackingCardRouteSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+.trackingCardRouteLabels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.trackingCardRouteLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #64748b;
+}
+.trackingCardRouteCities {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.trackingCardCityName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.trackingCardRouteLineCon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  position: relative;
+}
+.trackingCardRouteConnector {
+  width: 100%;
+  height: 0;
+  border-top: 2px dashed rgba(255, 255, 255, 0.25);
+}
+.trackingCardRouteArrow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #15181f;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00e5c9;
+  box-shadow: 0 0 10px rgba(0, 229, 201, 0.3);
+}
+
+/* Card Body */
+.heroSectionContainerbCardConBody {
+  position: relative;
+  width: 100%;
+  height: 385px;
+  overflow: hidden;
+}
+
+.trackingCardMap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.trackingMapSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.trackingRouteLine {
+  animation: routePulse 3s ease-in-out infinite alternate;
+}
+@keyframes routePulse {
+  0% {
+    filter: drop-shadow(0 0 4px rgba(0, 229, 201, 0.6));
+  }
+  100% {
+    filter: drop-shadow(0 0 10px rgba(0, 229, 201, 0.95));
+  }
+}
+.trackingTimeline {
+  position: absolute;
+  top: 24px;
+  bottom: 26px;
+  left: 28px;
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 2;
+  pointer-events: none;
+}
+.trackingTimelineDashedLine {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 13px;
+  width: 0;
+  border-left: 2px dashed rgba(255, 255, 255, 0.26);
+  z-index: 0;
+}
+.trackingWaypointItem {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+.trackingNodeRing {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+.trackingNodeRing.glow {
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+}
+.trackingNodeRing.glow.active {
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.45);
+  animation: activeRingPulse 2.5s ease-in-out infinite;
+}
+@keyframes activeRingPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.65);
+    border-color: rgba(255, 255, 255, 0.85);
+  }
+}
+.trackingNodeDot {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.trackingNodeDot.white {
+  width: 10px;
+  height: 10px;
+  background-color: #ffffff;
+}
+.trackingWaypointLabel.destination {
+  margin-left: 14px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+.trackingTurnContent {
+  margin-left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.trackingTurnIcon {
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3));
+}
+.trackingTurnText {
+  display: flex;
+  flex-direction: column;
+}
+.trackingTurnTitle {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.trackingTurnSubtitle {
+  font-size: 13px;
+  font-weight: 400;
+  color: #8e95a5;
+  margin-top: 3px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.trackingSpeedDotWrapper {
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.trackingSpeedDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.85);
+}
+.trackingSpeedLabel {
+  margin-left: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.trackingPastDotWrapper {
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.trackingNodeRing.muted {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+}
+.trackingNodeRing.muted.subtle {
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+.trackingNodeDot.muted {
+  width: 6px;
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.32);
+}
+.trackingNodeDot.muted.subtle {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+.trackingEtaBox {
+  position: absolute;
+  right: 36px;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  z-index: 2;
+  pointer-events: none;
+}
+.trackingEtaNumber {
+  font-size: 25px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+.trackingEtaUnit {
+  font-size: 14px;
+  font-weight: 400;
+  color: #8e95a5;
+  margin-top: 4px;
+  line-height: 1;
+  letter-spacing: 0.2px;
+}
+
+.platformOverviewSection {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  background-color: white;
+}
+.platformOverviewSubtitle {
+  width: 40%;
+}
+.platformOverviewCardContainer {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.jplatformOverviewCardContainer {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.platformOverviewCard {
+  position: relative;
+  padding: 1rem;
+  border-radius: 20px;
+  background-color: hsl(0deg 0% 98%);
+  border: 1px solid hsl(50, 21%, 90%);
+  cursor: pointer;
+}
+.platformOverviewCardNumber {
+  position: absolute;
+  top: -5px;
+  right: 10px;
+  font-size: 60px;
+  font-weight: bolder;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.7);
+}
+.platformoverviewImg {
+  height: 50vh;
+  width: 100%;
+  border-radius: 20px;
+}
+.platformOverviewCardTitle {
+  font-size: 1.5rem;
+}
+.platformOverviewCardSubtitle {
+  font-size: 0.9rem;
+}
+.platformOverviewCardMessage {
+  width: 60%;
+  margin-top: 10px;
+}
+.platformOverviewCard:hover .platformOverviewCardNumber {
+  -webkit-text-stroke: 2px var(--primary-color);
+}
+.platformOverviewCard:hover .platformOverviewCardTitle {
+  color: var(--primary-color);
+}
+.platformOverviewCard:hover {
+  border: 1px solid var(--primary-color);
+}
+.shipmentSection {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  height: 60vh;
+  margin-top: 20px;
+  background-color: white;
+}
+.shipmentSectionContainera {
+  position: relative;
+}
+.shipmentSectionContaineraCard {
+  position: relative;
+  width: 400px;
+  height: 100%;
+  background-color: #121419;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shipmentSectionCardBox {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  overflow: hidden;
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+}
+.shipmentDeliveryDateBadge {
+  position: absolute;
+  top: 10px;
+  left: 20px;
+  z-index: 2;
+  pointer-events: none;
+}
+.shipmentSectionContainerb {
+  position: relative;
+  width: 400px;
+  height: 100%;
+  background-color: #121419;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shipmentSectionContainerc {
+  position: relative;
+  padding: 1rem;
+  width: 100%;
+  height: 100%;
+  background-color: var(--primary-color);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.shipmentSectionContainercBut {
+  padding: 10px 10px;
+  background-color: white;
+  border: 1px solid white;
+  border-radius: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: 1s;
+  margin-top: 20px;
+}
+.shipmentSectionContainercBut:hover {
+  background-color: var(--secondary-color);
+  color: white;
+  border: 1px solid white;
+}
+.shipmentSectionContainercImg {
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+}
+.customerportalSectionland {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  background-color: white;
+}
+.customerportalContainer {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.customerportalImg {
+  width: 50%;
+  border-radius: 20px;
+  border: 1px solid hsl(50, 21%, 80%);
+}
+.customerportalConb {
+  position: relative;
+  width: 50%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+.customerportalConbCard {
+  position: relative;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: hsl(0deg 0% 98%);
+  border-radius: 20px;
+  border: 1px solid hsl(50, 21%, 80%);
+  cursor: pointer;
+}
+.customerportalConbCardIco {
+  background-color: hsl(50, 21%, 90%);
+  border-radius: 10px;
+}
+.customerportalConbCardTitle {
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.customerportalConbCardDis {
+  width: 70%;
+}
+.customerportalConbCard:hover .customerportalConbCardIco {
+  background-color: hsl(214, 64%, 74%);
+}
+.podSection,
+.ctaSection {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  background-color: white;
+}
+.podContainera {
+  position: relative;
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+}
+.podContaieraBox {
+  position: relative;
+  padding: 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: hsl(50, 21%, 90%);
+  border: 1px solid hsl(50, 21%, 80%);
+  border-radius: 10px;
+}
+.podContaineraBoxtitle {
+  font-size: 1.3rem;
+}
+.podContainerb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 20px;
+}
+.podContainerbTitle {
+  font-size: 1.4rem;
+}
+.platformOverviewCardContainerxz {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.ctaSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: url("/trackshipbg.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.contactSection {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  display: flex;
+  background-color: white;
+}
+.contactSectionContainer {
+  position: relative;
+  width: 50%;
+}
+.contactSectionContainerb {
+  position: relative;
+  padding: 1rem;
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  justify-content: end;
+}
+.contactform {
+  width: 70%;
+}
+.contactFormtextarea {
+  padding: 10px 10px;
+  width: 100%;
+  height: 150px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: hsl(50, 21%, 97%);
+  font-size: 16px;
+  outline: none;
+  resize: none;
+}
+.footerLanding {
+  position: relative;
+  padding: 1rem;
+  background-color: #121419;
+  min-height: 88vh;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.footerContaineraWo {
+  position: relative;
+  display: flex;
+  gap: 10px;
+}
+.footerContainera {
+  position: relative;
+  width: 50%;
+}
+.footerLogo {
+  font-size: 8rem;
+  width: max-content;
+}
+.footerDes {
+  font-size: 1.2rem;
+  width: 60%;
+}
+.footerContaineraIcoBox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  width: max-content;
+}
+.footerContaineraIcoBoxIco {
+  height: 40px;
+  width: 40px;
+  border-radius: 10px;
+  background-color: hsl(223, 16%, 15%);
+  border: 2px solid hsl(223, 16%, 15%);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+ion-icon {
+  font-size: 25px;
+  color: hsl(223, 16%, 40%);
+}
+.footerContaineraIcoBoxIco:hover {
+  border: 2px solid var(--primary-color);
+}
+
+.footerContaineraIcoBoxIco:hover ion-icon {
+  color: var(--primary-color);
+}
+.footerContainerxbig {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  width: 50%;
+}
+.footerContainerb {
+  position: relative;
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.footerContainerbLinkBox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.footerContainerbLinkp {
+  font-size: 16px;
+  color: hsl(223, 16%, 40%);
+  transition: 1s;
+  cursor: pointer;
+}
+.footerContainerbLinkp:hover {
+  color: var(--primary-color);
+}
+.footerContainerWb {
+  position: absolute;
+  bottom: 0px;
+  height: 50px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.headerManu {
+  display: none;
+}
+.shipmentxCon {
+  position: relative;
+  display: flex;
+  gap: 10px;
+}
+.challengessolutionContainer {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 20px;
+}
+.challengesContainer {
+  position: relative;
+  padding: 1rem;
+  background-color: hsl(0deg 0% 98%);
+  border: 1px solid hsl(50, 21%, 80%);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 50%;
+}
+.challesngesContainerTitle {
+  font-size: 18px;
+}
+.challesngesContainerSubtitle {
+  font-size: 14px;
+}
+.challengesBox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.challengesBoxp {
+  padding: 10px 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: hsl(0, 0%, 95%);
+  cursor: pointer;
+}
+.challengesBoxp:hover {
+  background-color: hsl(0, 100%, 66%);
+}
+.challengesBoxp:hover .challengeIco {
+  color: hsl(0, 0%, 95%);
+}
+.challengeIco {
+  height: 18px;
+  width: 18px;
+}
+.sol:hover {
+  background-color: var(--primary-color);
+}
+
+@media (max-width: 1164px) {
+  .shipmentSection {
+    height: max-content;
+    flex-wrap: wrap;
+  }
+  .shipmentSectionContainerc {
+    height: 55vh;
+  }
+  .shipmentxCon {
+    width: 100%;
+  }
+  .shipmentSectionContaineraCard,
+  .shipmentSectionContainera {
+    width: 100%;
+  }
+}
+@media (max-width: 1222px) {
+  .footerLogo {
+    font-size: 7rem;
+  }
+  .footerDes {
+    width: 70%;
+  }
+}
+@media (max-width: 1200px) {
+  .customerportalContainer {
+    flex-direction: column;
+  }
+  .customerportalImg,
+  .customerportalConb {
+    width: 100%;
+  }
+}
+
+@media (max-width: 1025px) {
+  .platformOverviewSubtitle {
+    width: 62%;
+  }
+}
+
+@media (max-width: 999px) {
+  .shipmentSectionContainerc {
+    height: 77vh;
+  }
+}
+
+@media (max-width: 900px) {
+  .HeroSection {
+    flex-direction: column;
+    padding-bottom: 2rem;
+  }
+  .heroSectionContainera,
+  .heroSectionContainerb {
+    width: 100%;
+  }
+  .heroSectionContainerb {
+    margin-top: 2rem;
+  }
+}
+
+@media (max-width: 880px) {
+  .contactSection {
+    flex-direction: column;
+  }
+  .contactSectionContainer,
+  .contactSectionContainerb {
+    width: 100%;
+  }
+}
+
+@media (max-width: 825px) {
+  .platformOverviewSubtitle {
+    width: 80%;
+  }
+}
+
+@media (max-width: 804px) {
+  .headerManu {
+    display: block;
+  }
+  .headerNav {
+    position: absolute;
+    top: 55px;
+    left: 0px;
+    padding: 1rem;
+    height: 95vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    justify-content: start;
+    background-color: white;
+  }
+  .headerNavP:hover {
+    background-color: var(--primary-color);
+    color: white;
+    width: 100%;
+  }
+}
+
+@media (max-width: 797px) {
+  .footerContaineraWo {
+    flex-wrap: wrap;
+  }
+  .footerContainerWb {
+    position: relative;
+  }
+  .footerContainera {
+    width: 100%;
+  }
+  .footerContainerxbig {
+    width: 100%;
+  }
+}
+
+@media (max-width: 678px) {
+  .shipmentxCon {
+    flex-direction: column;
+  }
+  .shipmentSectionContainerb {
+    width: 100%;
+    height: 500px;
+  }
+}
+
+@media (max-width: 520px) {
+  .platformOverviewCardContainerxz {
+    display: flex;
+    flex-direction: column;
+  }
+  .platformOverviewCardMessage {
+    width: 100%;
+  }
+  .platformOverviewCardNumber {
+    -webkit-text-stroke: 2px hsl(0deg 0% 0% / 16%);
+  }
+  .platformOverviewCard:hover .platformOverviewCardNumber {
+    -webkit-text-stroke: 2px hsl(0deg 0% 0% / 16%);
+  }
+  .contactSectionContainerb {
+    align-items: normal;
+    justify-content: start;
+  }
+  .platformOverviewCardContainer,
+  .podContainera {
+    display: flex;
+    flex-direction: column;
+  }
+  .footerDes {
+    width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .heroform {
+    flex-wrap: wrap;
+  }
+  .heroSubmitBut {
+    width: 100%;
+  }
+}
+@media (max-width: 386px) {
+  .footerLogo {
+    font-size: 5rem;
+  }
+}

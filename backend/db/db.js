@@ -134,7 +134,11 @@ const shipmentSchema = new mongosse.Schema(
       enum: ["Standard", "Express", "Same Day", "Overnight"],
       default: "Standard",
     },
-    driverName: { type: String, default: "", trim: true },
+    driverName: {
+      type: mongosse.Schema.Types.ObjectId,
+      ref: "driver",
+      required: true,
+    },
     vehicleNo: { type: String, default: "", trim: true },
     tripNo: { type: String, default: "", trim: true },
   },
@@ -145,4 +149,269 @@ const shipmentSchema = new mongosse.Schema(
 
 const Shipment = mongosse.model("shipments", shipmentSchema);
 
-module.exports = { User, Customer, Shipment };
+const driverSchema = mongosse.Schema({
+  userId: { type: mongosse.Schema.Types.ObjectId, ref: "user", required: true },
+  driverId: { type: String, unique: true, required: true },
+  phonenumber: { type: String },
+  license: {
+    licensenumber: { type: String, unique: true },
+    expiredate: { type: Date },
+  },
+  status: { type: String, enum: ["active", "inactiver"], default: "active" },
+  documents: {
+    docname: { type: String },
+    docnumber: { type: String, unique: true },
+    docexpiredate: { type: Date },
+  },
+  availability: {
+    type: String,
+    enum: ["available", "assigned", "unavailable"],
+    default: "available",
+  },
+});
+
+const Driver = mongosse.model("driver", driverSchema);
+
+const vechileSchema = mongosse.Schema({
+  vregistrationnumber: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+
+  vtype: {
+    type: String,
+    required: true,
+  },
+
+  vmodel: {
+    type: String,
+    required: true,
+  },
+
+  vcapacity: {
+    type: Number,
+    required: true,
+  },
+
+  vfuletype: {
+    type: String,
+    required: true,
+  },
+
+  vstatus: {
+    type: String,
+    enum: ["Available", "Assigned", "In Maintenance", "Inactive"],
+    required: true,
+  },
+
+  documents: {
+    insurance: {
+      documentName: {
+        type: String,
+        required: true,
+        default: "Insurance",
+      },
+
+      documentNumber: {
+        type: String,
+        required: true,
+      },
+
+      expireDate: {
+        type: Date,
+        required: true,
+      },
+    },
+
+    rc: {
+      documentName: {
+        type: String,
+        required: true,
+        default: "RC",
+      },
+
+      documentNumber: {
+        type: String,
+        required: true,
+      },
+
+      expireDate: {
+        type: Date,
+        required: true,
+      },
+    },
+
+    puc: {
+      documentName: {
+        type: String,
+        required: true,
+        default: "PUC",
+      },
+
+      documentNumber: {
+        type: String,
+        required: true,
+      },
+
+      expireDate: {
+        type: Date,
+        required: true,
+      },
+    },
+
+    fitness: {
+      documentName: {
+        type: String,
+        required: true,
+        default: "Fitness Certificate",
+      },
+
+      documentNumber: {
+        type: String,
+        required: true,
+      },
+
+      expireDate: {
+        type: Date,
+        required: true,
+      },
+    },
+
+    permit: {
+      documentName: {
+        type: String,
+        required: true,
+        default: "Transport Permit",
+      },
+
+      documentNumber: {
+        type: String,
+        required: true,
+      },
+
+      expireDate: {
+        type: Date,
+        required: true,
+      },
+    },
+  },
+});
+
+const Vechile = mongosse.model("vechile", vechileSchema);
+
+const vehicleMaintenanceSchema = new mongosse.Schema(
+  {
+    vehicleId: {
+      type: mongosse.Schema.Types.ObjectId,
+      ref: "vechile",
+      required: true,
+    },
+
+    vechileId: {
+      type: mongosse.Schema.Types.ObjectId,
+      ref: "vechile",
+    },
+
+    serviceDate: {
+      type: Date,
+      required: true,
+    },
+
+    serviceType: {
+      type: String,
+      required: true,
+    },
+
+    description: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    odometer: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    serviceCost: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    serviceProvider: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    nextServiceDate: {
+      type: Date,
+    },
+  },
+  { timestamps: true },
+);
+
+const VehicleMaintenance = mongosse.model(
+  "VehicleMaintenance",
+  vehicleMaintenanceSchema,
+);
+
+const vehicleFuelSchema = new mongosse.Schema(
+  {
+    vehicleId: {
+      type: mongosse.Schema.Types.ObjectId,
+      ref: "vechile",
+      required: true,
+    },
+
+    fuelDate: {
+      type: Date,
+      required: true,
+    },
+
+    fuelType: {
+      type: String,
+      required: true,
+      enum: ["Diesel", "Petrol", "CNG", "Electric"],
+    },
+
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    fuelCost: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    odometer: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    fuelStation: {
+      type: String,
+      trim: true,
+    },
+  },
+  { timestamps: true },
+);
+
+const VehicleFuel = mongosse.model("VehicleFuel", vehicleFuelSchema);
+
+module.exports = {
+  User,
+  Customer,
+  Shipment,
+  Driver,
+  Vechile,
+  VehicleMaintenance,
+  VehicleFuel,
+};

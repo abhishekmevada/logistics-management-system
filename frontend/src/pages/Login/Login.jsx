@@ -75,6 +75,12 @@ export default function Login() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+
+      if (data.role === "Driver") {
+        navigate("/driver-dashboard");
+        return;
+      }
+
       navigate("/dashboard");
 
       setFormData((prev) => ({ ...prev, password: "" }));

@@ -5,6 +5,7 @@ import "../../styles/Dashboard.css";
 import DashboardOverview from "./Dashboardoverview";
 import DashboardCustomer from "./DashboardCustomer";
 import DashboardShipment from "./DashboardShipment";
+import DashboardVechiles from "./DashboardVechicles";
 import { canAccess, accessLabel } from "../../utils/rolePermissions";
 import DashboardDriver from "./DashboardDriver";
 
@@ -68,6 +69,15 @@ const NAV = [
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
+  const navigate = useNavigate();
+  const TAB_PATHS = {
+    dashboard: "/dashboard",
+    customers: "/customers",
+    shipments: "/shipments",
+    vehicles: "/vehicles",
+    drivers: "/drivers",
+  };
+
   return (
     <>
       {open && <div className="dash-sidebar__overlay" onClick={onClose} />}
@@ -80,13 +90,18 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
         <nav className="dash-sidebar__nav">
           {NAV.filter((item) => canAccess(role, item.key)).map((item) => {
             const label = accessLabel(role, item.key);
-            const isActive = activeTab === item.key;
+            const isActive =
+              activeTab === item.key ||
+              (item.key === "vehicles" && activeTab === "vechiles");
             return (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => {
                   if (onSelectTab) onSelectTab(item.key);
+                  if (TAB_PATHS[item.key]) {
+                    navigate(TAB_PATHS[item.key]);
+                  }
                   if (onClose) onClose();
                 }}
                 className={
@@ -199,9 +214,14 @@ export default function Dashboardx({ initialTab = "dashboard" }) {
           {activeTab === "customers" && <DashboardCustomer />}
           {activeTab === "shipments" && <DashboardShipment />}
           {activeTab === "drivers" && <DashboardDriver />}
+          {(activeTab === "vehicles" || activeTab === "vechiles") && (
+            <DashboardVechiles />
+          )}
           {activeTab !== "customers" &&
             activeTab !== "shipments" &&
-            activeTab !== "drivers" && <DashboardOverview />}
+            activeTab !== "drivers" &&
+            activeTab !== "vehicles" &&
+            activeTab !== "vechiles" && <DashboardOverview />}
         </main>
       </div>
     </div>

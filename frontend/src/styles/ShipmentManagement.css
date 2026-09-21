@@ -361,7 +361,7 @@
   color: var(--primary-color);
   cursor: pointer;
   padding: 0;
-  margin-right: 6px;
+  text-align: start;
 }
 
 .shp-tracking-link:hover {
@@ -1245,4 +1245,26 @@
     max-width: 95vw;
     margin: 8px;
   }
+}
+
+/* ── Customer / Shared Utilities ─────────────────────────────────────────── */
+.shp-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: hsl(214, 100%, 96%);
+  color: var(--primary-color);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.shp-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
 }

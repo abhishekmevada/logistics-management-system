@@ -1,5 +1,36 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  X,
+  Check,
+  MapPin,
+  Phone,
+  Mail,
+  Flag,
+  FileText,
+  Download,
+  Upload,
+  UploadCloud,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Plus,
+  Package,
+  Clock,
+  Truck,
+  Search,
+  ArrowRight,
+  Eye,
+  Edit2,
+  Trash2,
+  ChevronsLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronsRight,
+  FileSpreadsheet,
+} from "lucide-react";
 import "../../styles/ShipmentManagement.css";
 
 const API_BASE_URL =
@@ -28,6 +59,83 @@ const STATUS_OPTIONS = [
   { value: "failed_delivery", label: "Failed Delivery" },
 ];
 
+export const resolveDriver = (shp, map = {}) => {
+  if (!shp) return { name: "", driverId: "", isAssigned: false };
+
+  // Check driverDetails if enriched by backend
+  if (shp.driverDetails && typeof shp.driverDetails === "object") {
+    const name = shp.driverDetails.name || "Driver";
+    const driverId = shp.driverDetails.driverId || shp.driverId || "";
+    return { name, driverId, isAssigned: true };
+  }
+
+  const raw = shp.driverName;
+
+  // 1. If raw is an object (e.g. populated Driver doc)
+  if (raw && typeof raw === "object") {
+    const name = raw.userId?.name || raw.name || "";
+    const driverId = raw.driverId || shp.driverId || "";
+    if (name || driverId) {
+      return {
+        name: name || (driverId ? "Driver" : ""),
+        driverId,
+        isAssigned: true,
+      };
+    }
+    if (raw._id && map[String(raw._id)]) {
+      const mapped = map[String(raw._id)];
+      return {
+        name: mapped.name || "Driver",
+        driverId: mapped.driverId || shp.driverId || "",
+        isAssigned: true,
+      };
+    }
+    return { name: "", driverId: "", isAssigned: false };
+  }
+
+  // 2. If raw is a string
+  const str = String(raw || "").trim();
+  if (!str || str.toLowerCase() === "unassigned") {
+    return { name: "", driverId: "", isAssigned: false };
+  }
+
+  // Check in map (by _id, driverId, or name)
+  const mapped = map[str] || map[str.toLowerCase()];
+  if (mapped) {
+    return {
+      name: mapped.name || (mapped.driverId ? "Driver" : str),
+      driverId:
+        mapped.driverId || (str.startsWith("DRV") ? str : shp.driverId || ""),
+      isAssigned: true,
+    };
+  }
+
+  // If looks like DRV-xxx
+  if (/^DRV/i.test(str)) {
+    return {
+      name: "Driver",
+      driverId: str,
+      isAssigned: true,
+    };
+  }
+
+  // If 24-char hex ObjectId and not found in map
+  if (/^[0-9a-fA-F]{24}$/.test(str)) {
+    return {
+      name: "Driver",
+      driverId: shp.driverId || "",
+      isAssigned: true,
+    };
+  }
+
+  // Regular string name (e.g. "R. Mehta" or "Rajesh Kumar")
+  return {
+    name: str,
+    driverId: shp.driverId || "",
+    isAssigned: true,
+  };
+};
+
 // ==========================================
 // 1. CREATE SHIPMENT MODAL
 // ==========================================
@@ -35,6 +143,195 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
   const [activeStep, setActiveStep] = useState(1);
   const [error, setError] = useState(null);
   const token = localStorage.getItem("token");
+  const [getdriverName, setGetdriverName] = useState([]);
+
+  const fetchDriverName = async () => {
+    try {
+      let driversList = [];
+      const res = await fetch(`${API_BASE_URL}/drivernames`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.result) && data.result.length > 0) {
+          driversList = data.result;
+        }
+      }
+
+      // If /drivernames is empty or returned 0, try fetching from /drivers
+      if (driversList.length === 0) {
+        const altRes = await fetch(`${API_BASE_URL}/drivers`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (altRes.ok) {
+          const altData = await altRes.json();
+          const list = Array.isArray(altData)
+            ? altData
+            : altData?.drivers || altData?.result || [];
+          if (list.length > 0) {
+            driversList = list.map((d) => ({
+              driverId: d.driverId,
+              name: d.userId?.name || d.name || d.driverId,
+            }));
+          }
+        }
+      }
+
+      // Only show drivers from backend - no predefined/mock drivers
+      setGetdriverName(driversList);
+    } catch (error) {
+      console.warn("Could not fetch driver names from backend:", error);
+      setGetdriverName([]);
+    }
+  };
+
+  const [customerList, setCustomerList] = useState([]);
+
+  const fetchCustomers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers?limit=100`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data?.customers)
+          ? data.customers
+          : Array.isArray(data)
+            ? data
+            : [];
+        if (list.length > 0) {
+          setCustomerList(list);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch customers, using fallback list:", err);
+    }
+  };
+
+  const [vehicleList, setVehicleList] = useState([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+
+  const fetchVehicles = async () => {
+    setLoadingVehicles(true);
+    try {
+      let vList = [];
+      const res = await fetch(`${API_BASE_URL}/vechile`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        vList = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.vehicles)
+            ? data.vehicles
+            : Array.isArray(data?.result)
+              ? data.result
+              : [];
+      }
+
+      if (vList.length === 0) {
+        const altRes = await fetch(`${API_BASE_URL}/vehicles`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (altRes.ok) {
+          const altData = await altRes.json();
+          const list = Array.isArray(altData)
+            ? altData
+            : Array.isArray(altData?.vehicles)
+              ? altData.vehicles
+              : Array.isArray(altData?.result)
+                ? altData.result
+                : [];
+          if (list.length > 0) vList = list;
+        }
+      }
+
+      setVehicleList(vList);
+    } catch (err) {
+      console.warn("Could not fetch vehicles from backend:", err);
+      setVehicleList([]);
+    } finally {
+      setLoadingVehicles(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDriverName();
+    fetchCustomers();
+    fetchVehicles();
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchDriverName();
+      fetchCustomers();
+      fetchVehicles();
+    }
+  }, [isOpen]);
+
+  const [customerSearchText, setCustomerSearchText] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerDropdownRef = useRef(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        customerDropdownRef.current &&
+        !customerDropdownRef.current.contains(event.target)
+      ) {
+        setShowCustomerDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const activeCustomers = useMemo(() => {
+    return customerList.filter((c) => {
+      const status = String(c.status || "Active").toLowerCase();
+      return status === "active";
+    });
+  }, [customerList]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchText.trim()) return activeCustomers;
+    const q = customerSearchText.toLowerCase();
+    return activeCustomers.filter(
+      (c) =>
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.customerId && c.customerId.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)),
+    );
+  }, [activeCustomers, customerSearchText]);
+
+  const handleSelectCustomer = (cust) => {
+    const displayVal = `${cust.name} (${cust.customerId})`;
+    setCustomerSearchText(displayVal);
+    setShowCustomerDropdown(false);
+    setFormData((prev) => ({
+      ...prev,
+      customerId: cust.customerId,
+      senderName: cust.name || prev.senderName,
+      senderEmail: cust.email || prev.senderEmail,
+      senderPhoneNumber: cust.phonenumber
+        ? String(cust.phonenumber)
+        : prev.senderPhoneNumber,
+      senderAddress: cust.address || prev.senderAddress,
+      senderCity: cust.city || prev.senderCity,
+      senderState: cust.state || prev.senderState,
+      senderPincode: cust.pincode || prev.senderPincode,
+    }));
+  };
 
   // Unified Form State
   const [formData, setFormData] = useState({
@@ -71,8 +368,8 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
     // declaredValue: 120000,
 
     // Driver / Vehicle / Trip
-    driverName: "R. Mehta",
-    vehicleNo: "MH-12-AB-4521",
+    driverName: "",
+    vehicleNo: "",
     tripNo: "TRP-1092",
   });
 
@@ -120,7 +417,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://localhost:5000/createshipment", {
+      const res = await fetch(`${API_BASE_URL}/createshipment`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -156,8 +453,13 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
               creation.
             </p>
           </div>
-          <button type="button" className="shp-modal__close" onClick={onClose}>
-            ✕
+          <button
+            type="button"
+            className="shp-modal__close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <X size={18} />
           </button>
         </div>
 
@@ -205,16 +507,193 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
         <form onSubmit={handleSubmit} className="shp-modal__form">
           {activeStep === 1 && (
             <div className="shp-form-grid">
-              <div className="shp-form-group shp-form-group--full">
-                <label>Customer Name/ID</label>
-                <input
-                  type="text"
-                  name="customerId"
-                  required
-                  value={customerId}
-                  onChange={handleChange}
-                  placeholder="john/123456"
-                />
+              <div
+                className="shp-form-group shp-form-group--full"
+                ref={customerDropdownRef}
+                style={{ position: "relative" }}
+              >
+                <label>Customer Name / ID *</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    name="customerIdInput"
+                    required
+                    autoComplete="off"
+                    value={customerSearchText || customerId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomerSearchText(val);
+                      setShowCustomerDropdown(true);
+                      const matched = activeCustomers.find(
+                        (c) =>
+                          c.customerId?.toLowerCase() ===
+                            val.trim().toLowerCase() ||
+                          c.name?.toLowerCase() === val.trim().toLowerCase(),
+                      );
+                      setFormData((prev) => ({
+                        ...prev,
+                        customerId: matched ? matched.customerId : val,
+                        ...(matched && {
+                          senderName: matched.name || prev.senderName,
+                          senderEmail: matched.email || prev.senderEmail,
+                          senderPhoneNumber: matched.phonenumber
+                            ? String(matched.phonenumber)
+                            : prev.senderPhoneNumber,
+                          senderAddress: matched.address || prev.senderAddress,
+                          senderCity: matched.city || prev.senderCity,
+                          senderState: matched.state || prev.senderState,
+                          senderPincode: matched.pincode || prev.senderPincode,
+                        }),
+                      }));
+                    }}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    placeholder="Click to select or type customer name / ID..."
+                    style={{ paddingRight: "40px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerDropdown((prev) => !prev)}
+                    style={{
+                      position: "absolute",
+                      right: "8px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#64748b",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "4px",
+                    }}
+                    title="Toggle customer list"
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                </div>
+
+                {/* Dropdown list showing customer name with ID */}
+                {showCustomerDropdown && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: 0,
+                      right: 0,
+                      backgroundColor: "#ffffff",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      boxShadow:
+                        "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                      maxHeight: "240px",
+                      overflowY: "auto",
+                      zIndex: 100,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "8px 12px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "#64748b",
+                        backgroundColor: "#f8fafc",
+                        borderBottom: "1px solid #e2e8f0",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span>
+                        List of Active Customers ({filteredCustomers.length})
+                      </span>
+                      <span style={{ fontWeight: 400, textTransform: "none" }}>
+                        Click to select
+                      </span>
+                    </div>
+
+                    {filteredCustomers.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "16px",
+                          color: "#64748b",
+                          fontSize: "13px",
+                          textAlign: "center",
+                        }}
+                      >
+                        No customer found matching "{customerSearchText}"
+                      </div>
+                    ) : (
+                      filteredCustomers.map((cust, idx) => (
+                        <div
+                          key={cust.customerId || cust._id || idx}
+                          onClick={() => handleSelectCustomer(cust)}
+                          style={{
+                            padding: "10px 14px",
+                            cursor: "pointer",
+                            borderBottom: "1px solid #f1f5f9",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            transition: "background-color 0.15s",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.backgroundColor = "#f1f5f9")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.backgroundColor =
+                              "transparent")
+                          }
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                color: "#0f172a",
+                                fontSize: "13px",
+                              }}
+                            >
+                              {cust.name}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "12px",
+                                color: "#64748b",
+                                marginTop: "2px",
+                              }}
+                            >
+                              Customer ID:{" "}
+                              <span
+                                style={{
+                                  fontFamily: "monospace",
+                                  fontWeight: 700,
+                                  color: "#2563eb",
+                                }}
+                              >
+                                {cust.customerId}
+                              </span>
+                              {cust.email && <span> &bull; {cust.email}</span>}
+                            </div>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              backgroundColor: "#eff6ff",
+                              color: "#2563eb",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Select
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Sender Details */}
@@ -515,12 +994,16 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                       value={driverName}
                       onChange={handleChange}
                     >
-                      <option value="">Unassigned</option>
-                      <option value="R. Mehta">R. Mehta</option>
-                      <option value="S. Kulkarni">S. Kulkarni</option>
-                      <option value="K. Sharma">K. Sharma</option>
-                      <option value="A. Singh">A. Singh</option>
-                      <option value="V. Patil">V. Patil</option>
+                      <option value="">Select Driver / Unassigned</option>
+                      {getdriverName.map((dri, index) => {
+                        const id = dri.driverId || "";
+                        const displayName = dri.name || dri.userId?.name || id;
+                        return (
+                          <option key={id || index} value={id || displayName}>
+                            {displayName} {id ? `(${id})` : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                   <div className="shp-form-group">
@@ -530,33 +1013,57 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                       value={vehicleNo}
                       onChange={handleChange}
                     >
-                      <option value="">Unassigned</option>
-                      <option value="MH-12-AB-4521">
-                        MH-12-AB-4521 (Container)
+                      <option value="">
+                        {loadingVehicles
+                          ? "Loading vehicles..."
+                          : "Select Vehicle / Unassigned"}
                       </option>
-                      <option value="MH-14-GH-8901">
-                        MH-14-GH-8901 (Heavy Truck)
-                      </option>
-                      <option value="GJ-06-CD-1234">
-                        GJ-06-CD-1234 (Reefer Van)
-                      </option>
-                      <option value="RJ-14-XY-6789">
-                        RJ-14-XY-6789 (Medium Commercial)
-                      </option>
-                      <option value="MH-04-EF-2345">
-                        MH-04-EF-2345 (Pickup Van)
-                      </option>
+                      {vehicleNo &&
+                        !vehicleList.some(
+                          (v) =>
+                            (
+                              v.vregistrationnumber ||
+                              v.registrationNumber ||
+                              v.vehicleNo ||
+                              ""
+                            )
+                              .trim()
+                              .toUpperCase() === vehicleNo.trim().toUpperCase(),
+                        ) && (
+                          <option value={vehicleNo}>
+                            {vehicleNo} (Current)
+                          </option>
+                        )}
+                      {vehicleList.map((veh, index) => {
+                        const regNo = (
+                          veh.vregistrationnumber ||
+                          veh.registrationNumber ||
+                          veh.vehicleNo ||
+                          veh._id ||
+                          ""
+                        )
+                          .trim()
+                          .toUpperCase();
+                        const vehName = (
+                          veh.vmodel ||
+                          veh.model ||
+                          veh.name ||
+                          veh.vtype ||
+                          veh.type ||
+                          ""
+                        ).trim();
+
+                        const displayName = vehName
+                          ? `${vehName} (${regNo})`
+                          : regNo;
+
+                        return (
+                          <option key={veh._id || regNo || index} value={regNo}>
+                            {displayName}
+                          </option>
+                        );
+                      })}
                     </select>
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Trip Manifest ID (Optional)</label>
-                    <input
-                      type="text"
-                      name="tripNo"
-                      value={tripNo}
-                      onChange={handleChange}
-                      placeholder="e.g. TRP-1092"
-                    />
                   </div>
                 </div>
               </div>
@@ -624,7 +1131,13 @@ function toDatetimeLocal(val) {
 // ==========================================
 // 2. EDIT SHIPMENT MODAL
 // ==========================================
-function EditShipmentModal({ shipment, isOpen, onClose, onSave }) {
+function EditShipmentModal({
+  shipment,
+  isOpen,
+  onClose,
+  onSave,
+  driversMap = {},
+}) {
   if (!isOpen || !shipment) return null;
 
   const modalKey = `${shipment._id || shipment.id || shipment.shipmentId || "edit"}-${shipment.updatedAt || "current"}`;
@@ -635,11 +1148,17 @@ function EditShipmentModal({ shipment, isOpen, onClose, onSave }) {
       shipment={shipment}
       onClose={onClose}
       onSave={onSave}
+      driversMap={driversMap}
     />
   );
 }
 
-function EditShipmentModalContent({ shipment, onClose, onSave }) {
+function EditShipmentModalContent({
+  shipment,
+  onClose,
+  onSave,
+  driversMap = {},
+}) {
   // Customer
   const [customerName, setCustomerName] = useState(
     shipment.customerId?.name ||
@@ -757,9 +1276,67 @@ function EditShipmentModalContent({ shipment, onClose, onSave }) {
 
   // Assignment & Priority
   const [priority, setPriority] = useState(shipment.priority || "Standard");
-  const [driverName, setDriverName] = useState(shipment.driverName || "");
+  const initialDriver = resolveDriver(shipment, driversMap);
+  const [driverName, setDriverName] = useState(
+    initialDriver.isAssigned
+      ? initialDriver.name || initialDriver.driverId
+      : typeof shipment.driverName === "string"
+        ? shipment.driverName
+        : "",
+  );
   const [vehicleNo, setVehicleNo] = useState(shipment.vehicleNo || "");
   const [tripNo, setTripNo] = useState(shipment.tripNo || "");
+
+  const [vehicleList, setVehicleList] = useState([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const fetchVehicles = async () => {
+      setLoadingVehicles(true);
+      try {
+        let vList = [];
+        const res = await fetch(`${API_BASE_URL}/vechile`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          vList = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.vehicles)
+              ? data.vehicles
+              : Array.isArray(data?.result)
+                ? data.result
+                : [];
+        }
+        if (vList.length === 0) {
+          const altRes = await fetch(`${API_BASE_URL}/vehicles`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (altRes.ok) {
+            const altData = await altRes.json();
+            const list = Array.isArray(altData)
+              ? altData
+              : Array.isArray(altData?.vehicles)
+                ? altData.vehicles
+                : Array.isArray(altData?.result)
+                  ? altData.result
+                  : [];
+            if (list.length > 0) vList = list;
+          }
+        }
+        setVehicleList(vList);
+      } catch (err) {
+        console.warn("Could not fetch vehicles in EditShipmentModal:", err);
+        setVehicleList([]);
+      } finally {
+        setLoadingVehicles(false);
+      }
+    };
+    fetchVehicles();
+  }, []);
 
   // UI state
   const [isSaving, setIsSaving] = useState(false);
@@ -829,8 +1406,9 @@ function EditShipmentModalContent({ shipment, onClose, onSave }) {
             className="shp-modal__close"
             onClick={onClose}
             disabled={isSaving}
+            aria-label="Close"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
 
@@ -1144,14 +1722,65 @@ function EditShipmentModalContent({ shipment, onClose, onSave }) {
                 />
               </div>
               <div className="shp-form-group">
-                <label>Vehicle Reg No</label>
-                <input
-                  type="text"
+                <label>Assigned Vehicle (Optional)</label>
+                <select
                   value={vehicleNo}
                   onChange={(e) => setVehicleNo(e.target.value)}
-                  placeholder="e.g. MH-12-AB-4521"
                   disabled={isSaving}
-                />
+                >
+                  <option value="">
+                    {loadingVehicles
+                      ? "Loading vehicles..."
+                      : "Select Vehicle / Unassigned"}
+                  </option>
+                  {vehicleNo &&
+                    !vehicleList.some(
+                      (v) =>
+                        (
+                          v.vregistrationnumber ||
+                          v.registrationNumber ||
+                          v.vehicleNo ||
+                          ""
+                        )
+                          .trim()
+                          .toUpperCase() === vehicleNo.trim().toUpperCase(),
+                    ) && <option value={vehicleNo}>{vehicleNo}</option>}
+                  {vehicleList.map((veh, index) => {
+                    const regNo = (
+                      veh.vregistrationnumber ||
+                      veh.registrationNumber ||
+                      veh.vehicleNo ||
+                      veh._id ||
+                      ""
+                    )
+                      .trim()
+                      .toUpperCase();
+
+                    const vehModel = (veh.vmodel || veh.model || "").trim();
+                    const vehType = (
+                      veh.vtype ||
+                      veh.type ||
+                      veh.name ||
+                      ""
+                    ).trim();
+
+                    const namePart = vehModel
+                      ? vehType
+                        ? `${vehModel} - ${vehType}`
+                        : vehModel
+                      : vehType;
+
+                    const displayName = namePart
+                      ? `${namePart} (${regNo})`
+                      : regNo;
+
+                    return (
+                      <option key={veh._id || regNo || index} value={regNo}>
+                        {displayName}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
               <div className="shp-form-group">
                 <label>Trip Manifest No</label>
@@ -1197,8 +1826,78 @@ function ShipmentDetailsModal({
   onClose,
   onOpenUpdateStatus,
   onOpenEdit,
+  driversMap = {},
 }) {
   if (!shipment) return null;
+
+  const [shipmentHistory, setShipmentHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [timelineError, setTimelineError] = useState(null);
+
+  useEffect(() => {
+    const shipmentId =
+      shipment._id || shipment.id || shipment.shipmentId || shipment.trackingId;
+    if (!shipmentId) return;
+
+    let isMounted = true;
+
+    const fetchShipmentTimeline = async () => {
+      setLoadingHistory(true);
+      setTimelineError(null);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `${API_BASE_URL}/shipments/${shipmentId}/timeline`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          },
+        );
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          if (isMounted) {
+            setTimelineError(data.message || "Failed to load status timeline");
+          }
+          return;
+        }
+
+        const list = Array.isArray(data.result?.timeline)
+          ? data.result.timeline
+          : Array.isArray(data.result)
+            ? data.result
+            : Array.isArray(data.timeline)
+              ? data.timeline
+              : [];
+
+        if (isMounted) {
+          setShipmentHistory(list);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setTimelineError(
+            err instanceof Error
+              ? err.message
+              : "Error loading status timeline",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingHistory(false);
+        }
+      }
+    };
+
+    fetchShipmentTimeline();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [shipment._id, shipment.id, shipment.shipmentId, shipment.trackingId]);
 
   const trackingNo =
     shipment.trackingId || shipment.shipmentId || shipment.trackingNo || "N/A";
@@ -1310,6 +2009,56 @@ function ShipmentDetailsModal({
       "General Cargo",
   };
 
+  const timelineList = useMemo(() => {
+    // If backend status history is available, map it
+    if (shipmentHistory && shipmentHistory.length > 0) {
+      return shipmentHistory.map((item, idx) => ({
+        id: item._id || item.id || `tl-${idx}`,
+        status: formatStatus(item.status),
+        timestamp: item.createdAt || item.timestamp || item.updatedAt,
+        notes: item.notes || `Shipment marked as ${formatStatus(item.status)}`,
+        location:
+          item.location ||
+          (idx === 0 ? sender.city : receiver.city) ||
+          "Distribution Hub",
+        updatedBy: item.updatedBy || "Dispatcher / Fleet Ops",
+      }));
+    }
+
+    // Otherwise, fallback to shipment.events array if provided
+    if (Array.isArray(shipment.events) && shipment.events.length > 0) {
+      return shipment.events.map((evt, idx) => ({
+        id: evt.id || evt._id || `evt-${idx}`,
+        status: formatStatus(evt.status),
+        timestamp: evt.timestamp || evt.createdAt,
+        notes: evt.notes || `Status updated to ${formatStatus(evt.status)}`,
+        location: evt.location || "Transit Hub",
+        updatedBy: evt.updatedBy || "Dispatcher",
+      }));
+    }
+
+    // Default fallback initial event
+    return [
+      {
+        id: "created-evt",
+        status: normalizedStatus || "Created",
+        timestamp:
+          shipment.createdAt || shipment.pickupDate || new Date().toISOString(),
+        notes: "Shipment manifest generated and logged in system.",
+        location: sender.city || "Origin Facility",
+        updatedBy: "System",
+      },
+    ];
+  }, [
+    shipmentHistory,
+    shipment.events,
+    shipment.createdAt,
+    shipment.pickupDate,
+    normalizedStatus,
+    sender.city,
+    receiver.city,
+  ]);
+
   return (
     <div className="shp-modal-overlay">
       <div className="shp-modal shp-modal--xl">
@@ -1344,8 +2093,9 @@ function ShipmentDetailsModal({
               type="button"
               className="shp-modal__close"
               onClick={onClose}
+              aria-label="Close"
             >
-              ✕
+              <X size={18} />
             </button>
           </div>
         </div>
@@ -1378,7 +2128,11 @@ function ShipmentDetailsModal({
                     } ${isCurrent ? "shp-stepper__step--current" : ""}`}
                   >
                     <div className="shp-stepper__circle">
-                      {isCompleted ? "✓" : idx + 1}
+                      {isCompleted ? (
+                        <Check size={14} strokeWidth={2.5} />
+                      ) : (
+                        idx + 1
+                      )}
                     </div>
                     <span className="shp-stepper__label">{step}</span>
                   </div>
@@ -1395,7 +2149,7 @@ function ShipmentDetailsModal({
                 <div className="shp-card">
                   <div className="shp-card__header">
                     <span className="shp-card__icon shp-card__icon--origin">
-                      📍
+                      <MapPin size={16} />
                     </span>
                     <h5 className="shp-card__title">Pickup Origin (Sender)</h5>
                   </div>
@@ -1407,8 +2161,24 @@ function ShipmentDetailsModal({
                       {sender.pincode ? ` - ${sender.pincode}` : ""}
                     </p>
                     <div className="shp-address-contact">
-                      <span>📞 {sender.phone}</span>
-                      <span>✉️ {sender.email}</span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <Phone size={13} /> {sender.phone}
+                      </span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <Mail size={13} /> {sender.email}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1416,7 +2186,7 @@ function ShipmentDetailsModal({
                 <div className="shp-card">
                   <div className="shp-card__header">
                     <span className="shp-card__icon shp-card__icon--dest">
-                      🏁
+                      <Flag size={16} />
                     </span>
                     <h5 className="shp-card__title">Destination (Receiver)</h5>
                   </div>
@@ -1430,8 +2200,24 @@ function ShipmentDetailsModal({
                       {receiver.pincode ? ` - ${receiver.pincode}` : ""}
                     </p>
                     <div className="shp-address-contact">
-                      <span>📞 {receiver.phone}</span>
-                      <span>✉️ {receiver.email}</span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <Phone size={13} /> {receiver.phone}
+                      </span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <Mail size={13} /> {receiver.email}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1483,7 +2269,18 @@ function ShipmentDetailsModal({
                   <div className="shp-kv">
                     <span className="shp-kv__label">Assigned Driver</span>
                     <span className="shp-kv__value">
-                      {shipment.driverName || "Unassigned"}
+                      {(() => {
+                        const d = resolveDriver(shipment, driversMap);
+                        if (!d.isAssigned) return "Unassigned";
+                        return `${d.name}${
+                          d.driverId &&
+                          !d.name
+                            .toLowerCase()
+                            .includes(d.driverId.toLowerCase())
+                            ? ` (${d.driverId})`
+                            : ""
+                        }`;
+                      })()}
                     </span>
                   </div>
                   <div className="shp-kv">
@@ -1537,7 +2334,9 @@ function ShipmentDetailsModal({
                         className="shp-doc-item"
                       >
                         <div className="shp-doc-item__info">
-                          <span className="shp-doc-item__icon">📄</span>
+                          <span className="shp-doc-item__icon">
+                            <FileText size={16} />
+                          </span>
                           <div>
                             <p className="shp-doc-item__name">{doc.name}</p>
                             <span className="shp-doc-item__meta">
@@ -1552,6 +2351,7 @@ function ShipmentDetailsModal({
                             alert(`Downloading document ${doc.name}...`)
                           }
                         >
+                          <Download size={13} />
                           Download
                         </button>
                       </li>
@@ -1562,38 +2362,72 @@ function ShipmentDetailsModal({
 
               {/* Status Timeline Card */}
               <div className="shp-card">
-                <h5 className="shp-card__title">Status History & Audit Logs</h5>
-                {!shipment.events || shipment.events.length === 0 ? (
-                  <p className="shp-text-muted">
-                    Initial status:{" "}
-                    <strong>{normalizedStatus || "Created"}</strong>
-                  </p>
-                ) : (
-                  <ul className="shp-timeline">
-                    {shipment.events.map((evt, idx) => (
-                      <li
-                        key={evt.id || evt._id || idx}
-                        className="shp-timeline__item"
-                      >
-                        <div className="shp-timeline__marker" />
-                        <div className="shp-timeline__content">
-                          <div className="shp-timeline__head">
-                            <span className="shp-timeline__status">
-                              {evt.status}
-                            </span>
-                            <span className="shp-timeline__time">
-                              {formatDate(evt.timestamp)}
-                            </span>
-                          </div>
-                          <p className="shp-timeline__notes">{evt.notes}</p>
-                          <span className="shp-timeline__meta">
-                            📍 {evt.location} • By {evt.updatedBy}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <h5 className="shp-card__title" style={{ margin: 0 }}>
+                    Status History & Audit Logs
+                  </h5>
+                  {loadingHistory && (
+                    <span
+                      className="shp-badge shp-badge--info"
+                      style={{ fontSize: "11px", padding: "2px 8px" }}
+                    >
+                      <RefreshCw size={11} className="animate-spin" />
+                      Loading...
+                    </span>
+                  )}
+                </div>
+
+                {timelineError && (
+                  <div
+                    className="shp-alert shp-alert--warning"
+                    style={{
+                      fontSize: "12px",
+                      padding: "8px 12px",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    {timelineError}
+                  </div>
+                )}
+
+                <ul className="shp-timeline">
+                  {timelineList.map((evt) => (
+                    <li key={evt.id} className="shp-timeline__item">
+                      <div className="shp-timeline__marker" />
+                      <div className="shp-timeline__content">
+                        <div className="shp-timeline__head">
+                          <span className="shp-timeline__status">
+                            {evt.status}
+                          </span>
+                          <span className="shp-timeline__time">
+                            {formatDate(evt.timestamp)}
                           </span>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                        {evt.notes && (
+                          <p className="shp-timeline__notes">{evt.notes}</p>
+                        )}
+                        <span
+                          className="shp-timeline__meta"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <MapPin size={12} /> {evt.location} • By{" "}
+                          {evt.updatedBy}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           </div>
@@ -1664,8 +2498,9 @@ function UpdateStatusModalContent({ shipment, onClose, onUpdateStatus }) {
             className="shp-modal__close"
             onClick={onClose}
             disabled={isUpdating}
+            aria-label="Close"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
 
@@ -2139,8 +2974,9 @@ function BulkImportModal({ isOpen, onClose, onImport }) {
             className="shp-modal__close"
             onClick={onClose}
             disabled={isImporting}
+            aria-label="Close"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
 
@@ -2157,11 +2993,19 @@ function BulkImportModal({ isOpen, onClose, onImport }) {
           {isImporting && (
             <div
               className="shp-alert shp-alert--info"
-              style={{ marginBottom: "16px" }}
+              style={{
+                marginBottom: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
             >
-              ⏳ Importing shipment {importProgress.current} of{" "}
-              {importProgress.total} via <code>/createshipment</code>... Please
-              wait.
+              <Loader2 size={16} className="animate-spin" />
+              <span>
+                Importing shipment {importProgress.current} of{" "}
+                {importProgress.total} via <code>/createshipment</code>...
+                Please wait.
+              </span>
             </div>
           )}
 
@@ -2173,17 +3017,34 @@ function BulkImportModal({ isOpen, onClose, onImport }) {
                     ? "shp-alert--success"
                     : "shp-alert--warning"
                 }`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
               >
-                ✅ Successfully created {importSummary.successCount} of{" "}
-                {importSummary.total} shipments in the backend database.
+                <CheckCircle2 size={16} />
+                <span>
+                  Successfully created {importSummary.successCount} of{" "}
+                  {importSummary.total} shipments in the backend database.
+                </span>
               </div>
               {importSummary.failedRows.length > 0 && (
                 <div
                   className="shp-alert shp-alert--danger"
                   style={{ marginTop: "8px" }}
                 >
-                  <p style={{ fontWeight: "bold", marginBottom: "4px" }}>
-                    ⚠️ {importSummary.failedRows.length} shipments could not be
+                  <p
+                    style={{
+                      fontWeight: "bold",
+                      marginBottom: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <AlertTriangle size={16} />
+                    {importSummary.failedRows.length} shipments could not be
                     created:
                   </p>
                   <ul style={{ paddingLeft: "20px", fontSize: "12px" }}>
@@ -2200,7 +3061,9 @@ function BulkImportModal({ isOpen, onClose, onImport }) {
           )}
 
           <div className="shp-import-dropzone">
-            <div className="shp-import-dropzone__icon">📂</div>
+            <div className="shp-import-dropzone__icon">
+              <UploadCloud size={36} />
+            </div>
             <p className="shp-import-dropzone__text">
               Select or Drag & Drop your <strong>Shipments CSV file</strong>{" "}
               here
@@ -2233,7 +3096,8 @@ function BulkImportModal({ isOpen, onClose, onImport }) {
               onClick={handleDownloadTemplate}
               disabled={isImporting}
             >
-              📥 Download Sample CSV Template
+              <Download size={14} />
+              Download Sample CSV Template
             </button>
             <span style={{ fontSize: "11px", color: "#6b7280" }}>
               Expected: Customer, Priority, Package Description, Count, Weight,
@@ -2351,6 +3215,51 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
   }, [token, navi]);
 
   // ── Fetch all shipments from backend ──────────────────────────────────────
+  const [driversMap, setDriversMap] = useState({});
+
+  const fetchDrivers = async () => {
+    try {
+      let list = [];
+      const res = await fetch(`${API_BASE_URL}/drivers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        list = Array.isArray(data?.drivers)
+          ? data.drivers
+          : Array.isArray(data)
+            ? data
+            : [];
+      }
+      if (list.length === 0) {
+        const altRes = await fetch(`${API_BASE_URL}/drivernames`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (altRes.ok) {
+          const altData = await altRes.json();
+          list = Array.isArray(altData?.result)
+            ? altData.result
+            : Array.isArray(altData)
+              ? altData
+              : [];
+        }
+      }
+      const map = {};
+      list.forEach((d) => {
+        const name = d.userId?.name || d.name || "";
+        const driverId = d.driverId || "";
+        const entry = { name, driverId };
+        if (d._id) map[String(d._id)] = entry;
+        if (d.driverId) map[String(d.driverId)] = entry;
+        if (d.userId?._id) map[String(d.userId._id)] = entry;
+        if (name) map[name.toLowerCase()] = entry;
+      });
+      setDriversMap(map);
+    } catch (err) {
+      console.warn("Could not load drivers map:", err);
+    }
+  };
+
   const fetchShipments = async () => {
     setLoading(true);
     setFetchError(null);
@@ -2372,7 +3281,10 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
   };
 
   useEffect(() => {
-    if (token) fetchShipments(); // eslint-disable-line react-hooks/set-state-in-effect
+    if (token) {
+      fetchShipments();
+      fetchDrivers();
+    }
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filters & State
@@ -2391,6 +3303,14 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
   const [selectedDetails, setSelectedDetails] = useState(null);
   const [selectedUpdateStatus, setSelectedUpdateStatus] = useState(null);
   const [selectedEdit, setSelectedEdit] = useState(null);
+
+  // Toast feedback notification
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = (text, type = "success") => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   // Sync external search from topbar if changed
   const [prevExternalSearch, setPrevExternalSearch] = useState(externalSearch);
@@ -2414,11 +3334,15 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
   // Handlers
   const handleCreateShipment = (newShipment) => {
     setShipments((prev) => [newShipment, ...prev]);
+    showToast(
+      `Shipment ${newShipment.trackingId || "record"} created successfully!`,
+    );
   };
 
   const handleImportShipments = (imported) => {
     setShipments((prev) => [...imported, ...prev]);
     fetchShipments();
+    showToast(`Successfully imported ${imported.length} shipments!`);
   };
 
   const handleUpdateStatus = async (shipmentId, newStatus) => {
@@ -2437,6 +3361,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
       const data = await res.json();
       if (!res.ok) {
+        showToast(data.message || "Failed to update shipment status", "error");
         return {
           success: false,
           message: data.message || "Failed to update shipment status",
@@ -2478,9 +3403,13 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         return prev;
       });
 
+      showToast(
+        `Shipment status updated to ${newStatus.replace(/_/g, " ").toUpperCase()}!`,
+      );
       return { success: true };
     } catch (err) {
       console.error("Update status error:", err);
+      showToast("Network error: Could not reach backend", "error");
       return {
         success: false,
         message: "Network error: Could not reach backend",
@@ -2501,6 +3430,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
       const data = await res.json();
       if (!res.ok) {
+        showToast(data.message || "Failed to update shipment", "error");
         return {
           success: false,
           message: data.message || "Failed to update shipment",
@@ -2534,9 +3464,11 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         return prev;
       });
 
+      showToast("Shipment details updated successfully!");
       return { success: true };
     } catch (err) {
       console.error("Save edit error:", err);
+      showToast("Network error: Could not reach backend", "error");
       return {
         success: false,
         message: "Network error: Could not reach backend",
@@ -2547,6 +3479,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
   const handleDeleteShipment = (id, trackingId) => {
     if (window.confirm(`Delete shipment ${trackingId}?`)) {
       setShipments((prev) => prev.filter((s) => s._id !== id && s.id !== id));
+      showToast(`Shipment ${trackingId} removed from records.`, "info");
     }
   };
 
@@ -2621,7 +3554,18 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
       escapeCSV(s.receiverCity || ""),
       escapeCSV(s.receiverState || ""),
       escapeCSV(s.receiverpincode ?? s.receiverPincode ?? ""),
-      escapeCSV(s.driverName || "Unassigned"),
+      escapeCSV(
+        (() => {
+          const d = resolveDriver(s, driversMap);
+          if (!d.isAssigned) return "Unassigned";
+          return `${d.name}${
+            d.driverId &&
+            !d.name.toLowerCase().includes(d.driverId.toLowerCase())
+              ? ` (${d.driverId})`
+              : ""
+          }`;
+        })(),
+      ),
       escapeCSV(s.vehicleNo || "Unassigned"),
       escapeCSV(s.tripNo || ""),
       escapeCSV(
@@ -2651,6 +3595,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showToast(`Exported ${shipments.length} shipment records to CSV.`);
   };
 
   // ── KPI Calculations ──────────────────────────────────────────────────────
@@ -2700,6 +3645,9 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
+          const driverInfo = resolveDriver(s, driversMap);
+          const driverSearchStr =
+            `${driverInfo.name} ${driverInfo.driverId}`.toLowerCase();
           if (
             !(s.trackingId || "").toLowerCase().includes(q) &&
             !(s.shipmentId || "").toLowerCase().includes(q) &&
@@ -2707,7 +3655,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
             !(s.senderCity || "").toLowerCase().includes(q) &&
             !(s.receiverName || "").toLowerCase().includes(q) &&
             !(s.receiverCity || "").toLowerCase().includes(q) &&
-            !(s.driverName || "").toLowerCase().includes(q) &&
+            !driverSearchStr.includes(q) &&
             !(s.vehicleNo || "").toLowerCase().includes(q)
           )
             return false;
@@ -2725,7 +3673,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
           return (b.totalWeight || 0) - (a.totalWeight || 0);
         return 0;
       });
-  }, [shipments, activeTab, priorityFilter, searchQuery, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shipments, activeTab, priorityFilter, searchQuery, sortBy, driversMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pagination Calculations ───────────────────────────────────────────────
   const filterKey = `${activeTab}|${priorityFilter}|${searchQuery}|${sortBy}|${pageSize}`;
@@ -2735,7 +3683,10 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
     setCurrentPage(1);
   }
 
-  const totalPages = Math.max(1, Math.ceil(filteredShipments.length / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredShipments.length / pageSize),
+  );
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
   const startIndex = (safeCurrentPage - 1) * pageSize;
@@ -2777,6 +3728,30 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
   return (
     <div className="shp-container">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 animate-in slide-in-from-bottom-3 duration-200">
+          <div
+            className={`flex items-center space-x-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-bold border ${
+              toastMessage.type === "error"
+                ? "bg-rose-900 text-white border-rose-700"
+                : toastMessage.type === "info"
+                  ? "bg-slate-900 text-white border-slate-700"
+                  : "bg-emerald-900 text-white border-emerald-700"
+            }`}
+          >
+            <Check className="w-4 h-4 text-emerald-400" />
+            <span>{toastMessage.text}</span>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="text-slate-400 hover:text-white ml-2"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Header & Metrics Banner */}
       <div className="shp-header">
         <div>
@@ -2790,31 +3765,38 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
           <button
             type="button"
             className="shp-btn shp-btn--ghost"
-            onClick={fetchShipments}
+            onClick={async () => {
+              await fetchShipments();
+              showToast("Shipment records refreshed");
+            }}
             title="Refresh"
           >
-            🔄 Refresh
+            <RefreshCw size={14} />
+            Refresh
           </button>
           <button
             type="button"
             className="shp-btn shp-btn--ghost"
             onClick={handleExportCSV}
           >
-            📊 Export CSV
+            <FileSpreadsheet size={14} />
+            Export CSV
           </button>
           <button
             type="button"
             className="shp-btn shp-btn--secondary"
             onClick={() => setIsImportOpen(true)}
           >
-            📥 Bulk Import CSV
+            <Upload size={14} />
+            Bulk Import CSV
           </button>
           <button
             type="button"
             className="shp-btn shp-btn--primary"
             onClick={() => setIsCreateOpen(true)}
           >
-            + Create Shipment
+            <Plus size={16} />
+            Create Shipment
           </button>
         </div>
       </div>
@@ -2823,7 +3805,9 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
       <div className="shp-kpi-grid">
         <div className="shp-kpi-card">
           <div className="shp-kpi-card__head">
-            <span className="shp-kpi-card__icon">📦</span>
+            <span className="shp-kpi-card__icon">
+              <Package size={16} />
+            </span>
             <span className="shp-kpi-card__title">Total Shipments</span>
           </div>
           <div className="shp-kpi-card__value">{stats.total}</div>
@@ -2833,7 +3817,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         <div className="shp-kpi-card">
           <div className="shp-kpi-card__head">
             <span className="shp-kpi-card__icon shp-kpi-card__icon--warning">
-              ⏳
+              <Clock size={16} />
             </span>
             <span className="shp-kpi-card__title">Pending / Scheduled</span>
           </div>
@@ -2844,7 +3828,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         <div className="shp-kpi-card">
           <div className="shp-kpi-card__head">
             <span className="shp-kpi-card__icon shp-kpi-card__icon--info">
-              🚚
+              <Truck size={16} />
             </span>
             <span className="shp-kpi-card__title">In Transit & Delivery</span>
           </div>
@@ -2857,7 +3841,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         <div className="shp-kpi-card">
           <div className="shp-kpi-card__head">
             <span className="shp-kpi-card__icon shp-kpi-card__icon--success">
-              ✅
+              <CheckCircle2 size={16} />
             </span>
             <span className="shp-kpi-card__title">Delivered</span>
           </div>
@@ -2868,7 +3852,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         <div className="shp-kpi-card">
           <div className="shp-kpi-card__head">
             <span className="shp-kpi-card__icon shp-kpi-card__icon--danger">
-              ⚠️
+              <AlertTriangle size={16} />
             </span>
             <span className="shp-kpi-card__title">Failed Delivery</span>
           </div>
@@ -2906,7 +3890,9 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
         <div className="shp-filters-right">
           <div className="shp-search-box">
-            <span className="shp-search-icon">🔍</span>
+            <span className="shp-search-icon">
+              <Search size={14} />
+            </span>
             <input
               type="search"
               placeholder="Search tracking, sender, city..."
@@ -2918,8 +3904,9 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                 type="button"
                 className="shp-search-clear"
                 onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
               >
-                ✕
+                <X size={13} />
               </button>
             )}
           </div>
@@ -3030,7 +4017,9 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                         <span className="shp-route-city">
                           {shp.senderCity || shp.senderAddress || "—"}
                         </span>
-                        <span className="shp-route-arrow">➔</span>
+                        <span className="shp-route-arrow">
+                          <ArrowRight size={13} />
+                        </span>
                         <span className="shp-route-city">
                           {shp.receiverCity || shp.receiverAddress || "—"}
                         </span>
@@ -3053,16 +4042,41 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
                     {/* Driver / Vehicle */}
                     <td>
-                      {shp.driverName ? (
-                        <>
-                          <p className="shp-cell-title">{shp.driverName}</p>
-                          <span className="shp-cell-sub">
-                            {shp.vehicleNo || "No vehicle"}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="shp-text-muted">Unassigned</span>
-                      )}
+                      {(() => {
+                        const driver = resolveDriver(shp, driversMap);
+                        if (!driver.isAssigned) {
+                          return (
+                            <span className="shp-text-muted">Unassigned</span>
+                          );
+                        }
+                        const showDriverId =
+                          driver.driverId &&
+                          !driver.name
+                            .toLowerCase()
+                            .includes(driver.driverId.toLowerCase());
+                        return (
+                          <>
+                            <p className="shp-cell-title">
+                              {driver.name}
+                              {showDriverId && (
+                                <span
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "#64748b",
+                                    marginLeft: "6px",
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  ({driver.driverId})
+                                </span>
+                              )}
+                            </p>
+                            <span className="shp-cell-sub">
+                              {shp.vehicleNo || "No vehicle"}
+                            </span>
+                          </>
+                        );
+                      })()}
                     </td>
 
                     {/* Dates */}
@@ -3093,7 +4107,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                           title="View Details"
                           onClick={() => setSelectedDetails(shp)}
                         >
-                          👁️
+                          <Eye size={15} />
                         </button>
                         <button
                           type="button"
@@ -3101,7 +4115,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                           title="Update Status"
                           onClick={() => setSelectedUpdateStatus(shp)}
                         >
-                          🔄
+                          <RefreshCw size={14} />
                         </button>
                         <button
                           type="button"
@@ -3109,7 +4123,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                           title="Edit"
                           onClick={() => setSelectedEdit(shp)}
                         >
-                          ✏️
+                          <Edit2 size={14} />
                         </button>
                         <button
                           type="button"
@@ -3122,7 +4136,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                             )
                           }
                         >
-                          🗑️
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -3139,11 +4153,13 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
               <span>No shipments to display</span>
             ) : (
               <span>
-                Showing <strong>{startIndex + 1}</strong>–<strong>{endIndex}</strong> of{" "}
+                Showing <strong>{startIndex + 1}</strong>–
+                <strong>{endIndex}</strong> of{" "}
                 <strong>{filteredShipments.length}</strong> shipments
                 {filteredShipments.length !== shipments.length && (
                   <span className="shp-pagination-total-hint">
-                    {" "}(filtered from {shipments.length} total)
+                    {" "}
+                    (filtered from {shipments.length} total)
                   </span>
                 )}
               </span>
@@ -3178,7 +4194,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                   disabled={safeCurrentPage === 1}
                   onClick={() => setCurrentPage(1)}
                 >
-                  «
+                  <ChevronsLeft size={14} />
                 </button>
                 <button
                   type="button"
@@ -3186,33 +4202,40 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                   title="Previous Page"
                   disabled={safeCurrentPage === 1}
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
                 >
-                  ‹ Prev
+                  <ChevronLeft size={14} />
+                  <span>Prev</span>
                 </button>
 
                 <div className="shp-pagination-pages">
-                  {getPageNumbers(safeCurrentPage, totalPages).map((pageNum, idx) =>
-                    pageNum === "..." ? (
-                      <span
-                        key={`ellipsis-${idx}`}
-                        className="shp-pagination-ellipsis"
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={`page-${pageNum}`}
-                        type="button"
-                        className={`shp-pagination-btn ${
-                          safeCurrentPage === pageNum
-                            ? "shp-pagination-btn--active"
-                            : ""
-                        }`}
-                        onClick={() => setCurrentPage(pageNum)}
-                      >
-                        {pageNum}
-                      </button>
-                    ),
+                  {getPageNumbers(safeCurrentPage, totalPages).map(
+                    (pageNum, idx) =>
+                      pageNum === "..." ? (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="shp-pagination-ellipsis"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={`page-${pageNum}`}
+                          type="button"
+                          className={`shp-pagination-btn ${
+                            safeCurrentPage === pageNum
+                              ? "shp-pagination-btn--active"
+                              : ""
+                          }`}
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          {pageNum}
+                        </button>
+                      ),
                   )}
                 </div>
 
@@ -3224,8 +4247,14 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                   onClick={() =>
                     setCurrentPage((p) => Math.min(p + 1, totalPages))
                   }
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
                 >
-                  Next ›
+                  <span>Next</span>
+                  <ChevronRight size={14} />
                 </button>
                 <button
                   type="button"
@@ -3234,7 +4263,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                   disabled={safeCurrentPage === totalPages}
                   onClick={() => setCurrentPage(totalPages)}
                 >
-                  »
+                  <ChevronsRight size={14} />
                 </button>
               </div>
             </div>
@@ -3258,6 +4287,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
       <ShipmentDetailsModal
         shipment={selectedDetails}
         onClose={() => setSelectedDetails(null)}
+        driversMap={driversMap}
         onOpenUpdateStatus={(s) => {
           setSelectedDetails(null);
           setSelectedUpdateStatus(s);
@@ -3279,6 +4309,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         isOpen={!!selectedEdit}
         onClose={() => setSelectedEdit(null)}
         onSave={handleSaveEdit}
+        driversMap={driversMap}
       />
     </div>
   );

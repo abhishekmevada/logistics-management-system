@@ -18,7 +18,7 @@
   --primary-color: hsl(214, 100%, 60%);
   --secondary-color: hsl(214, 100%, 70%);
   --gost-but: hsl(0deg, 0%, 90%);
-  --cta-but: #ff8000;
+  --cta-but: hsl(30, 100%, 50%);
   --border: hsl(0, 0%, 80%);
   --primary-text: "Open Sans", sans-serif;
   --secondary-text: "Roboto", sans-serif;

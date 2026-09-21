@@ -10,6 +10,7 @@ import {
   UserPlus,
   Mail,
   Phone,
+  Check,
   X,
   AlertTriangle,
   ChevronDown,
@@ -26,8 +27,11 @@ import {
   Download,
   RefreshCw,
   Loader2,
+  Package,
+  Clock,
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import "../../styles/ShipmentManagement.css";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -89,31 +93,31 @@ const formatShipmentStatus = (status) => {
     .join(" ");
 };
 
-const getStatusBadgeClass = (status) => {
-  const s = status?.toLowerCase() || "";
-  if (s.includes("delivered")) {
-    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
-  }
-  if (s.includes("out for delivery")) {
-    return "bg-purple-50 text-purple-700 border border-purple-200";
-  }
-  if (s.includes("in transit") || s.includes("transit")) {
-    return "bg-blue-50 text-blue-700 border border-blue-200";
-  }
+const getStatusTone = (status) => {
+  const s = (status || "").toLowerCase().trim();
+  if (s === "active" || s.includes("delivered")) return "success";
+  if (s === "inactive" || s.includes("failed") || s.includes("cancelled"))
+    return "danger";
   if (
-    s.includes("dispatched") ||
+    s.includes("in transit") ||
+    s.includes("in_transit") ||
+    s.includes("transit") ||
+    s.includes("out for delivery") ||
+    s.includes("dispatched")
+  )
+    return "info";
+  if (
+    s.includes("order placed") ||
+    s.includes("created") ||
+    s.includes("scheduled") ||
     s.includes("picked up") ||
     s.includes("warehouse")
-  ) {
-    return "bg-amber-50 text-amber-700 border border-amber-200";
-  }
-  if (s.includes("failed") || s.includes("cancelled")) {
-    return "bg-rose-50 text-rose-700 border border-rose-200";
-  }
-  return "bg-gray-50 text-gray-700 border border-gray-200";
+  )
+    return "warning";
+  return "outline";
 };
 
-export const DashboardCustomer = () => {
+export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
   const token = localStorage.getItem("token");
   const navigate = useNavigate();
   const { id: routeCustomerId } = useParams();
@@ -207,6 +211,37 @@ export const DashboardCustomer = () => {
     routeCustomerId || null,
   );
 
+  // Toast feedback notification
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = (text, type = "success") => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const toastNode = toastMessage && (
+    <div className="fixed bottom-5 right-5 z-50 animate-in slide-in-from-bottom-3 duration-200">
+      <div
+        className={`flex items-center space-x-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-bold border ${
+          toastMessage.type === "error"
+            ? "bg-rose-900 text-white border-rose-700"
+            : toastMessage.type === "info"
+              ? "bg-slate-900 text-white border-slate-700"
+              : "bg-emerald-900 text-white border-emerald-700"
+        }`}
+      >
+        <Check className="w-4 h-4 text-emerald-400" />
+        <span>{toastMessage.text}</span>
+        <button
+          onClick={() => setToastMessage(null)}
+          className="text-slate-400 hover:text-white ml-2"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+
   // Sync with route param if present
   const selectedCustomer = useMemo(() => {
     const idToFind = routeCustomerId || selectedCustomerId;
@@ -222,8 +257,14 @@ export const DashboardCustomer = () => {
   }, [customers, routeCustomerId, selectedCustomerId]);
 
   // Main Directory Search & Filter state
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(externalSearch || "");
   const [statusFilter, setStatusFilter] = useState("All");
+
+  useEffect(() => {
+    if (externalSearch !== undefined) {
+      setSearchQuery(externalSearch);
+    }
+  }, [externalSearch]);
 
   // Directory Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -509,10 +550,12 @@ export const DashboardCustomer = () => {
 
       await fetchCustomers();
       setIsAddModalOpen(false);
+      showToast(`Customer "${formData.name.trim()}" added successfully!`);
     } catch (error) {
       // Offline fallback: save to local context
       addCustomer(formData);
       setIsAddModalOpen(false);
+      showToast(`Customer "${formData.name.trim()}" added locally!`);
     }
   };
 
@@ -557,11 +600,13 @@ export const DashboardCustomer = () => {
         });
         await fetchCustomers();
         setEditingCustomer(null);
+        showToast(`Customer "${formData.name.trim()}" updated successfully!`);
         return;
       } else {
         setFormErrors({
           name: data.message || "Failed to update customer on server",
         });
+        showToast(data.message || "Failed to update customer", "error");
         return;
       }
     } catch (error) {
@@ -573,6 +618,7 @@ export const DashboardCustomer = () => {
         pickupAddress: formData.pickupAddress.trim(),
       });
       setEditingCustomer(null);
+      showToast(`Customer "${formData.name.trim()}" updated locally!`);
     }
   };
 
@@ -606,6 +652,7 @@ export const DashboardCustomer = () => {
       } catch {
         toggleCustomerStatus(deactivatingCustomer.id);
       }
+      showToast(`Customer status changed to ${newStatus.toUpperCase()}`);
       setDeactivatingCustomer(null);
     }
   };
@@ -626,6 +673,7 @@ export const DashboardCustomer = () => {
     setNewAddressForm({ label: "", address: "", type: "Pickup" });
     setAddressError("");
     setIsAddAddressOpen(false);
+    showToast("New facility address added successfully!");
   };
 
   // Timeline helper
@@ -670,214 +718,315 @@ export const DashboardCustomer = () => {
   // =========================================================================
   if (selectedCustomer) {
     return (
-      <div className="space-y-6">
-        {/* Breadcrumb navigation */}
-        <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+      <div className="shp-container">
+        {toastNode}
+        {/* Top actions & Back button */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "10px",
+          }}
+        >
           <button
+            type="button"
             onClick={handleBackToCustomers}
-            className="hover:text-blue-600 transition-colors cursor-pointer"
+            className="shp-btn shp-btn--ghost shp-btn--sm"
           >
-            Customer Management
-          </button>
-          <span>/</span>
-          <span className="text-gray-900 font-semibold">
-            {selectedCustomer.name}
-          </span>
-        </div>
-
-        {/* Back button */}
-        <div>
-          <button
-            onClick={handleBackToCustomers}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors cursor-pointer py-1"
-          >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft size={14} />
             <span>Back to Customers</span>
           </button>
-        </div>
 
-        {/* Customer Profile Header Banner */}
-        <div className="bg-white p-6 sm:p-7 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-              {selectedCustomer.name}
-            </h1>
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono font-medium text-gray-500">
-                {selectedCustomer.id}
-              </span>
-              <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  selectedCustomer.status === "Active"
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-rose-50 text-rose-700"
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    selectedCustomer.status === "Active"
-                      ? "bg-emerald-500"
-                      : "bg-rose-500"
-                  }`}
-                />
-                {selectedCustomer.status}
-              </span>
-            </div>
-          </div>
-
-          {/* Edit & Deactivate action buttons */}
-          <div className="flex items-center gap-2.5">
+          <div className="shp-header__actions">
             <button
+              type="button"
               onClick={() => handleOpenEdit(selectedCustomer)}
-              className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-xs"
+              className="shp-btn shp-btn--secondary shp-btn--sm"
             >
-              Edit Customer
+              <Edit2 size={13} />
+              <span>Edit Customer</span>
             </button>
             {selectedCustomer.status === "Active" ? (
               <button
+                type="button"
                 onClick={() => setDeactivatingCustomer(selectedCustomer)}
-                className="px-4 py-2 border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-xs"
+                className="shp-btn shp-btn--secondary shp-btn--sm"
+                style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
               >
-                Deactivate
+                <UserMinus size={13} />
+                <span>Deactivate</span>
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => setDeactivatingCustomer(selectedCustomer)}
-                className="px-4 py-2 border border-emerald-200 hover:bg-emerald-50 text-emerald-600 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-xs"
+                className="shp-btn shp-btn--primary shp-btn--sm"
               >
-                Activate
+                <UserPlus size={13} />
+                <span>Activate</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Customer Profile Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="text-xs font-semibold text-gray-500">Shipments</div>
-            <div className="text-3xl font-black text-gray-900 mt-2">
-              {customerShipments.length}
+        {/* Customer Profile Header Banner */}
+        <div className="shp-panel">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "14px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+              <div
+                className="shp-avatar"
+                style={{ width: 44, height: 44, fontSize: 18 }}
+              >
+                {selectedCustomer.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <h2
+                    className="shp-title"
+                    style={{ margin: 0, fontSize: "20px" }}
+                  >
+                    {selectedCustomer.name}
+                  </h2>
+                  <span
+                    className={`shp-badge shp-badge--${
+                      selectedCustomer.status === "Active" ? "success" : "danger"
+                    }`}
+                  >
+                    {selectedCustomer.status}
+                  </span>
+                  {selectedCustomer.verified && (
+                    <span
+                      className="shp-badge shp-badge--outline"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <CheckCircle2 size={12} color="var(--success)" /> Verified
+                      Account
+                    </span>
+                  )}
+                </div>
+                <p
+                  className="shp-subtitle"
+                  style={{ fontFamily: "monospace", marginTop: "4px" }}
+                >
+                  Customer ID: {selectedCustomer.id}
+                </p>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="text-xs font-semibold text-gray-500">Delivered</div>
-            <div className="text-3xl font-black text-emerald-600 mt-2">
+        {/* Customer Profile Stat Cards */}
+        <div className="shp-kpi-grid">
+          <div className="shp-kpi-card">
+            <div className="shp-kpi-card__head">
+              <span className="shp-kpi-card__icon">
+                <Package size={16} />
+              </span>
+              <span className="shp-kpi-card__title">Total Shipments</span>
+            </div>
+            <div className="shp-kpi-card__value">
+              {customerShipments.length}
+            </div>
+            <div className="shp-kpi-card__foot">All customer orders</div>
+          </div>
+
+          <div className="shp-kpi-card">
+            <div className="shp-kpi-card__head">
+              <span className="shp-kpi-card__icon shp-kpi-card__icon--success">
+                <CheckCircle2 size={16} />
+              </span>
+              <span className="shp-kpi-card__title">Delivered</span>
+            </div>
+            <div className="shp-kpi-card__value">
               {
                 customerShipments.filter((s) =>
                   s.status?.toLowerCase().includes("delivered"),
                 ).length
               }
             </div>
+            <div className="shp-kpi-card__foot">Completed with POD</div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="text-xs font-semibold text-gray-500">
-              In Transit
+          <div className="shp-kpi-card">
+            <div className="shp-kpi-card__head">
+              <span className="shp-kpi-card__icon shp-kpi-card__icon--info">
+                <Truck size={16} />
+              </span>
+              <span className="shp-kpi-card__title">In Transit</span>
             </div>
-            <div className="text-3xl font-black text-blue-600 mt-2">
+            <div className="shp-kpi-card__value">
               {
                 customerShipments.filter((s) =>
                   s.status?.toLowerCase().includes("transit"),
                 ).length
               }
             </div>
+            <div className="shp-kpi-card__foot">On road or depot</div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-            <div className="text-xs font-semibold text-gray-500">
-              Out for Delivery
+          <div className="shp-kpi-card">
+            <div className="shp-kpi-card__head">
+              <span className="shp-kpi-card__icon shp-kpi-card__icon--warning">
+                <Clock size={16} />
+              </span>
+              <span className="shp-kpi-card__title">Out for Delivery</span>
             </div>
-            <div className="text-3xl font-black text-purple-600 mt-2">
+            <div className="shp-kpi-card__value">
               {
                 customerShipments.filter((s) =>
                   s.status?.toLowerCase().includes("out for delivery"),
                 ).length
               }
             </div>
+            <div className="shp-kpi-card__foot">Final delivery attempt</div>
           </div>
         </div>
 
         {/* Customer Information & Addresses Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: "16px",
+          }}
+        >
           {/* Customer Information Card */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-            <h3 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">
-              Customer Information
-            </h3>
-
-            <div className="space-y-3.5 text-xs sm:text-sm">
-              <div>
-                <span className="text-xs text-gray-400 font-medium block">
-                  Name
-                </span>
-                <span className="font-semibold text-gray-900 mt-0.5 block">
-                  {selectedCustomer.name}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-gray-400 font-medium block">
-                  Email
-                </span>
-                <span className="font-semibold text-gray-900 mt-0.5 block">
-                  {selectedCustomer.email}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-gray-400 font-medium block">
-                  Phone
-                </span>
-                <span className="font-semibold text-gray-900 mt-0.5 block">
-                  {selectedCustomer.phone}
-                </span>
+          <div className="shp-card">
+            <div className="shp-card__header">
+              <span className="shp-card__icon shp-card__icon--origin">
+                <Users size={16} />
+              </span>
+              <h5 className="shp-card__title">Customer Contact Details</h5>
+            </div>
+            <div className="shp-card__content">
+              <div className="shp-kv-grid">
+                <div className="shp-kv">
+                  <span className="shp-kv__label">Primary Name</span>
+                  <span className="shp-kv__value">{selectedCustomer.name}</span>
+                </div>
+                <div className="shp-kv">
+                  <span className="shp-kv__label">Account Status</span>
+                  <span className="shp-kv__value">{selectedCustomer.status}</span>
+                </div>
+                <div className="shp-kv">
+                  <span className="shp-kv__label">Email Address</span>
+                  <span
+                    className="shp-kv__value"
+                    style={{ wordBreak: "break-all" }}
+                  >
+                    {selectedCustomer.email || "—"}
+                  </span>
+                </div>
+                <div className="shp-kv">
+                  <span className="shp-kv__label">Phone Number</span>
+                  <span className="shp-kv__value">
+                    {selectedCustomer.phone || "—"}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Addresses Card */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-gray-900">Addresses</h3>
+          <div className="shp-card">
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div className="shp-card__header">
+                <span className="shp-card__icon shp-card__icon--dest">
+                  <MapPin size={16} />
+                </span>
+                <h5 className="shp-card__title">Registered Addresses</h5>
+              </div>
               <button
+                type="button"
                 onClick={() => setIsAddAddressOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-xs"
+                className="shp-btn shp-btn--primary shp-btn--xs"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus size={13} />
                 <span>Add Address</span>
               </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                gap: "10px",
+                marginTop: "4px",
+              }}
+            >
               {(
                 selectedCustomer.addresses || [
                   {
                     id: "1",
-                    label: "Ahmedabad Warehouse",
+                    label: "Primary Pickup",
                     address: selectedCustomer.pickupAddress,
                   },
                   {
                     id: "2",
-                    label: "Mumbai Office",
+                    label: "Primary Delivery",
                     address: selectedCustomer.deliveryAddress,
-                  },
-                  {
-                    id: "3",
-                    label: "Surat Branch",
-                    address: "Ring Road Commercial Complex, Surat",
                   },
                 ]
               ).map((addr) => (
                 <div
                   key={addr.id}
-                  className="p-4 bg-gray-50/80 border border-gray-200 rounded-xl space-y-1.5 hover:bg-gray-100/70 transition-colors"
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "10px 12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
                 >
-                  <div className="flex items-center gap-1.5 text-blue-600">
-                    <MapPin className="w-3.5 h-3.5 shrink-0" />
-                    <h4 className="font-bold text-xs text-gray-900 truncate">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      color: "var(--primary-color)",
+                    }}
+                  >
+                    <MapPin size={13} />
+                    <strong style={{ fontSize: "12px", color: "#000000" }}>
                       {addr.label}
-                    </h4>
+                    </strong>
                   </div>
-                  <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                  <p
+                    style={{
+                      fontSize: "11.5px",
+                      color: "hsla(0, 0%, 0%, 0.65)",
+                      margin: 0,
+                      lineHeight: 1.4,
+                    }}
+                  >
                     {addr.address || "Address on file"}
                   </p>
                 </div>
@@ -887,103 +1036,162 @@ export const DashboardCustomer = () => {
         </div>
 
         {/* Shipment History */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h3 className="text-base font-bold text-gray-900">
-              Shipment History
+        <div className="shp-table-card">
+          <div
+            style={{
+              padding: "14px 16px",
+              borderBottom: "1px solid var(--border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: "15px",
+                fontWeight: 700,
+                fontFamily: "var(--primary-text)",
+              }}
+            >
+              Customer Shipment History
             </h3>
 
-            <div className="flex items-center gap-3">
-              <div className="relative w-full sm:w-60">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div className="shp-search-box" style={{ minWidth: 200 }}>
+                <span className="shp-search-icon">
+                  <Search size={14} />
+                </span>
                 <input
-                  type="text"
+                  type="search"
                   value={shipmentSearchQuery}
                   onChange={(e) => setShipmentSearchQuery(e.target.value)}
-                  placeholder="Search Tracking No..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  placeholder="Search Tracking No, route..."
                 />
+                {shipmentSearchQuery && (
+                  <button
+                    type="button"
+                    className="shp-search-clear"
+                    onClick={() => setShipmentSearchQuery("")}
+                    aria-label="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
 
-              <div className="relative">
-                <select
-                  value={shipmentStatusFilter}
-                  onChange={(e) => setShipmentStatusFilter(e.target.value)}
-                  className="pl-3 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer"
-                >
-                  <option value="All">Status</option>
-                  <option value="Order Placed">Order Placed</option>
-                  <option value="Dispatched">Dispatched</option>
-                  <option value="In Transit">In Transit</option>
-                  <option value="Out for Delivery">Out for Delivery</option>
-                  <option value="Delivered">Delivered</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <select
+                value={shipmentStatusFilter}
+                onChange={(e) => setShipmentStatusFilter(e.target.value)}
+                className="shp-select-filter"
+              >
+                <option value="All">All Statuses</option>
+                <option value="Order Placed">Order Placed</option>
+                <option value="Dispatched">Dispatched</option>
+                <option value="In Transit">In Transit</option>
+                <option value="Out for Delivery">Out for Delivery</option>
+                <option value="Delivered">Delivered</option>
+              </select>
             </div>
           </div>
 
-          {/* Table: Tracking No. | Pickup | Delivery | Status | Actions */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-162.5">
+          <div className="shp-table-wrap">
+            <table className="shp-table">
               <thead>
-                <tr className="border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider pb-2">
-                  <th className="py-2.5 px-3">Tracking No.</th>
-                  <th className="py-2.5 px-3">Pickup</th>
-                  <th className="py-2.5 px-3">Delivery</th>
-                  <th className="py-2.5 px-3 text-center">Status</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
+                <tr>
+                  <th>Tracking No.</th>
+                  <th>Pickup Origin</th>
+                  <th>Destination</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-xs sm:text-sm">
+              <tbody>
                 {loadingShipments ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-gray-500">
-                      <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                        <span>Loading customer shipments...</span>
-                      </div>
+                    <td
+                      colSpan={5}
+                      style={{ textAlign: "center", padding: "30px" }}
+                    >
+                      <Loader2
+                        size={20}
+                        className="animate-spin"
+                        style={{
+                          margin: "0 auto 6px",
+                          color: "var(--primary-color)",
+                        }}
+                      />
+                      <span>Loading customer shipments...</span>
                     </td>
                   </tr>
                 ) : filteredShipments.length === 0 ? (
                   <tr>
                     <td
                       colSpan={5}
-                      className="py-8 text-center text-gray-400 italic"
+                      style={{
+                        textAlign: "center",
+                        padding: "30px",
+                        color: "hsla(0,0%,0%,0.5)",
+                        fontStyle: "italic",
+                      }}
                     >
                       No shipments found matching criteria.
                     </td>
                   </tr>
                 ) : (
                   filteredShipments.map((s) => (
-                    <tr
-                      key={s.id}
-                      className="hover:bg-gray-50/70 transition-colors"
-                    >
-                      <td className="py-3.5 px-3 font-mono font-bold text-blue-600">
-                        {s.id}
+                    <tr key={s.id} className="shp-table__row">
+                      <td>
+                        <button
+                          type="button"
+                          className="shp-tracking-link"
+                          onClick={() => setViewingShipment(s)}
+                        >
+                          {s.id}
+                        </button>
                       </td>
-                      <td className="py-3.5 px-3 text-gray-700 font-medium">
-                        {s.pickup}
+                      <td>
+                        <p className="shp-cell-title">{s.pickup}</p>
+                        {s.senderName && (
+                          <span className="shp-cell-sub">
+                            From: {s.senderName}
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3.5 px-3 text-gray-700 font-medium">
-                        {s.delivery}
+                      <td>
+                        <p className="shp-cell-title">{s.delivery}</p>
+                        {s.receiverName && (
+                          <span className="shp-cell-sub">
+                            To: {s.receiverName}
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3.5 px-3 text-center">
+                      <td style={{ textAlign: "center" }}>
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusBadgeClass(
+                          className={`shp-badge shp-badge--${getStatusTone(
                             s.status,
                           )}`}
                         >
                           {s.status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-3 text-right">
+                      <td style={{ textAlign: "right" }}>
                         <button
+                          type="button"
                           onClick={() => setViewingShipment(s)}
-                          className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                          className="shp-btn shp-btn--ghost shp-btn--xs"
                         >
-                          View Shipment
+                          <Eye size={13} />
+                          <span>View Shipment</span>
                         </button>
                       </td>
                     </tr>
@@ -996,137 +1204,137 @@ export const DashboardCustomer = () => {
 
         {/* View Shipment Modal with 5-Step Timeline */}
         {viewingShipment && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-gray-100 space-y-6 animate-in fade-in duration-150">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <Truck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900">
-                      Shipment Details
-                    </h3>
-                    <p className="text-xs text-gray-400 font-mono mt-0.5">
-                      {viewingShipment.id}
-                    </p>
-                  </div>
+          <div className="shp-modal-overlay">
+            <div className="shp-modal shp-modal--lg">
+              <div className="shp-modal__header">
+                <div>
+                  <h3 className="shp-modal__title">Shipment Details</h3>
+                  <p className="shp-modal__subtitle">
+                    Tracking #{viewingShipment.id}
+                  </p>
                 </div>
                 <button
+                  type="button"
+                  className="shp-modal__close"
                   onClick={() => setViewingShipment(null)}
-                  className="text-gray-400 hover:text-gray-600 p-1"
+                  aria-label="Close"
                 >
-                  <X className="w-5 h-5" />
+                  <X size={18} />
                 </button>
               </div>
 
-              {/* Route Card */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-gray-50 rounded-xl text-xs">
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-bold block">
-                    Origin
-                  </span>
-                  <span className="font-semibold text-gray-800 mt-0.5 block">
-                    {viewingShipment.pickup}
-                  </span>
-                  {viewingShipment.senderName && (
-                    <span className="text-[11px] text-gray-500 mt-0.5 block truncate">
-                      From: {viewingShipment.senderName}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-bold block">
-                    Destination
-                  </span>
-                  <span className="font-semibold text-gray-800 mt-0.5 block">
-                    {viewingShipment.delivery}
-                  </span>
-                  {viewingShipment.receiverName && (
-                    <span className="text-[11px] text-gray-500 mt-0.5 block truncate">
-                      To: {viewingShipment.receiverName}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-bold block">
-                    Date
-                  </span>
-                  <span className="font-semibold text-gray-800 mt-0.5 block">
-                    {viewingShipment.date}
-                  </span>
-                  {viewingShipment.weight && (
-                    <span className="text-[11px] text-gray-500 mt-0.5 block">
-                      Weight: {viewingShipment.weight}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-bold block">
-                    Status
-                  </span>
-                  <span
-                    className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${getStatusBadgeClass(
-                      viewingShipment.status,
-                    )}`}
-                  >
-                    {viewingShipment.status}
-                  </span>
-                </div>
-              </div>
+              <div className="shp-modal__body">
+                {/* Stepper visualization */}
+                <div className="shp-stepper-card">
+                  <h4 className="shp-section-title">
+                    Shipment Lifecycle Workflow
+                  </h4>
+                  <div className="shp-stepper">
+                    {timelineSteps.map((step, idx) => {
+                      const currentIdx = getStepIndex(viewingShipment.status);
+                      const isCompleted = idx < currentIdx;
+                      const isCurrent = idx === currentIdx;
 
-              {/* 5-Step Timeline */}
-              <div className="pt-2">
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                  Shipment Status Timeline
-                </h4>
-                <div className="grid grid-cols-5 gap-2 text-center">
-                  {timelineSteps.map((step, idx) => {
-                    const currentIdx = getStepIndex(viewingShipment.status);
-                    const isCompleted = idx < currentIdx;
-                    const isCurrent = idx === currentIdx;
+                      return (
+                        <div
+                          key={step.step}
+                          className={`shp-stepper__step ${
+                            isCompleted ? "shp-stepper__step--completed" : ""
+                          } ${isCurrent ? "shp-stepper__step--current" : ""}`}
+                        >
+                          <div className="shp-stepper__circle">
+                            {isCompleted ? (
+                              <CheckCircle2 size={14} />
+                            ) : (
+                              step.step
+                            )}
+                          </div>
+                          <span className="shp-stepper__label">
+                            {step.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                    return (
-                      <div
-                        key={step.step}
-                        className="flex flex-col items-center gap-1.5"
-                      >
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                            isCompleted
-                              ? "bg-emerald-500 text-white shadow-xs"
-                              : isCurrent
-                                ? "bg-blue-600 text-white ring-4 ring-blue-100 shadow-xs"
-                                : "border-2 border-gray-200 text-gray-400 bg-white"
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <CheckCircle2 className="w-4 h-4" />
-                          ) : (
-                            step.step
-                          )}
-                        </div>
-                        <div
-                          className={`text-[11px] font-semibold leading-tight ${
-                            isCompleted
-                              ? "text-gray-900"
-                              : isCurrent
-                                ? "text-blue-600"
-                                : "text-gray-400"
-                          }`}
-                        >
-                          {step.label}
-                        </div>
+                {/* Route specs */}
+                <div className="shp-details-grid">
+                  <div className="shp-card">
+                    <h5 className="shp-card__title">Origin & Destination</h5>
+                    <div className="shp-kv-grid">
+                      <div className="shp-kv">
+                        <span className="shp-kv__label">Origin</span>
+                        <span className="shp-kv__value">
+                          {viewingShipment.pickup}
+                        </span>
+                        {viewingShipment.senderName && (
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "hsla(0,0%,0%,0.6)",
+                            }}
+                          >
+                            From: {viewingShipment.senderName}
+                          </span>
+                        )}
                       </div>
-                    );
-                  })}
+                      <div className="shp-kv">
+                        <span className="shp-kv__label">Destination</span>
+                        <span className="shp-kv__value">
+                          {viewingShipment.delivery}
+                        </span>
+                        {viewingShipment.receiverName && (
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "hsla(0,0%,0%,0.6)",
+                            }}
+                          >
+                            To: {viewingShipment.receiverName}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shp-card">
+                    <h5 className="shp-card__title">Cargo & Timeline</h5>
+                    <div className="shp-kv-grid">
+                      <div className="shp-kv">
+                        <span className="shp-kv__label">Expected Date</span>
+                        <span className="shp-kv__value">
+                          {viewingShipment.date || "N/A"}
+                        </span>
+                      </div>
+                      <div className="shp-kv">
+                        <span className="shp-kv__label">Current Status</span>
+                        <span
+                          className={`shp-badge shp-badge--${getStatusTone(
+                            viewingShipment.status,
+                          )}`}
+                        >
+                          {viewingShipment.status}
+                        </span>
+                      </div>
+                      {viewingShipment.weight && (
+                        <div className="shp-kv">
+                          <span className="shp-kv__label">Cargo Weight</span>
+                          <span className="shp-kv__value">
+                            {viewingShipment.weight}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-gray-100 flex justify-end">
+              <div className="shp-modal__footer">
                 <button
+                  type="button"
+                  className="shp-btn shp-btn--ghost"
                   onClick={() => setViewingShipment(null)}
-                  className="px-4 py-2 bg-gray-900 text-white text-xs font-semibold rounded-xl"
                 >
                   Close
                 </button>
@@ -1137,33 +1345,40 @@ export const DashboardCustomer = () => {
 
         {/* Add Address Modal */}
         {isAddAddressOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-                <h3 className="text-base font-bold text-gray-900">
-                  Add New Address
-                </h3>
+          <div className="shp-modal-overlay">
+            <div className="shp-modal shp-modal--sm">
+              <div className="shp-modal__header">
+                <div>
+                  <h3 className="shp-modal__title">Add New Address</h3>
+                  <p className="shp-modal__subtitle">
+                    Customer: {selectedCustomer.name}
+                  </p>
+                </div>
                 <button
+                  type="button"
+                  className="shp-modal__close"
                   onClick={() => setIsAddAddressOpen(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  aria-label="Close"
                 >
-                  <X className="w-5 h-5" />
+                  <X size={18} />
                 </button>
               </div>
 
               {addressError && (
-                <p className="text-xs text-rose-500 font-semibold">
+                <div
+                  className="shp-alert shp-alert--danger"
+                  style={{ margin: "16px 20px 0" }}
+                >
                   {addressError}
-                </p>
+                </div>
               )}
 
-              <form onSubmit={handleSaveAddress} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Facility / Branch Name *
-                  </label>
+              <form onSubmit={handleSaveAddress} className="shp-modal__form">
+                <div className="shp-form-group">
+                  <label>Facility / Branch Name *</label>
                   <input
                     type="text"
+                    required
                     value={newAddressForm.label}
                     onChange={(e) =>
                       setNewAddressForm({
@@ -1172,16 +1387,14 @@ export const DashboardCustomer = () => {
                       })
                     }
                     placeholder="e.g. Surat Branch, Pune DC"
-                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Full Physical Address *
-                  </label>
+                <div className="shp-form-group">
+                  <label>Full Physical Address *</label>
                   <textarea
-                    rows={2}
+                    rows={3}
+                    required
                     value={newAddressForm.address}
                     onChange={(e) =>
                       setNewAddressForm({
@@ -1190,22 +1403,21 @@ export const DashboardCustomer = () => {
                       })
                     }
                     placeholder="Enter street, industrial zone, city, pincode"
-                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+                <div
+                  className="shp-modal__footer"
+                  style={{ margin: "8px -20px -20px -20px" }}
+                >
                   <button
                     type="button"
+                    className="shp-btn shp-btn--ghost"
                     onClick={() => setIsAddAddressOpen(false)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50"
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 shadow-sm"
-                  >
+                  <button type="submit" className="shp-btn shp-btn--primary">
                     Save Address
                   </button>
                 </div>
@@ -1216,85 +1428,87 @@ export const DashboardCustomer = () => {
 
         {/* Edit Customer Modal */}
         {editingCustomer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-                <h3 className="text-base font-bold text-gray-900">
-                  Edit Customer ({editingCustomer.name})
-                </h3>
+          <div className="shp-modal-overlay">
+            <div className="shp-modal shp-modal--md">
+              <div className="shp-modal__header">
+                <div>
+                  <h3 className="shp-modal__title">Edit Customer Details</h3>
+                  <p className="shp-modal__subtitle">
+                    {editingCustomer.name} ({editingCustomer.id})
+                  </p>
+                </div>
                 <button
+                  type="button"
+                  className="shp-modal__close"
                   onClick={() => setEditingCustomer(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  aria-label="Close"
                 >
-                  <X className="w-5 h-5" />
+                  <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleEditSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Name *
-                  </label>
+              <form onSubmit={handleEditSubmit} className="shp-modal__form">
+                <div className="shp-form-group">
+                  <label>Customer Name *</label>
                   <input
                     type="text"
+                    required
                     value={formData.name}
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
-                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
                   />
                   {formErrors.name && (
-                    <p className="text-xs text-rose-500 mt-1">
+                    <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                       {formErrors.name}
-                    </p>
+                    </span>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                      Email *
-                    </label>
+                <div className="shp-form-row">
+                  <div className="shp-form-group">
+                    <label>Email Address *</label>
                     <input
                       type="email"
+                      required
                       value={formData.email}
                       onChange={(e) =>
                         setFormData({ ...formData, email: e.target.value })
                       }
-                      className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
                     />
                     {formErrors.email && (
-                      <p className="text-xs text-rose-500 mt-1">
+                      <span
+                        style={{ color: "var(--danger)", fontSize: "11px" }}
+                      >
                         {formErrors.email}
-                      </p>
+                      </span>
                     )}
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                      Phone *
-                    </label>
+                  <div className="shp-form-group">
+                    <label>Phone Number *</label>
                     <input
                       type="tel"
+                      required
                       value={formData.phone}
                       onChange={(e) =>
                         setFormData({ ...formData, phone: e.target.value })
                       }
-                      className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
                     />
                     {formErrors.phone && (
-                      <p className="text-xs text-rose-500 mt-1">
+                      <span
+                        style={{ color: "var(--danger)", fontSize: "11px" }}
+                      >
                         {formErrors.phone}
-                      </p>
+                      </span>
                     )}
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Address *
-                  </label>
+                <div className="shp-form-group">
+                  <label>Default Address *</label>
                   <textarea
                     rows={2}
+                    required
                     value={formData.pickupAddress}
                     onChange={(e) =>
                       setFormData({
@@ -1303,27 +1517,26 @@ export const DashboardCustomer = () => {
                       })
                     }
                     placeholder="Enter full physical address"
-                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
                   />
                   {formErrors.pickupAddress && (
-                    <p className="text-xs text-rose-500 mt-1">
+                    <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                       {formErrors.pickupAddress}
-                    </p>
+                    </span>
                   )}
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+                <div
+                  className="shp-modal__footer"
+                  style={{ margin: "8px -20px -20px -20px" }}
+                >
                   <button
                     type="button"
+                    className="shp-btn shp-btn--ghost"
                     onClick={() => setEditingCustomer(null)}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50 cursor-pointer"
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 shadow-sm cursor-pointer"
-                  >
+                  <button type="submit" className="shp-btn shp-btn--primary">
                     Save Changes
                   </button>
                 </div>
@@ -1334,52 +1547,65 @@ export const DashboardCustomer = () => {
 
         {/* Deactivate / Activate Confirmation Modal */}
         {deactivatingCustomer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    deactivatingCustomer.status === "Active"
-                      ? "bg-rose-50 text-rose-600"
-                      : "bg-emerald-50 text-emerald-600"
-                  }`}
-                >
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
+          <div className="shp-modal-overlay">
+            <div className="shp-modal shp-modal--sm">
+              <div className="shp-modal__header">
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">
+                  <h3 className="shp-modal__title">
                     {deactivatingCustomer.status === "Active"
                       ? "Deactivate Customer?"
                       : "Activate Customer?"}
                   </h3>
-                  <p className="text-xs text-gray-400 font-mono mt-0.5">
-                    {deactivatingCustomer.id}
+                  <p className="shp-modal__subtitle">
+                    {deactivatingCustomer.name} ({deactivatingCustomer.id})
                   </p>
                 </div>
-              </div>
-
-              <p className="text-xs text-gray-600 leading-relaxed">
-                {deactivatingCustomer.status === "Active"
-                  ? `Are you sure you want to deactivate ${deactivatingCustomer.name}? Their account will be marked as inactive.`
-                  : `Are you sure you want to activate ${deactivatingCustomer.name}? Their account will be marked as active.`}
-              </p>
-
-              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
+                  className="shp-modal__close"
                   onClick={() => setDeactivatingCustomer(null)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50"
+                  aria-label="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="shp-modal__body">
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "hsla(0, 0%, 0%, 0.75)",
+                    margin: 0,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {deactivatingCustomer.status === "Active"
+                    ? `Are you sure you want to deactivate ${deactivatingCustomer.name}? Their account will be marked as inactive and won't be able to schedule new dispatches.`
+                    : `Are you sure you want to activate ${deactivatingCustomer.name}? Their account will be restored to active status.`}
+                </p>
+              </div>
+
+              <div className="shp-modal__footer">
+                <button
+                  type="button"
+                  className="shp-btn shp-btn--ghost"
+                  onClick={() => setDeactivatingCustomer(null)}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmStatusToggle}
-                  className={`px-5 py-2 text-white text-xs font-semibold rounded-xl shadow-sm ${
+                  className={`shp-btn ${
                     deactivatingCustomer.status === "Active"
-                      ? "bg-rose-600 hover:bg-rose-700"
-                      : "bg-emerald-600 hover:bg-emerald-700"
+                      ? "shp-btn--secondary"
+                      : "shp-btn--primary"
                   }`}
+                  style={
+                    deactivatingCustomer.status === "Active"
+                      ? { color: "var(--danger)", borderColor: "var(--danger)" }
+                      : {}
+                  }
+                  onClick={handleConfirmStatusToggle}
                 >
                   {deactivatingCustomer.status === "Active"
                     ? "Deactivate"
@@ -1397,272 +1623,339 @@ export const DashboardCustomer = () => {
   // VIEW 1: MAIN CUSTOMER DASHBOARD SECTION (Directory & Stats)
   // =========================================================================
   return (
-    <div className="space-y-6">
-      {/* 1. Header Card matching Wireframe */}
-      <div className="bg-white p-6 sm:p-7 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="shp-container">
+      {toastNode}
+      {/* 1. Header matching DashboardShipment */}
+      <div className="shp-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Customer Management
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Manage customer accounts, addresses and logistics activity.
+          <h2 className="shp-title">Customer Management</h2>
+          <p className="shp-subtitle">
+            Manage customer accounts, addresses, and logistics activity across the network.
           </p>
         </div>
 
-        <div>
+        <div className="shp-header__actions">
+          <button
+            type="button"
+            className="shp-btn shp-btn--ghost"
+            onClick={async () => {
+              await fetchCustomers();
+              showToast("Customer records refreshed");
+            }}
+            disabled={loading}
+            title="Refresh customer data from backend"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </button>
           <button
             type="button"
             id="main-add-customer-btn"
             onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm transition-all cursor-pointer"
+            className="shp-btn shp-btn--primary"
           >
-            <Plus className="w-4 h-4" />
+            <Plus size={16} />
             <span>Add Customer</span>
           </button>
         </div>
       </div>
 
-      {/* 2. Four Stat Cards matching Wireframe */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. KPI Cards matching DashboardShipment */}
+      <div className="shp-kpi-grid">
         {/* Total Customers */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="text-xs font-semibold text-gray-500">
-            Total Customers
+        <div className="shp-kpi-card">
+          <div className="shp-kpi-card__head">
+            <span className="shp-kpi-card__icon shp-kpi-card__icon--info">
+              <Users size={16} />
+            </span>
+            <span className="shp-kpi-card__title">Total Customers</span>
           </div>
-          <div className="text-3xl font-black text-gray-900 mt-2">
-            {totalCustomers}
-          </div>
+          <div className="shp-kpi-card__value">{totalCustomers}</div>
+          <div className="shp-kpi-card__foot">All registered customer accounts</div>
         </div>
 
         {/* Active Customers */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="text-xs font-semibold text-gray-500">
-            Active Customers
+        <div className="shp-kpi-card">
+          <div className="shp-kpi-card__head">
+            <span className="shp-kpi-card__icon shp-kpi-card__icon--success">
+              <CheckCircle2 size={16} />
+            </span>
+            <span className="shp-kpi-card__title">Active Customers</span>
           </div>
-          <div className="text-3xl font-black text-gray-900 mt-2">
-            {activeCustomers}
-          </div>
+          <div className="shp-kpi-card__value">{activeCustomers}</div>
+          <div className="shp-kpi-card__foot">Eligible for scheduling dispatches</div>
         </div>
 
         {/* Inactive Customers */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="text-xs font-semibold text-gray-500">
-            Inactive Customers
+        <div className="shp-kpi-card">
+          <div className="shp-kpi-card__head">
+            <span className="shp-kpi-card__icon shp-kpi-card__icon--warning">
+              <AlertTriangle size={16} />
+            </span>
+            <span className="shp-kpi-card__title">Inactive Customers</span>
           </div>
-          <div className="text-3xl font-black text-gray-900 mt-2">
-            {inactiveCustomers}
-          </div>
+          <div className="shp-kpi-card__value">{inactiveCustomers}</div>
+          <div className="shp-kpi-card__foot">Deactivated or suspended accounts</div>
         </div>
 
         {/* Shipments */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="text-xs font-semibold text-gray-500">Shipments</div>
-          <div className="text-3xl font-black text-gray-900 mt-2">
-            {totalShipments}
+        <div className="shp-kpi-card">
+          <div className="shp-kpi-card__head">
+            <span className="shp-kpi-card__icon shp-kpi-card__icon--info">
+              <Truck size={16} />
+            </span>
+            <span className="shp-kpi-card__title">Shipments</span>
           </div>
+          <div className="shp-kpi-card__value">{totalShipments}</div>
+          <div className="shp-kpi-card__foot">Associated logistics dispatches</div>
         </div>
       </div>
 
-      {/* 3. Customer Directory Card */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-7 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-gray-900">
-              Customer Directory
-            </h2>
-            {loading ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                Syncing...
-              </span>
-            ) : apiCustomers !== null ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                API Connected
-              </span>
-            ) : (
-              <span
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full cursor-help"
-                title={apiError || "Backend not connected. Showing local data."}
+      {/* 3. Filter & Control Bar */}
+      <div className="shp-control-bar">
+        <div className="shp-tabs">
+          {[
+            { key: "All", label: "All Customers", count: totalCustomers },
+            { key: "Active", label: "Active", count: activeCustomers },
+            { key: "Inactive", label: "Inactive", count: inactiveCustomers },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`shp-tab ${statusFilter === tab.key ? "shp-tab--active" : ""}`}
+              onClick={() => {
+                setStatusFilter(tab.key);
+                setCurrentPage(1);
+              }}
+            >
+              {tab.label}
+              <span className="shp-tab__count">{tab.count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="shp-filters-right">
+          <div className="shp-search-box">
+            <span className="shp-search-icon">
+              <Search size={14} />
+            </span>
+            <input
+              type="search"
+              id="directory-search-input"
+              placeholder="Search customers..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="shp-search-clear"
+                onClick={() => {
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                }}
+                aria-label="Clear search"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                Offline Mode
-              </span>
+                <X size={13} />
+              </button>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                id="directory-search-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search customers..."
-                className="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-            </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="shp-select-filter"
+          >
+            <option value="All">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
 
-            {/* Status Dropdown Filter */}
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="pl-3 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer"
-              >
-                <option value="All">All Statuses</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-
-            {/* Refresh from API button */}
-            <button
-              type="button"
-              onClick={() => fetchCustomers()}
-              disabled={loading}
-              title="Refresh customer data from backend"
-              className="p-2 bg-gray-50 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-600 hover:text-blue-600 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+          {loading ? (
+            <span className="shp-badge shp-badge--info">
+              <Loader2 size={12} className="animate-spin" />
+              Syncing...
+            </span>
+          ) : apiCustomers !== null ? (
+            <span className="shp-badge shp-badge--success" title="API Connected">
+              ● API Connected
+            </span>
+          ) : (
+            <span
+              className="shp-badge shp-badge--warning"
+              title={apiError || "Backend not connected. Showing local data."}
             >
-              <RefreshCw
-                className={`w-4 h-4 ${loading ? "animate-spin text-blue-600" : ""}`}
-              />
-            </button>
-          </div>
+              ● Offline Mode
+            </span>
+          )}
         </div>
+      </div>
 
-        {/* Customer Directory Table matching wireframe: Customer | Contact | Customer ID | Shipments | Status | Actions */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-175">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider pb-2">
-                <th className="py-3 px-3">Customer</th>
-                <th className="py-3 px-3">Contact</th>
-                <th className="py-3 px-3">Customer ID</th>
-                <th className="py-3 px-3 text-center">Shipments</th>
-                <th className="py-3 px-3 text-center">Status</th>
-                <th className="py-3 px-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-xs sm:text-sm">
-              {loading && customers.length === 0 ? (
+      {/* 4. Customer Directory Table Card */}
+      <div className="shp-table-card">
+        {/* Loading state */}
+        {loading && customers.length === 0 && (
+          <div className="shp-empty-state">
+            <Loader2
+              size={24}
+              className="animate-spin"
+              style={{ margin: "0 auto 8px" }}
+            />
+            <p className="shp-empty-state__title">Loading customers...</p>
+            <p className="shp-empty-state__text">GET {API_BASE_URL}/customers</p>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {customers.length > 0 && filteredCustomers.length === 0 && (
+          <div className="shp-empty-state">
+            <Users size={32} style={{ margin: "0 auto 8px", opacity: 0.35 }} />
+            <p className="shp-empty-state__title">No customers found</p>
+            <p className="shp-empty-state__text">
+              Try adjusting your search query or status filter.
+            </p>
+          </div>
+        )}
+
+        {/* Table Content */}
+        {filteredCustomers.length > 0 && (
+          <div className="shp-table-wrap">
+            <table className="shp-table">
+              <thead>
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-500">
-                    <Loader2 className="w-7 h-7 text-blue-600 animate-spin mx-auto mb-2" />
-                    <p className="font-semibold text-gray-700 text-sm">
-                      Loading customers from backend server...
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      GET {API_BASE_URL}/customers
-                    </p>
-                  </td>
+                  <th>Customer</th>
+                  <th>Contact</th>
+                  <th>Customer ID</th>
+                  <th style={{ textAlign: "center" }}>Shipments</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
-              ) : filteredCustomers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-10 text-center text-gray-500">
-                    <Users className="w-8 h-8 text-gray-300 mx-auto mb-1.5" />
-                    <p className="font-semibold text-gray-700">
-                      No customers found
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Try adjusting your search or status filter.
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                displayedCustomers.map((c) => (
-                  <tr
-                    key={c.id}
-                    className="hover:bg-gray-50/70 transition-colors group"
-                  >
+              </thead>
+              <tbody>
+                {displayedCustomers.map((c) => (
+                  <tr key={c.id} className="shp-table__row">
                     {/* Customer */}
-                    <td className="py-3.5 px-3 font-semibold text-gray-900">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-bold flex items-center justify-center text-xs shrink-0">
-                          {c.name.charAt(0)}
+                    <td>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
+                        <div className="shp-avatar">
+                          {c.name ? c.name.charAt(0).toUpperCase() : "C"}
                         </div>
-                        <button
-                          onClick={() => handleViewCustomer(c)}
-                          className="hover:text-blue-600 transition-colors font-bold text-left cursor-pointer"
-                        >
-                          {c.name}
-                        </button>
+                        <div>
+                          <button
+                            type="button"
+                            className="shp-tracking-link"
+                            onClick={() => handleViewCustomer(c)}
+                          >
+                            {c.name}
+                          </button>
+                        </div>
                       </div>
                     </td>
 
                     {/* Contact */}
-                    <td className="py-3.5 px-3 text-gray-600">
-                      <div className="space-y-0.5 text-xs">
-                        <div className="text-gray-800 font-medium">
-                          {c.email}
-                        </div>
-                        <div className="text-gray-400">{c.phone}</div>
-                      </div>
+                    <td>
+                      <p className="shp-cell-title">{c.email || "—"}</p>
+                      <span className="shp-cell-sub">{c.phone || "—"}</span>
                     </td>
 
                     {/* Customer ID */}
-                    <td className="py-3.5 px-3 font-mono font-medium text-gray-600">
-                      {c.id}
+                    <td>
+                      <span
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: "12px",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {c.id}
+                      </span>
                     </td>
 
                     {/* Shipments */}
-                    <td className="py-3.5 px-3 text-center font-bold text-gray-900">
-                      {c.shipmentCount ||
-                        (c.shipments ? c.shipments.length : 0)}
+                    <td style={{ textAlign: "center" }}>
+                      <span style={{ fontWeight: 700, fontSize: "13px" }}>
+                        {c.shipmentCount ||
+                          (c.shipments ? c.shipments.length : 0)}
+                      </span>
                     </td>
 
                     {/* Status */}
-                    <td className="py-3.5 px-3 text-center">
+                    <td style={{ textAlign: "center" }}>
                       <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                          c.status === "Active"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-rose-50 text-rose-700 border border-rose-200"
-                        }`}
+                        className={`shp-badge shp-badge--${getStatusTone(c.status)}`}
                       >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            c.status === "Active"
-                              ? "bg-emerald-500"
-                              : "bg-rose-500"
-                          }`}
-                        />
                         {c.status}
                       </span>
                     </td>
 
-                    {/* Actions: View */}
-                    <td className="py-3.5 px-3 text-right">
-                      <button
-                        type="button"
-                        id={`view-cust-${c.id}`}
-                        onClick={() => handleViewCustomer(c)}
-                        className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                      >
-                        View
-                      </button>
+                    {/* Actions */}
+                    <td style={{ textAlign: "right" }}>
+                      <div className="shp-action-btns">
+                        <button
+                          type="button"
+                          id={`view-cust-${c.id}`}
+                          className="shp-icon-btn"
+                          title="View Customer Profile"
+                          onClick={() => handleViewCustomer(c)}
+                        >
+                          <Eye size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="shp-icon-btn"
+                          title="Edit Customer"
+                          onClick={() => handleOpenEdit(c)}
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`shp-icon-btn ${c.status === "Active" ? "shp-icon-btn--danger" : ""}`}
+                          title={
+                            c.status === "Active"
+                              ? "Deactivate Customer"
+                              : "Activate Customer"
+                          }
+                          onClick={() => setDeactivatingCustomer(c)}
+                        >
+                          {c.status === "Active" ? (
+                            <UserMinus size={14} />
+                          ) : (
+                            <UserPlus size={14} />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        {/* Pagination Footer */}
-        <div className="pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs sm:text-sm text-gray-600">
-          <div>
+        {/* 5. Pagination Footer */}
+        <div className="shp-table-footer">
+          <div className="shp-pagination-info">
             {filteredCustomers.length === 0 ? (
               <span>No customers to display</span>
             ) : (
               <span>
-                Showing <strong className="font-semibold text-gray-900">{startIndex + 1}</strong>–<strong className="font-semibold text-gray-900">{endIndex}</strong> of{" "}
-                <strong className="font-semibold text-gray-900">{filteredCustomers.length}</strong> customers
+                Showing <strong>{startIndex + 1}</strong>–<strong>{endIndex}</strong> of{" "}
+                <strong>{filteredCustomers.length}</strong> customers
                 {filteredCustomers.length !== customers.length && (
-                  <span className="text-gray-400 font-normal">
+                  <span className="shp-pagination-total-hint">
                     {" "}(filtered from {customers.length} total)
                   </span>
                 )}
@@ -1671,20 +1964,17 @@ export const DashboardCustomer = () => {
           </div>
 
           {filteredCustomers.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-              {/* Rows per page selector */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="customer-page-size" className="text-gray-500 font-medium text-xs">
-                  Rows per page:
-                </label>
+            <div className="shp-pagination-controls">
+              <div className="shp-pagination-size">
+                <label htmlFor="customer-page-size">Rows per page:</label>
                 <select
                   id="customer-page-size"
+                  className="shp-pagination-select"
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
                 >
                   <option value={5}>5</option>
                   <option value={10}>10</option>
@@ -1693,69 +1983,84 @@ export const DashboardCustomer = () => {
                 </select>
               </div>
 
-              {/* Navigation buttons */}
-              <div className="flex items-center gap-1">
+              <div className="shp-pagination-nav">
                 <button
                   type="button"
+                  className="shp-pagination-btn"
                   title="First Page"
                   disabled={safeCurrentPage === 1}
                   onClick={() => setCurrentPage(1)}
-                  className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer shadow-2xs"
                 >
-                  <ChevronsLeft className="w-4 h-4" />
+                  <ChevronsLeft size={14} />
                 </button>
                 <button
                   type="button"
+                  className="shp-pagination-btn"
                   title="Previous Page"
                   disabled={safeCurrentPage === 1}
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                  className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer shadow-2xs"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft size={14} />
+                  <span>Prev</span>
                 </button>
 
-                <div className="flex items-center gap-1 mx-1">
-                  {getPageNumbers(safeCurrentPage, totalPages).map((pageNum, idx) =>
-                    pageNum === "..." ? (
-                      <span key={`ellipsis-${idx}`} className="px-1 text-gray-400 text-xs">
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={`cust-page-${pageNum}`}
-                        type="button"
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`min-w-8 h-8 px-2 flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          safeCurrentPage === pageNum
-                            ? "bg-blue-600 text-white shadow-xs"
-                            : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 shadow-2xs"
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ),
+                <div className="shp-pagination-pages">
+                  {getPageNumbers(safeCurrentPage, totalPages).map(
+                    (pageNum, idx) =>
+                      pageNum === "..." ? (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="shp-pagination-ellipsis"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={`cust-page-${pageNum}`}
+                          type="button"
+                          className={`shp-pagination-btn ${
+                            safeCurrentPage === pageNum
+                              ? "shp-pagination-btn--active"
+                              : ""
+                          }`}
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          {pageNum}
+                        </button>
+                      ),
                   )}
                 </div>
 
                 <button
                   type="button"
+                  className="shp-pagination-btn"
                   title="Next Page"
                   disabled={safeCurrentPage === totalPages}
                   onClick={() =>
                     setCurrentPage((p) => Math.min(p + 1, totalPages))
                   }
-                  className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer shadow-2xs"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <span>Next</span>
+                  <ChevronRight size={14} />
                 </button>
                 <button
                   type="button"
+                  className="shp-pagination-btn"
                   title="Last Page"
                   disabled={safeCurrentPage === totalPages}
                   onClick={() => setCurrentPage(totalPages)}
-                  className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer shadow-2xs"
                 >
-                  <ChevronsRight className="w-4 h-4" />
+                  <ChevronsRight size={14} />
                 </button>
               </div>
             </div>
@@ -1765,114 +2070,304 @@ export const DashboardCustomer = () => {
 
       {/* Add Customer Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="text-base font-bold text-gray-900">
-                Add New Customer
-              </h3>
+        <div className="shp-modal-overlay">
+          <div className="shp-modal shp-modal--md">
+            <div className="shp-modal__header">
+              <div>
+                <h3 className="shp-modal__title">Add New Customer</h3>
+                <p className="shp-modal__subtitle">
+                  Create a new customer account for booking and dispatching shipments.
+                </p>
+              </div>
               <button
+                type="button"
+                className="shp-modal__close"
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
               >
-                <X className="w-5 h-5" />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleAddSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                  Customer Name *
-                </label>
+            <form onSubmit={handleAddSubmit} className="shp-modal__form">
+              <div className="shp-form-group">
+                <label>Customer Name *</label>
                 <input
                   type="text"
+                  required
                   value={formData.name}
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  placeholder="e.g. Ramesh Kumar"
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
+                  placeholder="e.g. Acme Corporation"
                 />
                 {formErrors.name && (
-                  <p className="text-xs text-rose-500 mt-1">
+                  <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                     {formErrors.name}
-                  </p>
+                  </span>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Email Address *
-                  </label>
+              <div className="shp-form-row">
+                <div className="shp-form-group">
+                  <label>Email Address *</label>
                   <input
                     type="email"
+                    required
                     value={formData.email}
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
                     }
                     placeholder="name@example.com"
-                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
                   />
                   {formErrors.email && (
-                    <p className="text-xs text-rose-500 mt-1">
+                    <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                       {formErrors.email}
-                    </p>
+                    </span>
                   )}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                    Phone Number *
-                  </label>
+                <div className="shp-form-group">
+                  <label>Phone Number *</label>
                   <input
                     type="tel"
+                    required
                     value={formData.phone}
                     onChange={(e) =>
                       setFormData({ ...formData, phone: e.target.value })
                     }
                     placeholder="98765 43210"
-                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
                   />
                   {formErrors.phone && (
-                    <p className="text-xs text-rose-500 mt-1">
+                    <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                       {formErrors.phone}
-                    </p>
+                    </span>
                   )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
-                  Address
-                </label>
+              <div className="shp-form-group">
+                <label>Primary Facility Address *</label>
                 <textarea
                   rows={2}
+                  required
                   value={formData.pickupAddress}
                   onChange={(e) =>
-                    setFormData({ ...formData, pickupAddress: e.target.value })
+                    setFormData({
+                      ...formData,
+                      pickupAddress: e.target.value,
+                    })
                   }
                   placeholder="Primary warehouse or facility location"
-                  className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500  focus:outline-none"
-                  style={{ resize: "none", height: "100px" }}
                 />
+                {formErrors.pickupAddress && (
+                  <span style={{ color: "var(--danger)", fontSize: "11px" }}>
+                    {formErrors.pickupAddress}
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+              <div
+                className="shp-modal__footer"
+                style={{ margin: "8px -20px -20px -20px" }}
+              >
                 <button
                   type="button"
+                  className="shp-btn shp-btn--ghost"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 shadow-sm cursor-pointer"
-                >
-                  Add Customer
+                <button type="submit" className="shp-btn shp-btn--primary">
+                  Create Customer
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Customer Modal (when triggered from directory table) */}
+      {editingCustomer && (
+        <div className="shp-modal-overlay">
+          <div className="shp-modal shp-modal--md">
+            <div className="shp-modal__header">
+              <div>
+                <h3 className="shp-modal__title">Edit Customer Details</h3>
+                <p className="shp-modal__subtitle">
+                  {editingCustomer.name} ({editingCustomer.id})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shp-modal__close"
+                onClick={() => setEditingCustomer(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="shp-modal__form">
+              <div className="shp-form-group">
+                <label>Customer Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                />
+                {formErrors.name && (
+                  <span style={{ color: "var(--danger)", fontSize: "11px" }}>
+                    {formErrors.name}
+                  </span>
+                )}
+              </div>
+
+              <div className="shp-form-row">
+                <div className="shp-form-group">
+                  <label>Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                  />
+                  {formErrors.email && (
+                    <span style={{ color: "var(--danger)", fontSize: "11px" }}>
+                      {formErrors.email}
+                    </span>
+                  )}
+                </div>
+                <div className="shp-form-group">
+                  <label>Phone Number *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                  />
+                  {formErrors.phone && (
+                    <span style={{ color: "var(--danger)", fontSize: "11px" }}>
+                      {formErrors.phone}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="shp-form-group">
+                <label>Default Address *</label>
+                <textarea
+                  rows={2}
+                  required
+                  value={formData.pickupAddress}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      pickupAddress: e.target.value,
+                    })
+                  }
+                  placeholder="Enter full physical address"
+                />
+                {formErrors.pickupAddress && (
+                  <span style={{ color: "var(--danger)", fontSize: "11px" }}>
+                    {formErrors.pickupAddress}
+                  </span>
+                )}
+              </div>
+
+              <div
+                className="shp-modal__footer"
+                style={{ margin: "8px -20px -20px -20px" }}
+              >
+                <button
+                  type="button"
+                  className="shp-btn shp-btn--ghost"
+                  onClick={() => setEditingCustomer(null)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="shp-btn shp-btn--primary">
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivate / Activate Confirmation Modal (when triggered from directory table) */}
+      {deactivatingCustomer && (
+        <div className="shp-modal-overlay">
+          <div className="shp-modal shp-modal--sm">
+            <div className="shp-modal__header">
+              <div>
+                <h3 className="shp-modal__title">
+                  {deactivatingCustomer.status === "Active"
+                    ? "Deactivate Customer?"
+                    : "Activate Customer?"}
+                </h3>
+                <p className="shp-modal__subtitle">
+                  {deactivatingCustomer.name} ({deactivatingCustomer.id})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shp-modal__close"
+                onClick={() => setDeactivatingCustomer(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="shp-modal__body">
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "hsla(0, 0%, 0%, 0.75)",
+                  margin: 0,
+                  lineHeight: 1.5,
+                }}
+              >
+                {deactivatingCustomer.status === "Active"
+                  ? `Are you sure you want to deactivate ${deactivatingCustomer.name}? Their account will be marked as inactive and won't be able to schedule new dispatches.`
+                  : `Are you sure you want to activate ${deactivatingCustomer.name}? Their account will be restored to active status.`}
+              </p>
+            </div>
+
+            <div className="shp-modal__footer">
+              <button
+                type="button"
+                className="shp-btn shp-btn--ghost"
+                onClick={() => setDeactivatingCustomer(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`shp-btn ${
+                  deactivatingCustomer.status === "Active"
+                    ? "shp-btn--secondary"
+                    : "shp-btn--primary"
+                }`}
+                style={
+                  deactivatingCustomer.status === "Active"
+                    ? { color: "var(--danger)", borderColor: "var(--danger)" }
+                    : {}
+                }
+                onClick={handleConfirmStatusToggle}
+              >
+                {deactivatingCustomer.status === "Active"
+                  ? "Deactivate"
+                  : "Activate"}
+              </button>
+            </div>
           </div>
         </div>
       )}

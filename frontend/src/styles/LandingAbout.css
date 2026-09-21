@@ -1,0 +1,52 @@
+.aboutHerosection {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background-image: url("/abouthero.png");
+  background-size: 100%;
+  background-position: center;
+}
+.aboutHeroBox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.aboutPerposeSection {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  background-color: white;
+}
+.aboutSectionContinaer {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.aboutfinalSection {
+  position: relative;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background-color: white;
+}

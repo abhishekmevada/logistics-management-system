@@ -11,6 +11,12 @@ import DashboardShipment from "./pages/Dashboard/DashboardShipment";
 import ProtectedRoute from "./components/ProtectedRoute";
 import DashboardDriver from "./pages/Dashboard/DashboardDriver";
 import RegisterUser from "./pages/RegisterUser/RegisterUser";
+import Landingpage from "./pages/LandingPage/Landingpage";
+import CustomerDashboard from "./pages/CustomerDashboard/CustomerDashboard";
+import LandingAboutPage from "./pages/LandingPage/LandingAboutPage";
+import LandingPlatform from "./pages/LandingPage/LandingPlatform";
+import LandingContact from "./pages/LandingPage/LandingContact";
+import Driverdashboard from "./pages/Driver Dashboard/Driverdashboard";
 
 // All valid roles
 const ALL_ROLES = [
@@ -27,12 +33,20 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<Landingpage />} />
+          <Route path="/about" element={<LandingAboutPage />} />
+          <Route path="/platform" element={<LandingPlatform />} />
+          <Route path="/contact" element={<LandingContact />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/verify-otp" element={<VerifyOTP />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route
+            path="/customer-dashboard/:customerId"
+            element={<CustomerDashboard />}
+          />
+          <Route path="/driver-dashboard" element={<Driverdashboard />} />
 
           {/* Protected: all authenticated roles */}
           <Route
@@ -128,6 +142,71 @@ export default function App() {
                 ]}
               >
                 <Dashboard initialTab="drivers" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/vehicle"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "warehouse_manager",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="vehicles" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vehicles"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "warehouse_manager",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="vehicles" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vechile"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "warehouse_manager",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="vehicles" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vechiles"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "warehouse_manager",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="vehicles" />
               </ProtectedRoute>
             }
           />
