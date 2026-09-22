@@ -198,6 +198,8 @@ export default function Driverdashboard() {
   const [viewPodTrip, setViewPodTrip] = useState(null);
   const [tripDetailsModal, setTripDetailsModal] = useState(null);
   const [showSetupProfileModal, setShowSetupProfileModal] = useState(false);
+  const [showDriverProfileInfoModal, setShowDriverProfileInfoModal] =
+    useState(false);
   const [hasAutoPromptedProfile, setHasAutoPromptedProfile] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -535,157 +537,109 @@ export default function Driverdashboard() {
   return (
     <div className="drv-page">
       <div className="drv-container">
-        {/* =========================================================================
-            HEADER & DRIVER STATUS BAR
-        ========================================================================= */}
-        <div className="drv-header-card">
-          <div className="drv-header-top">
-            {/* Driver Profile */}
-            <div className="drv-profile-wrap">
-              <div className="drv-avatar-box">
-                {driverName[0]?.toUpperCase() || "D"}
-                <span
-                  className={`drv-avatar-pulse ${isOnDuty ? "is-online" : "is-offline"}`}
-                  title={isOnDuty ? "On Duty" : "Off Duty"}
-                />
-              </div>
-
-              <div className="drv-profile-info">
-                <div className="drv-profile-name-row">
-                  <h1 className="drv-driver-name">{driverName}</h1>
-                  <span className="drv-driver-pill">Driver</span>
-                </div>
-                <div className="drv-profile-meta">
-                  <span className="drv-meta-item">
-                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                    <strong>{driverPhone}</strong>
-                  </span>
-                  {driverProfile?.driverId && (
-                    <span className="drv-meta-item">
-                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                      ID: <strong>{driverProfile.driverId}</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Actions & Duty Toggle */}
-            <div className="drv-header-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  const nextState = !isOnDuty;
-                  setIsOnDuty(nextState);
-                  showToast(
-                    `Shift status changed to: ${nextState ? "On Duty" : "Off Duty"}`,
-                    nextState ? "success" : "info",
-                  );
-                }}
-                className={`drv-duty-btn ${isOnDuty ? "is-active" : "is-inactive"}`}
-              >
-                <span
-                  className={`drv-duty-dot ${isOnDuty ? "is-active" : "is-inactive"}`}
-                />
-                {isOnDuty ? "Active On Duty" : "Off Duty (Inactive)"}
-              </button>
-
-              <button
-                type="button"
-                onClick={fetchShipments}
-                disabled={loading}
-                className="drv-sync-btn"
-                title="Refresh Assigned Trips"
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
-                />
-                <span>Sync</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowSetupProfileModal(true)}
-                className={`drv-verify-btn ${
-                  !profileLoading && isProfileIncomplete(driverProfile)
-                    ? "is-warning"
-                    : "is-verified"
-                }`}
-                title="Driver Verification Profile"
-              >
-                {!profileLoading && isProfileIncomplete(driverProfile) ? (
-                  <>
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>
-                      Profile Incomplete (
-                      {getIncompleteFields(driverProfile).length} missing)
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Profile Verified</span>
-                  </>
-                )}
-              </button>
-            </div>
+        <div className="drv-header-top">
+          {/* Logo Brand Title */}
+          <div className="drv-logo-group">
+            <span className="drv-logo-brand">LOGO</span>
+            <span className="drv-logo-divider">|</span>
+            <span className="drv-logo-title">Driver Dashboard</span>
           </div>
 
-          {/* Metrics Strip */}
-          <div className="drv-metrics-grid">
-            <div className="drv-metric-card drv-metric-card--slate">
-              <div className="drv-metric-header">
-                <span>Total Assigned</span>
-                <Package className="w-4 h-4 text-blue-600" />
-              </div>
-              <p className="drv-metric-value">{stats.total}</p>
-              <span className="drv-metric-sub">Today's routes</span>
-            </div>
+          {/* Right Action Controls */}
+          <div className="drv-header-actions">
+            <button
+              type="button"
+              onClick={() => {
+                const nextState = !isOnDuty;
+                setIsOnDuty(nextState);
+                showToast(
+                  `Shift status changed to: ${nextState ? "On Duty" : "Off Duty"}`,
+                  nextState ? "success" : "info",
+                );
+              }}
+              className={`drv-duty-btn ${isOnDuty ? "is-active" : "is-inactive"}`}
+            >
+              <span
+                className={`drv-duty-dot ${isOnDuty ? "is-active" : "is-inactive"}`}
+              />
+              <span>{isOnDuty ? "Active On Duty" : "Off Duty"}</span>
+            </button>
 
-            <div className="drv-metric-card drv-metric-card--blue">
-              <div className="drv-metric-header">
-                <span>Active / In Transit</span>
-                <Truck className="w-4 h-4 text-blue-600" />
-              </div>
-              <p className="drv-metric-value">{stats.active}</p>
-              <span className="drv-metric-sub">On road & dispatched</span>
-            </div>
+            <button
+              type="button"
+              onClick={fetchShipments}
+              disabled={loading}
+              className="drv-sync-btn"
+              title="Refresh Assigned Trips"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+              />
+              <span>Sync</span>
+            </button>
 
-            <div className="drv-metric-card drv-metric-card--amber">
-              <div className="drv-metric-header">
-                <span>Pending Pickups</span>
-                <Clock className="w-4 h-4 text-amber-600" />
+            {/* Profile clickable area (Opens Driver Profile Info Modal) */}
+            <div
+              onClick={() => setShowDriverProfileInfoModal(true)}
+              className="drv-header-profile-btn"
+              title="Click to view driver info and update profile details"
+            >
+              <div className="drv-avatar-circle">
+                {driverName[0]?.toUpperCase() || "J"}
               </div>
-              <p className="drv-metric-value">{stats.pending}</p>
-              <span className="drv-metric-sub">Scheduled at hubs</span>
-            </div>
-
-            <div className="drv-metric-card drv-metric-card--emerald">
-              <div className="drv-metric-header">
-                <span>Completed</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              </div>
-              <p className="drv-metric-value">
-                {stats.delivered}
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    marginLeft: "6px",
-                    fontWeight: "600",
-                    color: "var(--drv-emerald)",
-                  }}
-                >
-                  ({stats.completionRate}%)
-                </span>
-              </p>
-              <span className="drv-metric-sub">With verified POD</span>
+              <span className="drv-header-username">{driverName}</span>
             </div>
           </div>
         </div>
+        <div className="drv-metrics-grid">
+          <div className="drv-metric-card drv-metric-card--slate">
+            <div className="drv-metric-header">
+              <span>TOTAL ASSIGNED</span>
+              <Package className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="drv-metric-value">{stats.total}</p>
+            <span className="drv-metric-sub">Today's routes</span>
+          </div>
 
-        {/* =========================================================================
-            PROFILE INCOMPLETE WARNING BANNER
-        ========================================================================= */}
+          <div className="drv-metric-card drv-metric-card--blue">
+            <div className="drv-metric-header">
+              <span>ACTIVE / IN TRANSIT</span>
+              <Truck className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="drv-metric-value">{stats.active}</p>
+            <span className="drv-metric-sub">On road & dispatched</span>
+          </div>
+
+          <div className="drv-metric-card drv-metric-card--amber">
+            <div className="drv-metric-header">
+              <span>PENDING PICKUPS</span>
+              <Clock className="w-4 h-4 text-amber-600" />
+            </div>
+            <p className="drv-metric-value">{stats.pending}</p>
+            <span className="drv-metric-sub">Scheduled at hubs</span>
+          </div>
+
+          <div className="drv-metric-card drv-metric-card--emerald">
+            <div className="drv-metric-header">
+              <span>COMPLETED</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <p className="drv-metric-value">
+              {stats.delivered}
+              <span
+                style={{
+                  fontSize: "0.85rem",
+                  marginLeft: "6px",
+                  fontWeight: "600",
+                  color: "var(--drv-emerald)",
+                }}
+              >
+                ({stats.completionRate}%)
+              </span>
+            </p>
+            <span className="drv-metric-sub">With verified POD</span>
+          </div>
+        </div>
         {!profileLoading && isProfileIncomplete(driverProfile) && (
           <div className="drv-alert-card">
             <div className="drv-alert-left">
@@ -719,11 +673,28 @@ export default function Driverdashboard() {
             </button>
           </div>
         )}
-
-        {/* =========================================================================
-            FILTER & SEARCH TOOLBAR
-        ========================================================================= */}
         <div className="drv-toolbar">
+          <div className="jdrv-search-box">
+            <Search className="jdrv-search-icon w-4 h-4" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search ID, recipient, address..."
+              className="jinput"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="drv-search-clear"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
           <div className="drv-tab-list">
             {[
               { id: "all", label: "All Trips" },
@@ -742,27 +713,6 @@ export default function Driverdashboard() {
               </button>
             ))}
           </div>
-
-          <div className="drv-search-box">
-            <Search className="drv-search-icon w-4 h-4" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search ID, recipient, address..."
-              className="drv-search-input"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm("")}
-                className="drv-search-clear"
-                title="Clear search"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
         </div>
 
         {/* =========================================================================
@@ -771,10 +721,8 @@ export default function Driverdashboard() {
         <div className="space-y-4">
           <div className="drv-section-bar">
             <h2 className="drv-section-title">
-              <span>Assigned Consignments</span>
-              <span className="drv-count-badge">{filteredTrips.length}</span>
+              <span>Assigned Consignments ({filteredTrips.length})</span>
             </h2>
-            <span className="drv-live-tag">Live updates enabled</span>
           </div>
 
           {filteredTrips.length === 0 ? (
@@ -884,7 +832,7 @@ export default function Driverdashboard() {
                           </div>
                           <div>
                             <div className="drv-step-header">
-                              <span className="drv-step-label">
+                              <span className="drv-step-label drv-step-label--origin">
                                 Pickup Origin
                               </span>
                               <span className="drv-step-contact">
@@ -905,12 +853,8 @@ export default function Driverdashboard() {
                           </div>
                           <div>
                             <div className="drv-step-header">
-                              <span className="drv-step-label">
+                              <span className="drv-step-label drv-step-label--dest">
                                 Destination Recipient
-                              </span>
-                              <span className="drv-step-eta">
-                                Expected Delivery:{" "}
-                                {formatETA(trip.estimatedDelivery)}
                               </span>
                             </div>
                             <p className="drv-step-name">
@@ -930,6 +874,11 @@ export default function Driverdashboard() {
                             )}
                           </div>
                         </div>
+                      </div>
+
+                      {/* Expected Delivery - centered between route and parcel */}
+                      <div className="drv-expected-delivery">
+                        Expected Delivery: {formatETA(trip.estimatedDelivery)}
                       </div>
 
                       {/* Package and Notes Block */}
@@ -1132,6 +1081,25 @@ export default function Driverdashboard() {
               "Driver verification profile updated successfully!",
               "success",
             );
+          }}
+        />
+      )}
+
+      {/* =========================================================================
+          MODAL 6: DRIVER PROFILE INFO MODAL
+      ========================================================================= */}
+      {showDriverProfileInfoModal && (
+        <DriverProfileInfoModal
+          profile={driverProfile}
+          user={user}
+          driverName={driverName}
+          driverPhone={driverPhone}
+          assignedVehicle={assignedVehicle}
+          isOnDuty={isOnDuty}
+          onClose={() => setShowDriverProfileInfoModal(false)}
+          onOpenUpdateProfile={() => {
+            setShowDriverProfileInfoModal(false);
+            setShowSetupProfileModal(true);
           }}
         />
       )}
@@ -2527,6 +2495,193 @@ function SetupDriverProfileModal({ profile, onClose, onSuccess }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// SUB-COMPONENT: DRIVER PROFILE INFO MODAL
+// Triggered on clicking driver profile avatar / name in header
+// Shows info about driver and button to update profile details
+// =========================================================================
+function DriverProfileInfoModal({
+  profile,
+  user,
+  driverName,
+  driverPhone,
+  assignedVehicle,
+  isOnDuty,
+  onClose,
+  onOpenUpdateProfile,
+}) {
+  return (
+    <div className="drv-modal-overlay">
+      <div className="drv-modal-card drv-modal-card--md">
+        {/* Header */}
+        <div className="drv-modal-header drv-modal-header--blue">
+          <div className="drv-modal-title-box">
+            <div className="drv-avatar-circle drv-avatar-circle--lg">
+              {driverName[0]?.toUpperCase() || "J"}
+            </div>
+            <div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <h2
+                  className="drv-modal-title"
+                  style={{ color: "#ffffff", margin: 0 }}
+                >
+                  {driverName}
+                </h2>
+                <span
+                  style={{
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "9999px",
+                    background: "rgba(255,255,255,0.2)",
+                    color: "#ffffff",
+                  }}
+                >
+                  Driver
+                </span>
+              </div>
+              <p
+                className="drv-modal-sub"
+                style={{ color: "#dbeafe", marginTop: "0.2rem" }}
+              >
+                Driver Account & Information
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="drv-modal-close"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="drv-modal-body">
+          <div className="drv-info-box">
+            <div className="drv-info-row">
+              <span className="drv-info-label">Full Name:</span>
+              <span className="drv-info-value">{driverName}</span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">Shift Status:</span>
+              <span
+                className="drv-info-value"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                }}
+              >
+                <span
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    backgroundColor: isOnDuty
+                      ? "var(--drv-emerald)"
+                      : "#94a3b8",
+                  }}
+                />
+                <strong
+                  style={{ color: isOnDuty ? "var(--drv-emerald)" : "#64748b" }}
+                >
+                  {isOnDuty ? "Active On Duty" : "Off Duty"}
+                </strong>
+              </span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">Phone Number:</span>
+              <span className="drv-info-value">
+                <strong>{driverPhone}</strong>
+              </span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">Email Address:</span>
+              <span className="drv-info-value">
+                {user?.email || profile?.email || "Not Provided"}
+              </span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">Driver ID:</span>
+              <span
+                className="drv-info-value"
+                style={{
+                  fontFamily: "monospace",
+                  fontWeight: 700,
+                  color: "var(--drv-primary)",
+                }}
+              >
+                {profile?.driverId || user?.userId || "DRV-182786"}
+              </span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">Assigned Vehicle:</span>
+              <span className="drv-info-value">
+                <strong>
+                  {assignedVehicle !== "Unassigned"
+                    ? assignedVehicle
+                    : "MH-12-AB-4521"}
+                </strong>
+              </span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">Driving License Number:</span>
+              <span
+                className="drv-info-value"
+                style={{ fontFamily: "monospace", fontWeight: 700 }}
+              >
+                {profile?.license?.licensenumber || "DL-0420110012345"}
+              </span>
+            </div>
+            <div className="drv-info-row">
+              <span className="drv-info-label">License Expiry Date:</span>
+              <span className="drv-info-value">
+                {profile?.license?.expiredate
+                  ? new Date(profile.license.expiredate).toLocaleDateString(
+                      "en-US",
+                      {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      },
+                    )
+                  : "Sep 15, 2028"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div
+          className="drv-modal-footer"
+          style={{ justifyContent: "space-between" }}
+        >
+          <button type="button" onClick={onClose} className="drv-btn-default">
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={onOpenUpdateProfile}
+            className="drv-btn-primary"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.45rem",
+            }}
+          >
+            <PenTool className="w-4 h-4" />
+            Update Profile Details
+          </button>
+        </div>
       </div>
     </div>
   );
