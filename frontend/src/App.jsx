@@ -17,9 +17,16 @@ import LandingAboutPage from "./pages/LandingPage/LandingAboutPage";
 import LandingPlatform from "./pages/LandingPage/LandingPlatform";
 import LandingContact from "./pages/LandingPage/LandingContact";
 import Driverdashboard from "./pages/Driver Dashboard/Driverdashboard";
+import WarehouseScan from "./pages/WarehouseScan/WarehouseScan";
+import { ROLES } from "./utils/rolePermissions";
 
-// All valid roles
+// All valid roles matching User db schema
 const ALL_ROLES = [
+  ROLES.ADMIN,
+  ROLES.LOGISTICS_MANAGER,
+  ROLES.DISPATCHER,
+  ROLES.WAREHOUSE_MANAGER,
+  ROLES.DRIVER,
   "admin",
   "logistics_manager",
   "dispatcher",
@@ -47,6 +54,10 @@ export default function App() {
             element={<CustomerDashboard />}
           />
           <Route path="/driver-dashboard" element={<Driverdashboard />} />
+          <Route
+            path="/warehouse-scan/:trackingId"
+            element={<WarehouseScan />}
+          />
 
           {/* Protected: all authenticated roles */}
           <Route
@@ -207,6 +218,139 @@ export default function App() {
                 ]}
               >
                 <Dashboard initialTab="vehicles" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/warehouse"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "logistics_manager", "warehouse_manager"]}
+              >
+                <Dashboard initialTab="warehouses" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouses"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "logistics_manager", "warehouse_manager"]}
+              >
+                <Dashboard initialTab="warehouses" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/trip"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="trips" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/trips"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="trips" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/delivery"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="delivery" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/deliveries"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="delivery" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pod"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "dispatcher",
+                  "driver",
+                ]}
+              >
+                <Dashboard initialTab="pod" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "warehouse_manager",
+                  "Admin",
+                  "Logistics Manager",
+                  "Warehouse Manager",
+                ]}
+              >
+                <Dashboard initialTab="reports" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/report"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "warehouse_manager",
+                  "Admin",
+                  "Logistics Manager",
+                  "Warehouse Manager",
+                ]}
+              >
+                <Dashboard initialTab="reports" />
               </ProtectedRoute>
             }
           />

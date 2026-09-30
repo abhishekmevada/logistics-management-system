@@ -31,6 +31,7 @@ import {
   ChevronsRight,
   FileSpreadsheet,
 } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import "../../styles/ShipmentManagement.css";
 
 const API_BASE_URL =
@@ -136,58 +137,90 @@ export const resolveDriver = (shp, map = {}) => {
   };
 };
 
+export const resolveVehicle = (shp, map = {}) => {
+  if (!shp) return "No vehicle";
+
+  const raw =
+    shp.vehicleNo ||
+    shp.vehicleId ||
+    (shp.tripNo && typeof shp.tripNo === "object"
+      ? shp.tripNo.vehicleId
+      : null);
+  if (!raw) return "No vehicle";
+
+  const extractName = (obj) => {
+    if (!obj || typeof obj !== "object") return "";
+    return (
+      obj.vmodel ||
+      obj.vehicleName ||
+      obj.model ||
+      obj.name ||
+      obj.vregistrationnumber ||
+      obj.registrationNumber ||
+      ""
+    );
+  };
+
+  // 1. If raw is an object
+  if (typeof raw === "object") {
+    const name = extractName(raw);
+    if (name) return name;
+    if (raw._id && map[String(raw._id)]) {
+      const mapped = map[String(raw._id)];
+      const mappedName = extractName(mapped);
+      if (mappedName) return mappedName;
+    }
+    return "No vehicle";
+  }
+
+  // 2. If raw is a string
+  const str = String(raw).trim();
+  if (
+    !str ||
+    str.toLowerCase() === "unassigned" ||
+    str.toLowerCase() === "null" ||
+    str.toLowerCase() === "undefined"
+  ) {
+    return "No vehicle";
+  }
+
+  // Check in vehicles map (by _id, registration number, or name)
+  const mapped = map[str] || map[str.toLowerCase()];
+  if (mapped) {
+    const mappedName = extractName(mapped);
+    if (mappedName) return mappedName;
+  }
+
+  // Check trip vehicle if available
+  if (shp.tripNo && typeof shp.tripNo === "object" && shp.tripNo.vehicleId) {
+    const tripVeh = shp.tripNo.vehicleId;
+    if (typeof tripVeh === "object") {
+      const tripVehName = extractName(tripVeh);
+      if (tripVehName) return tripVehName;
+    } else if (map[String(tripVeh)]) {
+      const mappedTripName = extractName(map[String(tripVeh)]);
+      if (mappedTripName) return mappedTripName;
+    }
+  }
+
+  // If 24-char hex ObjectId and not found in map, do NOT show raw ObjectId
+  if (/^[0-9a-fA-F]{24}$/.test(str)) {
+    return "No vehicle";
+  }
+
+  // Regular string name (e.g. "ASHOK LAYLAND" or plate number)
+  return str;
+};
+
 // ==========================================
 // 1. CREATE SHIPMENT MODAL
 // ==========================================
 function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
   const [activeStep, setActiveStep] = useState(1);
   const [error, setError] = useState(null);
+  const [createdShipment, setCreatedShipment] = useState(null);
+  const qrRef = useRef(null);
   const token = localStorage.getItem("token");
-  const [getdriverName, setGetdriverName] = useState([]);
-
-  const fetchDriverName = async () => {
-    try {
-      let driversList = [];
-      const res = await fetch(`${API_BASE_URL}/drivernames`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data?.result) && data.result.length > 0) {
-          driversList = data.result;
-        }
-      }
-
-      // If /drivernames is empty or returned 0, try fetching from /drivers
-      if (driversList.length === 0) {
-        const altRes = await fetch(`${API_BASE_URL}/drivers`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (altRes.ok) {
-          const altData = await altRes.json();
-          const list = Array.isArray(altData)
-            ? altData
-            : altData?.drivers || altData?.result || [];
-          if (list.length > 0) {
-            driversList = list.map((d) => ({
-              driverId: d.driverId,
-              name: d.userId?.name || d.name || d.driverId,
-            }));
-          }
-        }
-      }
-
-      // Only show drivers from backend - no predefined/mock drivers
-      setGetdriverName(driversList);
-    } catch (error) {
-      console.warn("Could not fetch driver names from backend:", error);
-      setGetdriverName([]);
-    }
-  };
-
   const [customerList, setCustomerList] = useState([]);
 
   const fetchCustomers = async () => {
@@ -214,72 +247,19 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
     }
   };
 
-  const [vehicleList, setVehicleList] = useState([]);
-  const [loadingVehicles, setLoadingVehicles] = useState(false);
-
-  const fetchVehicles = async () => {
-    setLoadingVehicles(true);
-    try {
-      let vList = [];
-      const res = await fetch(`${API_BASE_URL}/vechile`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        vList = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.vehicles)
-            ? data.vehicles
-            : Array.isArray(data?.result)
-              ? data.result
-              : [];
-      }
-
-      if (vList.length === 0) {
-        const altRes = await fetch(`${API_BASE_URL}/vehicles`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (altRes.ok) {
-          const altData = await altRes.json();
-          const list = Array.isArray(altData)
-            ? altData
-            : Array.isArray(altData?.vehicles)
-              ? altData.vehicles
-              : Array.isArray(altData?.result)
-                ? altData.result
-                : [];
-          if (list.length > 0) vList = list;
-        }
-      }
-
-      setVehicleList(vList);
-    } catch (err) {
-      console.warn("Could not fetch vehicles from backend:", err);
-      setVehicleList([]);
-    } finally {
-      setLoadingVehicles(false);
-    }
-  };
-
   useEffect(() => {
-    fetchDriverName();
     fetchCustomers();
-    fetchVehicles();
   }, []);
 
   useEffect(() => {
     if (isOpen) {
-      fetchDriverName();
       fetchCustomers();
-      fetchVehicles();
     }
   }, [isOpen]);
 
   const [customerSearchText, setCustomerSearchText] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [selectedCustomerObj, setSelectedCustomerObj] = useState(null);
   const customerDropdownRef = useRef(null);
 
   // Close dropdown on click outside
@@ -318,6 +298,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
     const displayVal = `${cust.name} (${cust.customerId})`;
     setCustomerSearchText(displayVal);
     setShowCustomerDropdown(false);
+    setSelectedCustomerObj(cust);
     setFormData((prev) => ({
       ...prev,
       customerId: cust.customerId,
@@ -337,8 +318,8 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
     customerId: "",
     priority: "Standard",
-    pickupDate: "2026-09-08T09:00",
-    expectedDeliveryDate: "2026-09-10T18:00",
+    pickupDate: "",
+    expectedDeliveryDate: "",
 
     // Sender
     senderName: "Apex Distribution Hub",
@@ -368,9 +349,9 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
     // declaredValue: 120000,
 
     // Driver / Vehicle / Trip
-    driverName: "",
-    vehicleNo: "",
-    tripNo: "TRP-1092",
+    driverName: null,
+    vehicleNo: null,
+    tripNo: null,
   });
 
   const handleChange = (e) => {
@@ -406,9 +387,6 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
     lengthCm,
     widthCm,
     heightCm,
-    driverName,
-    vehicleNo,
-    tripNo,
   } = formData;
 
   if (!isOpen) return null;
@@ -433,18 +411,105 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
         return;
       }
 
+      const shipmentData = data.shipment || data;
+      const resolvedCust =
+        shipmentData.customerId &&
+        typeof shipmentData.customerId === "object" &&
+        shipmentData.customerId.name
+          ? shipmentData.customerId
+          : selectedCustomerObj ||
+            activeCustomers.find(
+              (c) =>
+                c.customerId === formData.customerId ||
+                c._id === formData.customerId ||
+                c._id === shipmentData.customerId ||
+                c.customerId === shipmentData.customerId,
+            ) ||
+            null;
+
+      const finalShipment = {
+        ...shipmentData,
+        customerId: resolvedCust || shipmentData.customerId,
+        customerName:
+          resolvedCust?.name ||
+          shipmentData.customerName ||
+          (typeof shipmentData.customerId === "object"
+            ? shipmentData.customerId?.name
+            : ""),
+      };
+
       if (onSubmit) {
-        onSubmit(data.shipment || data);
+        onSubmit(finalShipment);
       }
-      onClose();
+      setCreatedShipment(finalShipment);
     } catch (err) {
       setError(err?.message || "something wrong");
     }
   };
 
+  const handleDownloadQR = () => {
+    const qrCanvas = qrRef.current?.querySelector("canvas");
+    if (!qrCanvas) return;
+    const shpId =
+      createdShipment?.trackingId ||
+      createdShipment?.shipmentId ||
+      createdShipment?.trackingNo ||
+      "";
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const width = 340;
+    const height = 400;
+    canvas.width = width;
+    canvas.height = height;
+
+    // White background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+
+    // QR Code centered
+    const qrSize = 250;
+    const qrX = (width - qrSize) / 2;
+    const qrY = 24;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+
+    // Tracking ID below QR code
+    if (shpId && shpId !== "N/A") {
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 16px monospace, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(shpId, width / 2, 310);
+
+      // Warehouse Scan URL
+      const scanUrl = `${window.location.origin || "http://localhost:5173"}/warehouse-scan/${shpId}`;
+      ctx.fillStyle = "#2563eb";
+      ctx.font = "11px monospace, sans-serif";
+      ctx.fillText(scanUrl, width / 2, 338);
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = "11px sans-serif";
+      ctx.fillText("Warehouse Scan QR Code", width / 2, 368);
+    }
+
+    const url = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.download = `QR-${shpId || "shipment"}.png`;
+    link.href = url;
+    link.click();
+  };
+
+  const handleCloseAfterQR = () => {
+    setCreatedShipment(null);
+    onClose();
+  };
+
   return (
     <div className="shp-modal-overlay">
-      <div className="shp-modal shp-modal--lg">
+      <div
+        className={`shp-modal ${createdShipment ? "shp-modal--md" : "shp-modal--lg"}`}
+      >
         <div className="shp-modal__header">
           <div>
             <h3 className="shp-modal__title">Create New Shipment</h3>
@@ -479,440 +544,616 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
           </div>
         )}
 
-        {/* Stepper Tabs */}
-        <div className="shp-stepper-tabs">
-          <button
-            type="button"
-            className={`shp-stepper-tab ${activeStep === 1 ? "shp-stepper-tab--active" : ""}`}
-            onClick={() => setActiveStep(1)}
+        {/* QR Code Success Screen */}
+        {createdShipment ? (
+          <div
+            className="shp-modal__body"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              padding: "20px 24px 28px",
+              gap: "12px",
+              overflowY: "auto",
+              maxHeight: "calc(90vh - 75px)",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
           >
-            1. Sender & Receiver
-          </button>
-          <button
-            type="button"
-            className={`shp-stepper-tab ${activeStep === 2 ? "shp-stepper-tab--active" : ""}`}
-            onClick={() => setActiveStep(2)}
-          >
-            2. Package Details
-          </button>
-          <button
-            type="button"
-            className={`shp-stepper-tab ${activeStep === 3 ? "shp-stepper-tab--active" : ""}`}
-            onClick={() => setActiveStep(3)}
-          >
-            3. Dates & Assignment
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="shp-modal__form">
-          {activeStep === 1 && (
-            <div className="shp-form-grid">
-              <div
-                className="shp-form-group shp-form-group--full"
-                ref={customerDropdownRef}
-                style={{ position: "relative" }}
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                backgroundColor: "#dcfce7",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <CheckCircle2 size={24} color="#16a34a" />
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <h3
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  margin: "0 0 4px 0",
+                }}
               >
-                <label>Customer Name / ID *</label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    type="text"
-                    name="customerIdInput"
-                    required
-                    autoComplete="off"
-                    value={customerSearchText || customerId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCustomerSearchText(val);
-                      setShowCustomerDropdown(true);
-                      const matched = activeCustomers.find(
-                        (c) =>
-                          c.customerId?.toLowerCase() ===
-                            val.trim().toLowerCase() ||
-                          c.name?.toLowerCase() === val.trim().toLowerCase(),
-                      );
-                      setFormData((prev) => ({
-                        ...prev,
-                        customerId: matched ? matched.customerId : val,
-                        ...(matched && {
-                          senderName: matched.name || prev.senderName,
-                          senderEmail: matched.email || prev.senderEmail,
-                          senderPhoneNumber: matched.phonenumber
-                            ? String(matched.phonenumber)
-                            : prev.senderPhoneNumber,
-                          senderAddress: matched.address || prev.senderAddress,
-                          senderCity: matched.city || prev.senderCity,
-                          senderState: matched.state || prev.senderState,
-                          senderPincode: matched.pincode || prev.senderPincode,
-                        }),
-                      }));
-                    }}
-                    onFocus={() => setShowCustomerDropdown(true)}
-                    placeholder="Click to select or type customer name / ID..."
-                    style={{ paddingRight: "40px" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomerDropdown((prev) => !prev)}
-                    style={{
-                      position: "absolute",
-                      right: "8px",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "#64748b",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "4px",
-                    }}
-                    title="Toggle customer list"
-                  >
-                    <ChevronDown size={18} />
-                  </button>
-                </div>
+                Shipment Created Successfully!
+              </h3>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#64748b",
+                  margin: 0,
+                }}
+              >
+                Tracking ID:{" "}
+                <span
+                  style={{
+                    fontFamily: "monospace",
+                    fontWeight: 700,
+                    color: "#2563eb",
+                    fontSize: "14px",
+                    backgroundColor: "#eff6ff",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    border: "1px solid #dbeafe",
+                  }}
+                >
+                  {createdShipment.trackingId || "N/A"}
+                </span>
+              </p>
+            </div>
 
-                {/* Dropdown list showing customer name with ID */}
-                {showCustomerDropdown && (
+            {/* QR Code */}
+            <div
+              ref={qrRef}
+              style={{
+                backgroundColor: "#ffffff",
+                border: "1px solid #e2e8f0",
+                borderRadius: "14px",
+                padding: "16px 20px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "10px",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+              }}
+            >
+              <QRCodeCanvas
+                value={`${window.location.origin || "http://localhost:5173"}/warehouse-scan/${createdShipment.trackingId || createdShipment.shipmentId || ""}`}
+                size={160}
+                bgColor="#ffffff"
+                fgColor="#0f172a"
+                level="M"
+                includeMargin={true}
+              />
+              <p
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#0f172a",
+                  margin: 0,
+                  textAlign: "center",
+                  fontFamily: "monospace",
+                }}
+              >
+                {createdShipment.trackingId || "N/A"}
+              </p>
+
+              <p
+                style={{
+                  fontSize: "11px",
+                  color: "#64748b",
+                  margin: 0,
+                  textAlign: "center",
+                }}
+              >
+                Scan with any QR scanner for warehouse scan
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                marginTop: "4px",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                width: "100%",
+              }}
+            >
+              <button
+                type="button"
+                className="shp-btn shp-btn--secondary"
+                onClick={handleDownloadQR}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  minWidth: "160px",
+                  padding: "9px 18px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                <Download size={15} />
+                Download QR Code
+              </button>
+              <button
+                type="button"
+                className="shp-btn shp-btn--primary"
+                onClick={handleCloseAfterQR}
+                style={{
+                  minWidth: "100px",
+                  padding: "9px 24px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Stepper Tabs */}
+            <div className="shp-stepper-tabs">
+              <button
+                type="button"
+                className={`shp-stepper-tab ${activeStep === 1 ? "shp-stepper-tab--active" : ""}`}
+                onClick={() => setActiveStep(1)}
+              >
+                1. Sender & Receiver
+              </button>
+              <button
+                type="button"
+                className={`shp-stepper-tab ${activeStep === 2 ? "shp-stepper-tab--active" : ""}`}
+                onClick={() => setActiveStep(2)}
+              >
+                2. Package Details
+              </button>
+              <button
+                type="button"
+                className={`shp-stepper-tab ${activeStep === 3 ? "shp-stepper-tab--active" : ""}`}
+                onClick={() => setActiveStep(3)}
+              >
+                3. Schedules
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="shp-modal__form">
+              {activeStep === 1 && (
+                <div className="shp-form-grid">
                   <div
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 4px)",
-                      left: 0,
-                      right: 0,
-                      backgroundColor: "#ffffff",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "8px",
-                      boxShadow:
-                        "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-                      maxHeight: "240px",
-                      overflowY: "auto",
-                      zIndex: 100,
-                    }}
+                    className="shp-form-group shp-form-group--full"
+                    ref={customerDropdownRef}
+                    style={{ position: "relative" }}
                   >
-                    <div
-                      style={{
-                        padding: "8px 12px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        color: "#64748b",
-                        backgroundColor: "#f8fafc",
-                        borderBottom: "1px solid #e2e8f0",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <span>
-                        List of Active Customers ({filteredCustomers.length})
-                      </span>
-                      <span style={{ fontWeight: 400, textTransform: "none" }}>
-                        Click to select
-                      </span>
+                    <label>Customer Name / ID *</label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="text"
+                        name="customerIdInput"
+                        required
+                        autoComplete="off"
+                        value={customerSearchText || customerId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomerSearchText(val);
+                          setShowCustomerDropdown(true);
+                          const matched = activeCustomers.find(
+                            (c) =>
+                              c.customerId?.toLowerCase() ===
+                                val.trim().toLowerCase() ||
+                              c.name?.toLowerCase() ===
+                                val.trim().toLowerCase(),
+                          );
+                          setSelectedCustomerObj(matched || null);
+                          setFormData((prev) => ({
+                            ...prev,
+                            customerId: matched ? matched.customerId : val,
+                            ...(matched && {
+                              senderName: matched.name || prev.senderName,
+                              senderEmail: matched.email || prev.senderEmail,
+                              senderPhoneNumber: matched.phonenumber
+                                ? String(matched.phonenumber)
+                                : prev.senderPhoneNumber,
+                              senderAddress:
+                                matched.address || prev.senderAddress,
+                              senderCity: matched.city || prev.senderCity,
+                              senderState: matched.state || prev.senderState,
+                              senderPincode:
+                                matched.pincode || prev.senderPincode,
+                            }),
+                          }));
+                        }}
+                        onFocus={() => setShowCustomerDropdown(true)}
+                        placeholder="Click to select or type customer name / ID..."
+                        style={{ paddingRight: "40px" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomerDropdown((prev) => !prev)}
+                        style={{
+                          position: "absolute",
+                          right: "8px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#64748b",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "4px",
+                        }}
+                        title="Toggle customer list"
+                      >
+                        <ChevronDown size={18} />
+                      </button>
                     </div>
 
-                    {filteredCustomers.length === 0 ? (
+                    {/* Dropdown list showing customer name with ID */}
+                    {showCustomerDropdown && (
                       <div
                         style={{
-                          padding: "16px",
-                          color: "#64748b",
-                          fontSize: "13px",
-                          textAlign: "center",
+                          position: "absolute",
+                          top: "calc(100% + 4px)",
+                          left: 0,
+                          right: 0,
+                          backgroundColor: "#ffffff",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "8px",
+                          boxShadow:
+                            "0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                          maxHeight: "240px",
+                          overflowY: "auto",
+                          zIndex: 100,
                         }}
                       >
-                        No customer found matching "{customerSearchText}"
-                      </div>
-                    ) : (
-                      filteredCustomers.map((cust, idx) => (
                         <div
-                          key={cust.customerId || cust._id || idx}
-                          onClick={() => handleSelectCustomer(cust)}
                           style={{
-                            padding: "10px 14px",
-                            cursor: "pointer",
-                            borderBottom: "1px solid #f1f5f9",
+                            padding: "8px 12px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            color: "#64748b",
+                            backgroundColor: "#f8fafc",
+                            borderBottom: "1px solid #e2e8f0",
                             display: "flex",
                             justifyContent: "space-between",
                             alignItems: "center",
-                            transition: "background-color 0.15s",
                           }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.backgroundColor = "#f1f5f9")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.backgroundColor =
-                              "transparent")
-                          }
                         >
-                          <div>
-                            <div
-                              style={{
-                                fontWeight: 600,
-                                color: "#0f172a",
-                                fontSize: "13px",
-                              }}
-                            >
-                              {cust.name}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#64748b",
-                                marginTop: "2px",
-                              }}
-                            >
-                              Customer ID:{" "}
-                              <span
-                                style={{
-                                  fontFamily: "monospace",
-                                  fontWeight: 700,
-                                  color: "#2563eb",
-                                }}
-                              >
-                                {cust.customerId}
-                              </span>
-                              {cust.email && <span> &bull; {cust.email}</span>}
-                            </div>
-                          </div>
+                          <span>
+                            List of Active Customers ({filteredCustomers.length}
+                            )
+                          </span>
                           <span
-                            style={{
-                              fontSize: "11px",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              backgroundColor: "#eff6ff",
-                              color: "#2563eb",
-                              fontWeight: 600,
-                            }}
+                            style={{ fontWeight: 400, textTransform: "none" }}
                           >
-                            Select
+                            Click to select
                           </span>
                         </div>
-                      ))
+
+                        {filteredCustomers.length === 0 ? (
+                          <div
+                            style={{
+                              padding: "16px",
+                              color: "#64748b",
+                              fontSize: "13px",
+                              textAlign: "center",
+                            }}
+                          >
+                            No customer found matching "{customerSearchText}"
+                          </div>
+                        ) : (
+                          filteredCustomers.map((cust, idx) => (
+                            <div
+                              key={cust.customerId || cust._id || idx}
+                              onClick={() => handleSelectCustomer(cust)}
+                              style={{
+                                padding: "10px 14px",
+                                cursor: "pointer",
+                                borderBottom: "1px solid #f1f5f9",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                transition: "background-color 0.15s",
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.backgroundColor =
+                                  "#f1f5f9")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.backgroundColor =
+                                  "transparent")
+                              }
+                            >
+                              <div>
+                                <div
+                                  style={{
+                                    fontWeight: 600,
+                                    color: "#0f172a",
+                                    fontSize: "13px",
+                                  }}
+                                >
+                                  {cust.name}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "#64748b",
+                                    marginTop: "2px",
+                                  }}
+                                >
+                                  Customer ID:{" "}
+                                  <span
+                                    style={{
+                                      fontFamily: "monospace",
+                                      fontWeight: 700,
+                                      color: "#2563eb",
+                                    }}
+                                  >
+                                    {cust.customerId}
+                                  </span>
+                                  {cust.email && (
+                                    <span> &bull; {cust.email}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  backgroundColor: "#eff6ff",
+                                  color: "#2563eb",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Select
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Sender Details */}
-              <div className="shp-form-card">
-                <h4 className="shp-form-card__title">Pickup Origin (Sender)</h4>
-                <div className="shp-form-group">
-                  <label>Sender / Warehouse Name</label>
-                  <input
-                    type="text"
-                    name="senderName"
-                    required
-                    value={senderName}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Phone Number</label>
-                    <input
-                      type="text"
-                      name="senderPhoneNumber"
-                      required
-                      value={senderPhoneNumber}
-                      onChange={handleChange}
-                    />
+                  {/* Sender Details */}
+                  <div className="shp-form-card">
+                    <h4 className="shp-form-card__title">
+                      Pickup Origin (Sender)
+                    </h4>
+                    <div className="shp-form-group">
+                      <label>Sender / Warehouse Name</label>
+                      <input
+                        type="text"
+                        name="senderName"
+                        required
+                        value={senderName}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>Phone Number</label>
+                        <input
+                          type="text"
+                          name="senderPhoneNumber"
+                          required
+                          value={senderPhoneNumber}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Email Address</label>
+                        <input
+                          type="email"
+                          name="senderEmail"
+                          required
+                          value={senderEmail}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+                    <div className="shp-form-group">
+                      <label>Street Address</label>
+                      <input
+                        type="text"
+                        name="senderAddress"
+                        required
+                        value={senderAddress}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>City</label>
+                        <input
+                          type="text"
+                          name="senderCity"
+                          required
+                          value={senderCity}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>State</label>
+                        <input
+                          type="text"
+                          name="senderState"
+                          required
+                          value={senderState}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Pincode</label>
+                        <input
+                          type="text"
+                          name="senderPincode"
+                          required
+                          value={senderPincode}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="shp-form-group">
-                    <label>Email Address</label>
-                    <input
-                      type="email"
-                      name="senderEmail"
-                      required
-                      value={senderEmail}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-                <div className="shp-form-group">
-                  <label>Street Address</label>
-                  <input
-                    type="text"
-                    name="senderAddress"
-                    required
-                    value={senderAddress}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>City</label>
-                    <input
-                      type="text"
-                      name="senderCity"
-                      required
-                      value={senderCity}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>State</label>
-                    <input
-                      type="text"
-                      name="senderState"
-                      required
-                      value={senderState}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Pincode</label>
-                    <input
-                      type="text"
-                      name="senderPincode"
-                      required
-                      value={senderPincode}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-              </div>
 
-              {/* Receiver Details */}
-              <div className="shp-form-card">
-                <h4 className="shp-form-card__title">Destination (Receiver)</h4>
-                <div className="shp-form-group">
-                  <label>Receiver Contact / Company</label>
-                  <input
-                    type="text"
-                    name="receiverName"
-                    required
-                    value={receiverName}
-                    onChange={handleChange}
-                  />
+                  {/* Receiver Details */}
+                  <div className="shp-form-card">
+                    <h4 className="shp-form-card__title">
+                      Destination (Receiver)
+                    </h4>
+                    <div className="shp-form-group">
+                      <label>Receiver Contact / Company</label>
+                      <input
+                        type="text"
+                        name="receiverName"
+                        required
+                        value={receiverName}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>Phone Number</label>
+                        <input
+                          type="text"
+                          name="receiverPhoneNumber"
+                          required
+                          value={receiverPhoneNumber}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Email Address</label>
+                        <input
+                          type="email"
+                          name="receiverEmail"
+                          required
+                          value={receiverEmail}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+                    <div className="shp-form-group">
+                      <label>Street Address</label>
+                      <input
+                        type="text"
+                        name="receiverAddress"
+                        required
+                        value={receiverAddress}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>City</label>
+                        <input
+                          type="text"
+                          name="receiverCity"
+                          required
+                          value={receiverCity}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>State</label>
+                        <input
+                          type="text"
+                          name="receiverState"
+                          required
+                          value={receiverState}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Pincode</label>
+                        <input
+                          type="text"
+                          name="receiverPincode"
+                          required
+                          value={receiverPincode}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Phone Number</label>
-                    <input
-                      type="text"
-                      name="receiverPhoneNumber"
-                      required
-                      value={receiverPhoneNumber}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Email Address</label>
-                    <input
-                      type="email"
-                      name="receiverEmail"
-                      required
-                      value={receiverEmail}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-                <div className="shp-form-group">
-                  <label>Street Address</label>
-                  <input
-                    type="text"
-                    name="receiverAddress"
-                    required
-                    value={receiverAddress}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>City</label>
-                    <input
-                      type="text"
-                      name="receiverCity"
-                      required
-                      value={receiverCity}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>State</label>
-                    <input
-                      type="text"
-                      name="receiverState"
-                      required
-                      value={receiverState}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Pincode</label>
-                    <input
-                      type="text"
-                      name="receiverPincode"
-                      required
-                      value={receiverPincode}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {activeStep === 2 && (
-            <div className="shp-form-grid">
-              <div className="shp-form-card shp-form-group--full">
-                <h4 className="shp-form-card__title">Package Specifications</h4>
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Priority</label>
-                    <select
-                      name="priority"
-                      value={priority}
-                      onChange={handleChange}
-                    >
-                      <option value="Standard">Standard</option>
-                      <option value="Express">Express</option>
-                      <option value="Same Day">Same Day</option>
-                      <option value="Overnight">Overnight</option>
-                    </select>
-                  </div>
-                </div>
+              {activeStep === 2 && (
+                <div className="shp-form-grid">
+                  <div className="shp-form-card shp-form-group--full">
+                    <h4 className="shp-form-card__title">
+                      Package Specifications
+                    </h4>
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>Priority</label>
+                        <select
+                          name="priority"
+                          value={priority}
+                          onChange={handleChange}
+                        >
+                          <option value="Standard">Standard</option>
+                          <option value="Express">Express</option>
+                          <option value="Same Day">Same Day</option>
+                          <option value="Overnight">Overnight</option>
+                        </select>
+                      </div>
+                    </div>
 
-                <div className="shp-form-group">
-                  <label>Package Description</label>
-                  <textarea
-                    rows={2}
-                    name="description"
-                    required
-                    value={description}
-                    onChange={handleChange}
-                    placeholder="Brief description of items inside..."
-                  />
-                </div>
+                    <div className="shp-form-group">
+                      <label>Package Description</label>
+                      <textarea
+                        rows={2}
+                        name="description"
+                        required
+                        value={description}
+                        onChange={handleChange}
+                        placeholder="Brief description of items inside..."
+                      />
+                    </div>
 
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Quantity / Package Count</label>
-                    <input
-                      type="number"
-                      name="count"
-                      min={1}
-                      required
-                      value={count}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Total Weight (kg)</label>
-                    <input
-                      type="number"
-                      name="weightKg"
-                      step="0.1"
-                      min={0.1}
-                      required
-                      value={weightKg}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  {/* <div className="shp-form-group">
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>Quantity / Package Count</label>
+                        <input
+                          type="number"
+                          name="count"
+                          min={1}
+                          required
+                          value={count}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Total Weight (kg)</label>
+                        <input
+                          type="number"
+                          name="weightKg"
+                          step="0.1"
+                          min={0.1}
+                          required
+                          value={weightKg}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      {/* <div className="shp-form-group">
                     <label>Declared Value (₹)</label>
                     <input
                       type="number"
@@ -922,189 +1163,108 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                       onChange={handleChange}
                     />
                   </div> */}
-                </div>
+                    </div>
 
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Length (cm)</label>
-                    <input
-                      type="number"
-                      name="lengthCm"
-                      value={lengthCm}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Width (cm)</label>
-                    <input
-                      type="number"
-                      name="widthCm"
-                      value={widthCm}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Height (cm)</label>
-                    <input
-                      type="number"
-                      name="heightCm"
-                      value={heightCm}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeStep === 3 && (
-            <div className="shp-form-grid">
-              <div className="shp-form-card shp-form-group--full">
-                <h4 className="shp-form-card__title">
-                  Schedules & Fleet Assignment
-                </h4>
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Scheduled Pickup Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      name="pickupDate"
-                      required
-                      value={pickupDate}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Expected Delivery Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      name="expectedDeliveryDate"
-                      required
-                      value={expectedDeliveryDate}
-                      onChange={handleChange}
-                    />
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>Length (cm)</label>
+                        <input
+                          type="number"
+                          name="lengthCm"
+                          value={lengthCm}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Width (cm)</label>
+                        <input
+                          type="number"
+                          name="widthCm"
+                          value={widthCm}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Height (cm)</label>
+                        <input
+                          type="number"
+                          name="heightCm"
+                          value={heightCm}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <div className="shp-form-row">
-                  <div className="shp-form-group">
-                    <label>Assigned Driver (Optional)</label>
-                    <select
-                      name="driverName"
-                      value={driverName}
-                      onChange={handleChange}
-                    >
-                      <option value="">Select Driver / Unassigned</option>
-                      {getdriverName.map((dri, index) => {
-                        const id = dri.driverId || "";
-                        const displayName = dri.name || dri.userId?.name || id;
-                        return (
-                          <option key={id || index} value={id || displayName}>
-                            {displayName} {id ? `(${id})` : ""}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div className="shp-form-group">
-                    <label>Assigned Vehicle (Optional)</label>
-                    <select
-                      name="vehicleNo"
-                      value={vehicleNo}
-                      onChange={handleChange}
-                    >
-                      <option value="">
-                        {loadingVehicles
-                          ? "Loading vehicles..."
-                          : "Select Vehicle / Unassigned"}
-                      </option>
-                      {vehicleNo &&
-                        !vehicleList.some(
-                          (v) =>
-                            (
-                              v.vregistrationnumber ||
-                              v.registrationNumber ||
-                              v.vehicleNo ||
-                              ""
-                            )
-                              .trim()
-                              .toUpperCase() === vehicleNo.trim().toUpperCase(),
-                        ) && (
-                          <option value={vehicleNo}>
-                            {vehicleNo} (Current)
-                          </option>
-                        )}
-                      {vehicleList.map((veh, index) => {
-                        const regNo = (
-                          veh.vregistrationnumber ||
-                          veh.registrationNumber ||
-                          veh.vehicleNo ||
-                          veh._id ||
-                          ""
-                        )
-                          .trim()
-                          .toUpperCase();
-                        const vehName = (
-                          veh.vmodel ||
-                          veh.model ||
-                          veh.name ||
-                          veh.vtype ||
-                          veh.type ||
-                          ""
-                        ).trim();
-
-                        const displayName = vehName
-                          ? `${vehName} (${regNo})`
-                          : regNo;
-
-                        return (
-                          <option key={veh._id || regNo || index} value={regNo}>
-                            {displayName}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Modal Footer Controls */}
-          <div className="shp-modal__footer">
-            {activeStep > 1 && (
-              <button
-                type="button"
-                className="shp-btn shp-btn--secondary"
-                onClick={() => setActiveStep((prev) => prev - 1)}
-              >
-                Back
-              </button>
-            )}
-            <div className="shp-modal__footer-right">
-              <button
-                type="button"
-                className="shp-btn shp-btn--ghost"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-              {activeStep < 3 ? (
-                <button
-                  type="button"
-                  className="shp-btn shp-btn--primary"
-                  onClick={() => setActiveStep((prev) => prev + 1)}
-                >
-                  Next Step
-                </button>
-              ) : (
-                <button type="submit" className="shp-btn shp-btn--primary">
-                  Create Shipment
-                </button>
               )}
-            </div>
-          </div>
-        </form>
+
+              {activeStep === 3 && (
+                <div className="shp-form-grid">
+                  <div className="shp-form-card shp-form-group--full">
+                    <h4 className="shp-form-card__title">Schedules</h4>
+                    <div className="shp-form-row">
+                      <div className="shp-form-group">
+                        <label>Scheduled Pickup Date & Time</label>
+                        <input
+                          type="datetime-local"
+                          name="pickupDate"
+                          required
+                          value={pickupDate}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="shp-form-group">
+                        <label>Expected Delivery Date & Time</label>
+                        <input
+                          type="datetime-local"
+                          name="expectedDeliveryDate"
+                          required
+                          value={expectedDeliveryDate}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Footer Controls */}
+              <div className="shp-modal__footer">
+                {activeStep > 1 && (
+                  <button
+                    type="button"
+                    className="shp-btn shp-btn--secondary"
+                    onClick={() => setActiveStep((prev) => prev - 1)}
+                  >
+                    Back
+                  </button>
+                )}
+                <div className="shp-modal__footer-right">
+                  <button
+                    type="button"
+                    className="shp-btn shp-btn--ghost"
+                    onClick={onClose}
+                  >
+                    Cancel
+                  </button>
+                  {activeStep < 3 ? (
+                    <button
+                      type="button"
+                      className="shp-btn shp-btn--primary"
+                      onClick={() => setActiveStep((prev) => prev + 1)}
+                    >
+                      Next Step
+                    </button>
+                  ) : (
+                    <button type="submit" className="shp-btn shp-btn--primary">
+                      Create Shipment
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1276,67 +1436,6 @@ function EditShipmentModalContent({
 
   // Assignment & Priority
   const [priority, setPriority] = useState(shipment.priority || "Standard");
-  const initialDriver = resolveDriver(shipment, driversMap);
-  const [driverName, setDriverName] = useState(
-    initialDriver.isAssigned
-      ? initialDriver.name || initialDriver.driverId
-      : typeof shipment.driverName === "string"
-        ? shipment.driverName
-        : "",
-  );
-  const [vehicleNo, setVehicleNo] = useState(shipment.vehicleNo || "");
-  const [tripNo, setTripNo] = useState(shipment.tripNo || "");
-
-  const [vehicleList, setVehicleList] = useState([]);
-  const [loadingVehicles, setLoadingVehicles] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    const fetchVehicles = async () => {
-      setLoadingVehicles(true);
-      try {
-        let vList = [];
-        const res = await fetch(`${API_BASE_URL}/vechile`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          vList = Array.isArray(data)
-            ? data
-            : Array.isArray(data?.vehicles)
-              ? data.vehicles
-              : Array.isArray(data?.result)
-                ? data.result
-                : [];
-        }
-        if (vList.length === 0) {
-          const altRes = await fetch(`${API_BASE_URL}/vehicles`, {
-            method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (altRes.ok) {
-            const altData = await altRes.json();
-            const list = Array.isArray(altData)
-              ? altData
-              : Array.isArray(altData?.vehicles)
-                ? altData.vehicles
-                : Array.isArray(altData?.result)
-                  ? altData.result
-                  : [];
-            if (list.length > 0) vList = list;
-          }
-        }
-        setVehicleList(vList);
-      } catch (err) {
-        console.warn("Could not fetch vehicles in EditShipmentModal:", err);
-        setVehicleList([]);
-      } finally {
-        setLoadingVehicles(false);
-      }
-    };
-    fetchVehicles();
-  }, []);
 
   // UI state
   const [isSaving, setIsSaving] = useState(false);
@@ -1374,9 +1473,18 @@ function EditShipmentModalContent({
       pickupDate: new Date(pickupDate),
       expectedDeliveryDate: new Date(expectedDeliveryDate),
       priority,
-      driverName,
-      vehicleNo,
-      tripNo,
+      driverName:
+        (typeof shipment.driverName === "object"
+          ? shipment.driverName?._id
+          : shipment.driverName) ?? null,
+      vehicleNo:
+        (typeof shipment.vehicleNo === "object"
+          ? shipment.vehicleNo?._id
+          : shipment.vehicleNo) ?? null,
+      tripNo:
+        (typeof shipment.tripNo === "object"
+          ? shipment.tripNo?._id
+          : shipment.tripNo) ?? null,
     };
 
     const targetId = shipment._id || shipment.id || shipment.shipmentId;
@@ -1707,94 +1815,6 @@ function EditShipmentModalContent({
             </div>
           </div>
 
-          {/* Fleet & Driver */}
-          <div className="shp-form-card">
-            <h4 className="shp-form-card__title">Fleet & Driver Assignment</h4>
-            <div className="shp-form-row">
-              <div className="shp-form-group">
-                <label>Driver Name</label>
-                <input
-                  type="text"
-                  value={driverName}
-                  onChange={(e) => setDriverName(e.target.value)}
-                  placeholder="e.g. R. Mehta"
-                  disabled={isSaving}
-                />
-              </div>
-              <div className="shp-form-group">
-                <label>Assigned Vehicle (Optional)</label>
-                <select
-                  value={vehicleNo}
-                  onChange={(e) => setVehicleNo(e.target.value)}
-                  disabled={isSaving}
-                >
-                  <option value="">
-                    {loadingVehicles
-                      ? "Loading vehicles..."
-                      : "Select Vehicle / Unassigned"}
-                  </option>
-                  {vehicleNo &&
-                    !vehicleList.some(
-                      (v) =>
-                        (
-                          v.vregistrationnumber ||
-                          v.registrationNumber ||
-                          v.vehicleNo ||
-                          ""
-                        )
-                          .trim()
-                          .toUpperCase() === vehicleNo.trim().toUpperCase(),
-                    ) && <option value={vehicleNo}>{vehicleNo}</option>}
-                  {vehicleList.map((veh, index) => {
-                    const regNo = (
-                      veh.vregistrationnumber ||
-                      veh.registrationNumber ||
-                      veh.vehicleNo ||
-                      veh._id ||
-                      ""
-                    )
-                      .trim()
-                      .toUpperCase();
-
-                    const vehModel = (veh.vmodel || veh.model || "").trim();
-                    const vehType = (
-                      veh.vtype ||
-                      veh.type ||
-                      veh.name ||
-                      ""
-                    ).trim();
-
-                    const namePart = vehModel
-                      ? vehType
-                        ? `${vehModel} - ${vehType}`
-                        : vehModel
-                      : vehType;
-
-                    const displayName = namePart
-                      ? `${namePart} (${regNo})`
-                      : regNo;
-
-                    return (
-                      <option key={veh._id || regNo || index} value={regNo}>
-                        {displayName}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              <div className="shp-form-group">
-                <label>Trip Manifest No</label>
-                <input
-                  type="text"
-                  value={tripNo}
-                  onChange={(e) => setTripNo(e.target.value)}
-                  placeholder="e.g. TRP-1092"
-                  disabled={isSaving}
-                />
-              </div>
-            </div>
-          </div>
-
           <div className="shp-modal__footer">
             <button
               type="button"
@@ -1827,12 +1847,99 @@ function ShipmentDetailsModal({
   onOpenUpdateStatus,
   onOpenEdit,
   driversMap = {},
+  vehiclesMap = {},
 }) {
   if (!shipment) return null;
 
+  const modalKey =
+    shipment._id ||
+    shipment.id ||
+    shipment.shipmentId ||
+    shipment.trackingId ||
+    "details";
+
+  return (
+    <ShipmentDetailsModalContent
+      key={modalKey}
+      shipment={shipment}
+      onClose={onClose}
+      onOpenUpdateStatus={onOpenUpdateStatus}
+      onOpenEdit={onOpenEdit}
+      driversMap={driversMap}
+      vehiclesMap={vehiclesMap}
+    />
+  );
+}
+
+function ShipmentDetailsModalContent({
+  shipment,
+  onClose,
+  onOpenUpdateStatus,
+  onOpenEdit,
+  driversMap = {},
+  vehiclesMap = {},
+}) {
   const [shipmentHistory, setShipmentHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [timelineError, setTimelineError] = useState(null);
+  const detailQrRef = useRef(null);
+
+  const trackingNo =
+    shipment.trackingId || shipment.shipmentId || shipment.trackingNo || "N/A";
+
+  const handleDetailQRDownload = () => {
+    const qrCanvas = detailQrRef.current?.querySelector("canvas");
+    if (!qrCanvas) return;
+
+    const shpId =
+      shipment?.trackingId ||
+      shipment?.shipmentId ||
+      shipment?.trackingNo ||
+      (trackingNo !== "N/A" ? trackingNo : "");
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const width = 340;
+    const height = 400;
+    canvas.width = width;
+    canvas.height = height;
+
+    // White background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+
+    // QR Code centered
+    const qrSize = 250;
+    const qrX = (width - qrSize) / 2;
+    const qrY = 24;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+
+    // SHP ID below QR code
+    if (shpId && shpId !== "N/A") {
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 16px monospace, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(shpId, width / 2, 310);
+
+      // Warehouse Scan URL
+      const scanUrl = `${window.location.origin || "http://localhost:5173"}/warehouse-scan/${shpId}`;
+      ctx.fillStyle = "#2563eb";
+      ctx.font = "11px monospace, sans-serif";
+      ctx.fillText(scanUrl, width / 2, 338);
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = "11px sans-serif";
+      ctx.fillText("Warehouse Scan QR Code", width / 2, 368);
+    }
+
+    const url = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.download = `QR-${shpId || "shipment"}.png`;
+    link.href = url;
+    link.click();
+  };
 
   useEffect(() => {
     const shipmentId =
@@ -1899,8 +2006,6 @@ function ShipmentDetailsModal({
     };
   }, [shipment._id, shipment.id, shipment.shipmentId, shipment.trackingId]);
 
-  const trackingNo =
-    shipment.trackingId || shipment.shipmentId || shipment.trackingNo || "N/A";
   const customer = shipment.customerId?.name || shipment.customerName || "N/A";
 
   const formatStatus = (s) =>
@@ -2284,15 +2389,22 @@ function ShipmentDetailsModal({
                     </span>
                   </div>
                   <div className="shp-kv">
-                    <span className="shp-kv__label">Vehicle Reg. No.</span>
+                    <span className="shp-kv__label">Vehicle</span>
                     <span className="shp-kv__value">
-                      {shipment.vehicleNo || "Unassigned"}
+                      {(() => {
+                        const vName = resolveVehicle(shipment, vehiclesMap);
+                        return vName === "No vehicle" ? "Unassigned" : vName;
+                      })()}
                     </span>
                   </div>
                   <div className="shp-kv">
                     <span className="shp-kv__label">Trip Manifest #</span>
                     <span className="shp-kv__value">
-                      {shipment.tripNo || "No active trip"}
+                      {typeof shipment.tripNo === "object"
+                        ? shipment.tripNo?.tripId ||
+                          shipment.tripNo?._id ||
+                          "No active trip"
+                        : shipment.tripNo || "No active trip"}
                     </span>
                   </div>
                   <div className="shp-kv">
@@ -2358,6 +2470,89 @@ function ShipmentDetailsModal({
                     ))}
                   </ul>
                 )}
+              </div>
+
+              {/* QR Code Card */}
+              <div className="shp-card">
+                <h5 className="shp-card__title">Tracking QR Code</h5>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "20px",
+                    padding: "8px 0",
+                  }}
+                >
+                  <div
+                    ref={detailQrRef}
+                    style={{
+                      backgroundColor: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "12px",
+                      padding: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <QRCodeCanvas
+                      value={`${window.location.origin}/warehouse-scan/${
+                        trackingNo !== "N/A" ? trackingNo : ""
+                      }`}
+                      size={120}
+                      bgColor="#ffffff"
+                      fgColor="#0f172a"
+                      level="H"
+                      includeMargin={true}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                        margin: 0,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Scan this QR code to access warehouse scanning for
+                      tracking ID{" "}
+                      <strong style={{ color: "#0f172a" }}>{trackingNo}</strong>
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "11px",
+                        color: "#94a3b8",
+                        margin: 0,
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {`http://localhost:5173/warehouse-scan/${trackingNo !== "N/A" ? trackingNo : ""}`}
+                    </p>
+                    <button
+                      type="button"
+                      className="shp-btn shp-btn--secondary shp-btn--sm"
+                      onClick={handleDetailQRDownload}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        width: "fit-content",
+                        marginTop: "4px",
+                      }}
+                    >
+                      <Download size={14} />
+                      Download QR Code
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Status Timeline Card */}
@@ -3260,6 +3455,62 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
     }
   };
 
+  const [customersMap, setCustomersMap] = useState({});
+
+  const fetchCustomers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers?limit=1000`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data?.customers)
+          ? data.customers
+          : Array.isArray(data)
+            ? data
+            : [];
+        const map = {};
+        list.forEach((c) => {
+          if (c._id) map[String(c._id)] = c.name;
+          if (c.customerId) map[String(c.customerId)] = c.name;
+        });
+        setCustomersMap(map);
+      }
+    } catch (err) {
+      console.warn("Could not load customers map:", err);
+    }
+  };
+
+  const [vehiclesMap, setVehiclesMap] = useState({});
+
+  const fetchVehicles = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/vechile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.vechiles)
+            ? data.vechiles
+            : Array.isArray(data?.vehicles)
+              ? data.vehicles
+              : [];
+        const map = {};
+        list.forEach((v) => {
+          if (v._id) map[String(v._id)] = v;
+          if (v.vregistrationnumber) map[String(v.vregistrationnumber)] = v;
+          if (v.registrationNumber) map[String(v.registrationNumber)] = v;
+          if (v.vmodel) map[v.vmodel.toLowerCase()] = v;
+        });
+        setVehiclesMap(map);
+      }
+    } catch (err) {
+      console.warn("Could not load vehicles map:", err);
+    }
+  };
+
   const fetchShipments = async () => {
     setLoading(true);
     setFetchError(null);
@@ -3284,6 +3535,8 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
     if (token) {
       fetchShipments();
       fetchDrivers();
+      fetchCustomers();
+      fetchVehicles();
     }
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3333,7 +3586,30 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
 
   // Handlers
   const handleCreateShipment = (newShipment) => {
-    setShipments((prev) => [newShipment, ...prev]);
+    const custId =
+      typeof newShipment.customerId === "object"
+        ? newShipment.customerId?.customerId || newShipment.customerId?._id
+        : newShipment.customerId;
+    const resolvedName =
+      newShipment.customerId?.name ||
+      newShipment.customerName ||
+      customersMap[custId] ||
+      customersMap[newShipment.customerId] ||
+      "";
+
+    const finalShipment = {
+      ...newShipment,
+      customerName: resolvedName || newShipment.customerName,
+      customerId:
+        typeof newShipment.customerId === "object"
+          ? {
+              ...newShipment.customerId,
+              name: resolvedName || newShipment.customerId?.name,
+            }
+          : { _id: newShipment.customerId, name: resolvedName },
+    };
+
+    setShipments((prev) => [finalShipment, ...prev]);
     showToast(
       `Shipment ${newShipment.trackingId || "record"} created successfully!`,
     );
@@ -3566,7 +3842,12 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
           }`;
         })(),
       ),
-      escapeCSV(s.vehicleNo || "Unassigned"),
+      escapeCSV(
+        (() => {
+          const v = resolveVehicle(s, vehiclesMap);
+          return v === "No vehicle" ? "Unassigned" : v;
+        })(),
+      ),
       escapeCSV(s.tripNo || ""),
       escapeCSV(
         s.pickupDate ? new Date(s.pickupDate).toLocaleString("en-IN") : "",
@@ -3648,6 +3929,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
           const driverInfo = resolveDriver(s, driversMap);
           const driverSearchStr =
             `${driverInfo.name} ${driverInfo.driverId}`.toLowerCase();
+          const vehicleSearchStr = resolveVehicle(s, vehiclesMap).toLowerCase();
           if (
             !(s.trackingId || "").toLowerCase().includes(q) &&
             !(s.shipmentId || "").toLowerCase().includes(q) &&
@@ -3656,7 +3938,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
             !(s.receiverName || "").toLowerCase().includes(q) &&
             !(s.receiverCity || "").toLowerCase().includes(q) &&
             !driverSearchStr.includes(q) &&
-            !(s.vehicleNo || "").toLowerCase().includes(q)
+            !vehicleSearchStr.includes(q)
           )
             return false;
         }
@@ -3673,7 +3955,15 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
           return (b.totalWeight || 0) - (a.totalWeight || 0);
         return 0;
       });
-  }, [shipments, activeTab, priorityFilter, searchQuery, sortBy, driversMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    shipments,
+    activeTab,
+    priorityFilter,
+    searchQuery,
+    sortBy,
+    driversMap,
+    vehiclesMap,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pagination Calculations ───────────────────────────────────────────────
   const filterKey = `${activeTab}|${priorityFilter}|${searchQuery}|${sortBy}|${pageSize}`;
@@ -4006,7 +4296,13 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                     {/* Customer */}
                     <td>
                       <p className="shp-cell-title">
-                        {shp.customerId?.name || shp.customerName || "—"}
+                        {shp.customerId?.name ||
+                          shp.customerName ||
+                          (typeof shp.customerId === "string" &&
+                            customersMap[shp.customerId]) ||
+                          (shp.customerId?._id &&
+                            customersMap[shp.customerId._id]) ||
+                          "—"}
                       </p>
                       <span className="shp-cell-sub">{shp.shipmentId}</span>
                     </td>
@@ -4044,7 +4340,24 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                     <td>
                       {(() => {
                         const driver = resolveDriver(shp, driversMap);
+                        const vehicleName = resolveVehicle(shp, vehiclesMap);
                         if (!driver.isAssigned) {
+                          if (
+                            vehicleName &&
+                            vehicleName !== "No vehicle" &&
+                            vehicleName !== "Unassigned"
+                          ) {
+                            return (
+                              <>
+                                <span className="shp-text-muted">
+                                  Unassigned Driver
+                                </span>
+                                <span className="shp-cell-sub">
+                                  {vehicleName}
+                                </span>
+                              </>
+                            );
+                          }
                           return (
                             <span className="shp-text-muted">Unassigned</span>
                           );
@@ -4071,9 +4384,7 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                                 </span>
                               )}
                             </p>
-                            <span className="shp-cell-sub">
-                              {shp.vehicleNo || "No vehicle"}
-                            </span>
+                            <span className="shp-cell-sub">{vehicleName}</span>
                           </>
                         );
                       })()}
@@ -4284,19 +4595,22 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
         onImport={handleImportShipments}
       />
 
-      <ShipmentDetailsModal
-        shipment={selectedDetails}
-        onClose={() => setSelectedDetails(null)}
-        driversMap={driversMap}
-        onOpenUpdateStatus={(s) => {
-          setSelectedDetails(null);
-          setSelectedUpdateStatus(s);
-        }}
-        onOpenEdit={(s) => {
-          setSelectedDetails(null);
-          setSelectedEdit(s);
-        }}
-      />
+      {selectedDetails && (
+        <ShipmentDetailsModal
+          shipment={selectedDetails}
+          onClose={() => setSelectedDetails(null)}
+          driversMap={driversMap}
+          vehiclesMap={vehiclesMap}
+          onOpenUpdateStatus={(s) => {
+            setSelectedDetails(null);
+            setSelectedUpdateStatus(s);
+          }}
+          onOpenEdit={(s) => {
+            setSelectedDetails(null);
+            setSelectedEdit(s);
+          }}
+        />
+      )}
 
       <UpdateStatusModal
         shipment={selectedUpdateStatus}

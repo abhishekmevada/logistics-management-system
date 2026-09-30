@@ -12,7 +12,13 @@ const path = require("path");
 const fs = require("fs");
 const csv = require("csv-parser");
 const XLSX = require("xlsx");
-const { sendOtpEmail } = require("./utils/mailer");
+const {
+  sendOtpEmail,
+  sendDeliveryOtpEmail,
+  sendDrivertoReminder,
+  sendShipmentStatusUpdate,
+  sendShipmentAssignedEmail,
+} = require("./utils/mailer");
 const {
   User,
   Customer,
@@ -21,12 +27,20 @@ const {
   Vechile,
   VehicleMaintenance,
   VehicleFuel,
+  Warehouse,
+  WarehouseLocation,
+  WarehouseStorage,
+  WarehouseTransaction,
+  Trip,
+  Delivery,
+  POD,
 } = require("./db/db");
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const port = 5000;
 
@@ -794,6 +808,45 @@ app.post("/login", async (req, res) => {
       },
     );
 
+    let driverData = null;
+    if (existUser.role && existUser.role.toLowerCase() === "driver") {
+      let driver = await Driver.findOne({
+        $or: [
+          { userId: existUser._id },
+          { userId: existUser._id.toString() },
+          { _id: existUser._id },
+        ],
+      });
+
+      if (!driver) {
+        const newDriverId = await generateDriverId();
+        driver = new Driver({
+          userId: existUser._id,
+          driverId: newDriverId,
+        });
+        await driver.save();
+      }
+
+      const isProfileComplete = Boolean(
+        driver.phonenumber &&
+        driver.license?.licensenumber &&
+        driver.license?.expiredate,
+      );
+
+      driverData = {
+        _id: driver._id,
+        driverId: driver.driverId,
+        phonenumber: driver.phonenumber || "",
+        license: {
+          licensenumber: driver.license?.licensenumber || "",
+          expiredate: driver.license?.expiredate || null,
+        },
+        status: driver.status,
+        availability: driver.availability,
+        isProfileComplete,
+      };
+    }
+
     return res.status(200).json({
       message: "Sign in successful",
 
@@ -806,7 +859,11 @@ app.post("/login", async (req, res) => {
         email: existUser.email,
         role: existUser.role,
         status: existUser.status,
+        driverId: driverData?.driverId || "",
+        phonenumber: driverData?.phonenumber || "",
       },
+
+      driver: driverData,
     });
   } catch (error) {
     return res.status(500).json({
@@ -1702,27 +1759,24 @@ app.get("/shipments", authMiddleware, async (req, res) => {
 
     // Auto-filter for drivers so they only see their assigned shipments
     if ((req.user && req.user.role === "Driver") || myShipments === "true") {
-      const driverRecord = await Driver.findOne({ userId: req.user.userId });
-      const userRecord = await User.findById(req.user.userId);
-      const identifiers = [];
-      if (userRecord?.name) identifiers.push(userRecord.name);
-      if (driverRecord?.driverId) identifiers.push(driverRecord.driverId);
-
-      const driverConditions = identifiers.map((id) => ({
-        driverName: new RegExp(`^${id}$`, "i"),
-      }));
-      if (driverRecord?.driverId) {
-        driverConditions.push({ driverId: driverRecord.driverId });
-      }
-
-      filter.$and = filter.$and || [];
-      if (driverConditions.length > 0) {
-        filter.$and.push({ $or: driverConditions });
+      const driverRecord = await Driver.findOne({
+        $or: [
+          { userId: req.user.userId },
+          ...(mongosse.Types.ObjectId.isValid(req.user.userId)
+            ? [
+                { userId: new mongosse.Types.ObjectId(req.user.userId) },
+                { _id: new mongosse.Types.ObjectId(req.user.userId) },
+              ]
+            : []),
+        ],
+      });
+      if (driverRecord?._id) {
+        filter.driverName = driverRecord._id;
       } else {
-        filter.$and.push({ driverName: "__NONE__" });
+        filter.driverName = new mongosse.Types.ObjectId();
       }
-    } else if (driverName) {
-      filter.driverName = new RegExp(driverName.trim(), "i");
+    } else if (driverName && mongosse.Types.ObjectId.isValid(driverName)) {
+      filter.driverName = new mongosse.Types.ObjectId(driverName);
     }
 
     if (search.trim() !== "") {
@@ -1857,6 +1911,8 @@ app.get("/shipments", authMiddleware, async (req, res) => {
 
     const shipments = await Shipment.find(filter)
       .populate("customerId")
+      .populate("tripNo")
+      .populate("vehicleNo")
       .sort({
         [sortBy]: sortOrder,
       })
@@ -1878,22 +1934,85 @@ app.get("/shipments", authMiddleware, async (req, res) => {
         if (d.driverId) driverMap.set(d.driverId, info);
       });
 
+      const vechiles = await Vechile.find().lean();
+      const vehicleMap = new Map();
+      vechiles.forEach((v) => {
+        const vName =
+          v.vmodel || v.vehicleName || v.model || v.vregistrationnumber || "";
+        const reg = v.vregistrationnumber || v.registrationNumber || "";
+        const info = {
+          ...v,
+          _id: v._id.toString(),
+          vehicleName: vName,
+          registrationNumber: reg,
+        };
+        if (v._id) vehicleMap.set(v._id.toString(), info);
+        if (v.vregistrationnumber) vehicleMap.set(v.vregistrationnumber, info);
+      });
+
       enrichedShipments = shipments.map((s) => {
+        let driverData = {};
         if (s.driverName) {
           const key = s.driverName.toString();
           if (driverMap.has(key)) {
             const dInfo = driverMap.get(key);
-            return {
-              ...s,
+            driverData = {
               driverId: s.driverId || dInfo.driverId,
               driverDetails: dInfo,
             };
           }
         }
-        return s;
+
+        let vehicleData = {};
+        const vRef = s.vehicleNo || s.tripNo?.vehicleId;
+        if (vRef) {
+          if (typeof vRef === "object" && vRef !== null) {
+            vehicleData = {
+              vehicleNo: {
+                ...vRef,
+                vehicleName:
+                  vRef.vmodel ||
+                  vRef.vehicleName ||
+                  vRef.model ||
+                  vRef.vregistrationnumber ||
+                  "",
+                registrationNumber:
+                  vRef.vregistrationnumber || vRef.registrationNumber || "",
+              },
+            };
+          } else {
+            const vKey = vRef.toString();
+            if (vehicleMap.has(vKey)) {
+              vehicleData = {
+                vehicleNo: vehicleMap.get(vKey),
+              };
+            }
+          }
+        }
+
+        const originVal =
+          s.origin || s.tripNo?.origin || s.senderCity || s.senderAddress || "";
+        const destVal =
+          s.destination ||
+          s.tripNo?.destination ||
+          s.receiverCity ||
+          s.receiverAddress ||
+          "";
+        return {
+          ...s,
+          ...driverData,
+          ...vehicleData,
+          origin: originVal,
+          destination: destVal,
+          pickupAddress: s.pickupAddress || s.senderAddress || originVal,
+          deliveryAddress: s.deliveryAddress || s.receiverAddress || destVal,
+        };
       });
     } catch (driverErr) {
-      console.warn("Could not enrich shipments with driver info:", driverErr);
+      console.warn(
+        "Could not enrich shipments with driver or vehicle info:",
+        driverErr,
+      );
     }
 
     const totalPages = Math.ceil(totalRecords / limit);
@@ -1989,6 +2108,11 @@ app.get("/customers/:id/shipments", authMiddleware, async (req, res) => {
 
     const shipments = await Shipment.find(filter)
       .populate("customerId")
+      .populate({
+        path: "driverName",
+        populate: { path: "userId", select: "name email phonenumber" },
+      })
+      .populate("vehicleNo")
       .sort({
         createdAt: -1,
       })
@@ -2195,6 +2319,82 @@ app.patch("/shipments/:id/status", authMiddleware, async (req, res) => {
       shipmentId: shipment._id,
       status: shipment.status,
     });
+
+    if (shipment.status === "out_for_delivery") {
+      await Delivery.findOneAndUpdate(
+        { shipmentId: shipment._id },
+        {
+          $set: {
+            status: "out_for_delivery",
+          },
+          $unset: {
+            deliveredAt: "",
+          },
+        },
+        {
+          new: true,
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+    }
+
+    if (shipment.status === "delivered") {
+      await Delivery.findOneAndUpdate(
+        { shipmentId: shipment._id },
+        {
+          $set: {
+            status: "delivered",
+            deliveredAt: new Date(),
+          },
+        },
+        {
+          new: true,
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+    }
+
+    if (shipment.status === "failed_delivery") {
+      await Delivery.findOneAndUpdate(
+        { shipmentId: shipment._id },
+        {
+          $set: {
+            status: "failed",
+          },
+        },
+        {
+          new: true,
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+    }
+
+    const senderEmail = shipment.senderEmail;
+
+    const senderName = shipment.senderName;
+
+    const shipmentNumber = shipment.shipmentId;
+
+    const shipmentStatus = shipment.status;
+
+    const estimateDeliveryDate = shipment.expectedDeliveryDate;
+
+    const trackingNumber = shipment.trackingId;
+
+    const sendMail = await sendShipmentStatusUpdate(
+      senderEmail,
+      senderName,
+      shipmentNumber,
+      shipmentStatus,
+      estimateDeliveryDate,
+      trackingNumber,
+    );
 
     return res.status(200).json({
       message: "Shipment status updated successfully",
@@ -2407,40 +2607,6 @@ app.post("/createshipment", authMiddleware, async (req, res) => {
       });
     }
 
-    let checkDriver = null;
-    if (
-      driverName &&
-      String(driverName).trim() !== "" &&
-      driverName !== "Unassigned"
-    ) {
-      checkDriver = await Driver.findOne({
-        $or: [
-          { driverId: driverName },
-          { _id: mongoose.isValidObjectId(driverName) ? driverName : null },
-        ],
-      }).populate("userId", "name");
-
-      if (!checkDriver) {
-        const userObj = await User.findOne({
-          name: { $regex: new RegExp(`^${driverName}$`, "i") },
-        });
-        if (userObj) {
-          checkDriver = await Driver.findOne({ userId: userObj._id }).populate(
-            "userId",
-            "name",
-          );
-        }
-      }
-
-      if (checkDriver) {
-        await Driver.findByIdAndUpdate(
-          checkDriver._id,
-          { availability: "assigned" },
-          { new: true },
-        );
-      }
-    }
-
     // ── Generate IDs ───────────────────────────────────────────────────────────
     const shipmentId = await generateShipmentId();
     const trackingId = await generateTrackingId();
@@ -2486,17 +2652,38 @@ app.post("/createshipment", authMiddleware, async (req, res) => {
 
       // Misc
       priority: normalizedPriority,
-      driverName: checkDriver ? checkDriver._id : null,
-      vehicleNo: vehicleNo || "",
-      tripNo: tripNo || "",
+      driverName: null,
+      vehicleNo: null,
+      tripNo: null,
       status: "created",
     });
 
     await newShipment.save();
+    await newShipment.populate("customerId");
+
+    const shipmentObj = newShipment.toObject
+      ? newShipment.toObject()
+      : newShipment;
+    shipmentObj.customerName =
+      newShipment.customerId?.name || customer?.name || "";
+    shipmentObj.origin =
+      shipmentObj.origin ||
+      shipmentObj.senderCity ||
+      shipmentObj.senderAddress ||
+      "";
+    shipmentObj.destination =
+      shipmentObj.destination ||
+      shipmentObj.receiverCity ||
+      shipmentObj.receiverAddress ||
+      "";
+    shipmentObj.pickupAddress =
+      shipmentObj.pickupAddress || shipmentObj.senderAddress || "";
+    shipmentObj.deliveryAddress =
+      shipmentObj.deliveryAddress || shipmentObj.receiverAddress || "";
 
     return res.status(201).json({
       message: "Shipment created successfully",
-      shipment: newShipment,
+      shipment: shipmentObj,
     });
   } catch (error) {
     console.error("CREATE SHIPMENT ERROR:", error);
@@ -2528,6 +2715,16 @@ const shipmentStatusHistorySchema = new mongosse.Schema(
         "delivered",
         "failed_delivery",
       ],
+    },
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    updatedBy: {
+      type: mongosse.Schema.Types.ObjectId,
+      ref: "user",
+      default: null,
     },
   },
   {
@@ -3205,21 +3402,15 @@ app.get(
 
 //profile setup by role driver
 app.patch("/setup-driverprofile", authMiddleware, async (req, res) => {
-  const {
-    phonenumber,
-    licensenumber,
-    expiredate,
-    docname,
-    docnumber,
-    docexpiredate,
-  } = req.body;
+  const { phonenumber, licensenumber, expiredate } = req.body;
 
   const userId = req.user.userId;
 
   try {
     if (!phonenumber || !licensenumber || !expiredate) {
       return res.status(400).json({
-        message: "Mobile phone number, license number, and expiry date are required",
+        message:
+          "Mobile phone number, license number, and expiry date are required",
       });
     }
 
@@ -3232,30 +3423,36 @@ app.patch("/setup-driverprofile", authMiddleware, async (req, res) => {
       });
     }
 
+    const userIdObj = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
+
     const checkexistlicense = await Driver.findOne({
-      "license.licensenumber": licensenumber,
-      userId: { $ne: userId },
+      "license.licensenumber": String(licensenumber).trim(),
+      $and: [
+        { userId: { $ne: userId } },
+        ...(userIdObj ? [{ userId: { $ne: userIdObj } }] : []),
+      ],
     });
 
     if (checkexistlicense) {
       return res.status(400).json({ message: "License Number Already Exist" });
     }
 
-    if (docnumber && String(docnumber).trim()) {
-      const checkexistdocnumber = await Driver.findOne({
-        "documents.docnumber": String(docnumber).trim(),
-        userId: { $ne: userId },
-      });
-
-      if (checkexistdocnumber) {
-        return res.status(400).json({ message: "Document Number Already Exist" });
-      }
-    }
-
-    const existDriver = await Driver.findOne({ userId });
+    let existDriver = await Driver.findOne({
+      $or: [
+        { userId: userId },
+        ...(userIdObj ? [{ userId: userIdObj }] : []),
+        ...(userIdObj ? [{ _id: userIdObj }] : []),
+      ],
+    });
 
     if (!existDriver) {
-      return res.status(404).json({ message: "Driver Not Found" });
+      const newDriverId = await generateDriverId();
+      existDriver = new Driver({
+        userId: userIdObj || userId,
+        driverId: newDriverId,
+      });
     }
 
     existDriver.phonenumber = cleanPhone;
@@ -3263,20 +3460,17 @@ app.patch("/setup-driverprofile", authMiddleware, async (req, res) => {
     existDriver.license.licensenumber = String(licensenumber).trim();
     existDriver.license.expiredate = new Date(expiredate);
 
-    if (!existDriver.documents) existDriver.documents = {};
-    if (docname) existDriver.documents.docname = String(docname).trim();
-    if (docnumber) existDriver.documents.docnumber = String(docnumber).trim();
-    if (docexpiredate) existDriver.documents.docexpiredate = new Date(docexpiredate);
-
     await existDriver.save();
 
     res.status(200).json({
       message: "Profile Complete",
       driver: {
+        _id: existDriver._id,
         driverId: existDriver.driverId,
         phonenumber: existDriver.phonenumber,
         license: existDriver.license,
-        documents: existDriver.documents,
+        status: existDriver.status || "active",
+        availability: existDriver.availability || "available",
         isProfileComplete: true,
       },
     });
@@ -3290,7 +3484,27 @@ app.get("/driver/profile", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
     const user = await User.findById(userId);
-    const driver = await Driver.findOne({ userId });
+
+    const userIdObj = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
+
+    let driver = await Driver.findOne({
+      $or: [
+        { userId: userId },
+        ...(userIdObj ? [{ userId: userIdObj }] : []),
+        ...(userIdObj ? [{ _id: userIdObj }] : []),
+      ],
+    });
+
+    if (!driver && user && user.role && user.role.toLowerCase() === "driver") {
+      const newDriverId = await generateDriverId();
+      driver = new Driver({
+        userId: user._id,
+        driverId: newDriverId,
+      });
+      await driver.save();
+    }
 
     if (!driver) {
       return res.status(404).json({ message: "Driver record not found" });
@@ -3308,12 +3522,18 @@ app.get("/driver/profile", authMiddleware, async (req, res) => {
         name: user?.name,
         email: user?.email,
         role: user?.role,
-      },
-      driver: {
         driverId: driver.driverId,
         phonenumber: driver.phonenumber || "",
-        license: driver.license || {},
-        documents: driver.documents || {},
+      },
+      driver: {
+        _id: driver._id,
+        driverId: driver.driverId,
+        name: user?.name || "",
+        phonenumber: driver.phonenumber || "",
+        license: {
+          licensenumber: driver.license?.licensenumber || "",
+          expiredate: driver.license?.expiredate || null,
+        },
         status: driver.status,
         availability: driver.availability,
         isProfileComplete: isComplete,
@@ -3379,7 +3599,26 @@ app.get("/driver/myshipments", authMiddleware, async (req, res) => {
     const user = await User.findById(userId);
 
     // Get Driver document belonging to this user
-    const driver = await Driver.findOne({ userId });
+    const userIdObj = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : null;
+
+    let driver = await Driver.findOne({
+      $or: [
+        { userId: userId },
+        ...(userIdObj ? [{ userId: userIdObj }] : []),
+        ...(userIdObj ? [{ _id: userIdObj }] : []),
+      ],
+    });
+
+    if (!driver && user && user.role && user.role.toLowerCase() === "driver") {
+      const newDriverId = await generateDriverId();
+      driver = new Driver({
+        userId: user._id,
+        driverId: newDriverId,
+      });
+      await driver.save();
+    }
 
     if (!driver) {
       return res.status(404).json({
@@ -3398,8 +3637,10 @@ app.get("/driver/myshipments", authMiddleware, async (req, res) => {
       driverId: driver.driverId || "",
       name: user?.name || "",
       phonenumber: driver.phonenumber || "",
-      license: driver.license || {},
-      documents: driver.documents || {},
+      license: {
+        licensenumber: driver.license?.licensenumber || "",
+        expiredate: driver.license?.expiredate || null,
+      },
       status: driver.status || "active",
       availability: driver.availability || "available",
       isProfileComplete: isComplete,
@@ -3418,10 +3659,123 @@ app.get("/driver/myshipments", authMiddleware, async (req, res) => {
           select: "name",
         },
       })
-      .sort({ createdAt: -1 });
+      .populate("vehicleNo")
+      .populate({
+        path: "tripNo",
+        populate: {
+          path: "vehicleId",
+        },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Enrich shipments with vehicle name and details
+    let enrichedShipments = shipments;
+    try {
+      const vechiles = await Vechile.find().lean();
+      const vehicleMap = new Map();
+      vechiles.forEach((v) => {
+        const vName =
+          v.vmodel ||
+          v.vehicleName ||
+          v.model ||
+          v.name ||
+          v.vregistrationnumber ||
+          "";
+        const reg = v.vregistrationnumber || v.registrationNumber || "";
+        const info = {
+          ...v,
+          _id: v._id.toString(),
+          vehicleName: vName,
+          registrationNumber: reg,
+        };
+        if (v._id) vehicleMap.set(v._id.toString(), info);
+        if (v.vregistrationnumber) vehicleMap.set(v.vregistrationnumber, info);
+      });
+
+      enrichedShipments = shipments.map((s) => {
+        let vehicleData = {};
+        const vRef = s.vehicleNo || s.tripNo?.vehicleId;
+        if (vRef) {
+          if (typeof vRef === "object" && vRef !== null) {
+            const vName =
+              vRef.vmodel ||
+              vRef.vehicleName ||
+              vRef.model ||
+              vRef.name ||
+              vRef.vregistrationnumber ||
+              "";
+            const reg =
+              vRef.vregistrationnumber || vRef.registrationNumber || "";
+            vehicleData = {
+              vehicleNo: {
+                ...vRef,
+                vehicleName: vName,
+                registrationNumber: reg,
+              },
+              vehicleName: vName,
+              vehiclePlateNumber: reg,
+            };
+          } else {
+            const vKey = vRef.toString();
+            if (vehicleMap.has(vKey)) {
+              const vInfo = vehicleMap.get(vKey);
+              vehicleData = {
+                vehicleNo: vInfo,
+                vehicleName: vInfo.vehicleName,
+                vehiclePlateNumber: vInfo.registrationNumber,
+              };
+            }
+          }
+        }
+        return {
+          ...s,
+          ...vehicleData,
+        };
+      });
+    } catch (vehErr) {
+      console.warn(
+        "Could not enrich driver shipments with vehicle info:",
+        vehErr,
+      );
+    }
+
+    // Enrich with delivery details (failureReason, failureNote, etc.)
+    try {
+      const shipmentIds = enrichedShipments.map((s) => s._id);
+      const deliveries = await Delivery.find({
+        shipmentId: { $in: shipmentIds },
+      }).lean();
+      if (deliveries.length > 0) {
+        const delMap = new Map();
+        deliveries.forEach((d) => delMap.set(String(d.shipmentId), d));
+        enrichedShipments = enrichedShipments.map((s) => {
+          const d = delMap.get(String(s._id));
+          if (d) {
+            const isDelivered =
+              s.status === "delivered" || d.status === "delivered";
+            return {
+              ...s,
+              failureReason: isDelivered
+                ? ""
+                : d.reason || s.failureReason || "",
+              failureNote: isDelivered ? "" : d.notes || s.failureNote || "",
+              statusNotes: isDelivered ? "" : d.notes || s.statusNotes || "",
+              deliveryStatus: d.status || "",
+              reattemptDate: isDelivered ? null : d.reattemptDate || null,
+              rescheduleDate: isDelivered ? null : d.reattemptDate || null,
+              attemptNumber: d.attemptNumber || 1,
+            };
+          }
+          return s;
+        });
+      }
+    } catch (delErr) {
+      console.warn("Could not enrich shipments with delivery data:", delErr);
+    }
 
     return res.status(200).json({
-      shipments,
+      shipments: enrichedShipments,
       driver: driverPayload,
     });
   } catch (error) {
@@ -3443,13 +3797,132 @@ app.get("/customer-landing/:id", async (req, res) => {
       return res.status(400).json({ message: "Customer Not Found" });
     }
 
-    const shipmentf = await Shipment.find({ customerId: customerf._id });
+    const shipmentf = await Shipment.find({ customerId: customerf._id })
+      .populate({
+        path: "driverName",
+        populate: { path: "userId", select: "name email phonenumber" },
+      })
+      .populate("vehicleNo")
+      .lean();
 
     if (!shipmentf) {
       return res.status(400).json({ message: "Customer Not Found" });
     }
 
-    const shipmentIds = shipmentf.map((shipid) => shipid._id);
+    // Build fallback driver map for any driverId/driverName stored as ObjectId or string
+    const driverMap = new Map();
+    try {
+      const drivers = await Driver.find().populate("userId", "name").lean();
+      drivers.forEach((d) => {
+        const dName =
+          d.userId?.name ||
+          d.name ||
+          (d.driverId ? `Driver (${d.driverId})` : "Driver");
+        const info = {
+          _id: d._id ? d._id.toString() : "",
+          driverId: d.driverId || "",
+          name: dName,
+        };
+        if (d._id) driverMap.set(d._id.toString(), info);
+        if (d.driverId) driverMap.set(d.driverId, info);
+        if (d.userId?._id) driverMap.set(d.userId._id.toString(), info);
+      });
+
+      const driverUsers = await User.find({
+        role: { $in: ["driver", "griver"] },
+      }).lean();
+      driverUsers.forEach((u) => {
+        if (u._id && !driverMap.has(u._id.toString())) {
+          driverMap.set(u._id.toString(), {
+            _id: u._id.toString(),
+            driverId: "",
+            name: u.name || "Driver",
+          });
+        }
+      });
+    } catch (driverErr) {
+      console.warn("Could not load drivers map:", driverErr);
+    }
+
+    // Build fallback vehicle map
+    const vehicleMap = new Map();
+    try {
+      const vechiles = await Vechile.find().lean();
+      vechiles.forEach((v) => {
+        const reg =
+          v.vregistrationnumber ||
+          v.registrationNumber ||
+          v.vehicleName ||
+          v.vmodel ||
+          "";
+        if (v._id) vehicleMap.set(v._id.toString(), reg);
+        if (v.vregistrationnumber) vehicleMap.set(v.vregistrationnumber, reg);
+      });
+    } catch (vehErr) {
+      console.warn("Could not load vehicles map:", vehErr);
+    }
+
+    const enrichedShipments = shipmentf.map((s) => {
+      // 1. Resolve Driver Name
+      let resolvedDriverName = "";
+      if (s.driverName) {
+        if (typeof s.driverName === "object" && s.driverName !== null) {
+          resolvedDriverName =
+            s.driverName.userId?.name ||
+            s.driverName.name ||
+            (s.driverName.driverId ? `Driver (${s.driverName.driverId})` : "");
+        } else {
+          const key = String(s.driverName).trim();
+          if (driverMap.has(key)) {
+            resolvedDriverName = driverMap.get(key).name;
+          } else if (
+            !/^[0-9a-fA-F]{24}$/.test(key) &&
+            key.toLowerCase() !== "unassigned"
+          ) {
+            resolvedDriverName = key;
+          }
+        }
+      }
+      if (!resolvedDriverName && s.driverId) {
+        const key = String(s.driverId).trim();
+        if (driverMap.has(key)) {
+          resolvedDriverName = driverMap.get(key).name;
+        } else if (!/^[0-9a-fA-F]{24}$/.test(key)) {
+          resolvedDriverName = key;
+        }
+      }
+
+      // 2. Resolve Vehicle No
+      let resolvedVehicleNo = "";
+      if (s.vehicleNo) {
+        if (typeof s.vehicleNo === "object" && s.vehicleNo !== null) {
+          resolvedVehicleNo =
+            s.vehicleNo.vregistrationnumber ||
+            s.vehicleNo.registrationNumber ||
+            s.vehicleNo.vehicleName ||
+            s.vehicleNo.vmodel ||
+            "";
+        } else {
+          const key = String(s.vehicleNo).trim();
+          if (vehicleMap.has(key)) {
+            resolvedVehicleNo = vehicleMap.get(key);
+          } else if (
+            !/^[0-9a-fA-F]{24}$/.test(key) &&
+            key.toLowerCase() !== "unassigned"
+          ) {
+            resolvedVehicleNo = key;
+          }
+        }
+      }
+
+      return {
+        ...s,
+        driverName: resolvedDriverName,
+        vehicleNo: resolvedVehicleNo,
+      };
+    });
+
+    const shipmentIds = enrichedShipments.map((shipid) => shipid._id);
 
     const shipmenthistoryf = await ShipmentStatusHistory.find({
       shipmentId: { $in: shipmentIds },
@@ -3459,7 +3932,7 @@ app.get("/customer-landing/:id", async (req, res) => {
       message: "fetch done",
       result: {
         customerf,
-        shipmentf,
+        shipmentf: enrichedShipments,
         shipmenthistoryf,
       },
     });
@@ -3603,7 +4076,11 @@ app.get("/drivers/:id/shipments", authMiddleware, async (req, res) => {
 
     const shipments = await Shipment.find(
       orConditions.length > 0 ? { $or: orConditions } : { _id: null },
-    ).sort({ createdAt: -1 });
+    )
+      .populate("tripNo")
+      .populate("vehicleNo")
+      .populate("customerId")
+      .sort({ createdAt: -1 });
 
     res.json({ shipments });
   } catch (err) {
@@ -3665,8 +4142,68 @@ app.get("/drivers/:id/performance", authMiddleware, async (req, res) => {
 //vechile
 app.get("/vechile", authMiddleware, async (req, res) => {
   try {
-    const vechiles = await Vechile.find().sort({ _id: -1 });
-    res.status(200).json(vechiles);
+    const vechiles = await Vechile.find().sort({ _id: -1 }).lean();
+
+    // Find active trips (planned, dispatched, in_transit, arrived)
+    const activeTrips = await Trip.find({
+      status: { $in: ["planned", "dispatched", "in_transit", "arrived"] },
+    })
+      .populate({
+        path: "driverId",
+        populate: { path: "userId", select: "name email phone phonenumber" },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Map each vehicle to its active trip & driver if assigned
+    const enrichedVehicles = vechiles.map((v) => {
+      const activeTrip = activeTrips.find(
+        (t) => t.vehicleId && String(t.vehicleId) === String(v._id),
+      );
+
+      if (activeTrip) {
+        const driverObj = activeTrip.driverId;
+        const driverName =
+          driverObj?.userId?.name ||
+          driverObj?.name ||
+          driverObj?.driverId ||
+          v.driver ||
+          "";
+        const driverPhone =
+          driverObj?.phonenumber ||
+          driverObj?.userId?.phone ||
+          driverObj?.userId?.phonenumber ||
+          v.driverPhone ||
+          "";
+
+        return {
+          ...v,
+          vstatus:
+            v.vstatus === "In Maintenance" || v.vstatus === "Inactive"
+              ? v.vstatus
+              : "Assigned",
+          driver: driverName,
+          driverPhone: driverPhone,
+          location: `${activeTrip.origin} → ${activeTrip.destination}`,
+          currentTrip: {
+            id: activeTrip.tripId,
+            tripId: activeTrip.tripId,
+            origin: activeTrip.origin,
+            destination: activeTrip.destination,
+            status: activeTrip.status,
+            plannedDeparture: activeTrip.plannedDeparture,
+            plannedArrival: activeTrip.plannedArrival,
+            eta: activeTrip.plannedArrival
+              ? new Date(activeTrip.plannedArrival).toLocaleString()
+              : "",
+          },
+        };
+      }
+
+      return v;
+    });
+
+    res.status(200).json(enrichedVehicles);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -3787,6 +4324,10 @@ app.post("/vechile", authMiddleware, async (req, res) => {
         .json({ message: "Vechile Registration Number Already Exist" });
     }
 
+    const driver = (req.body.driver || "").trim();
+    const driverPhone = (req.body.driverPhone || "").trim();
+    const location = (req.body.location || "Central Depot, Mumbai").trim();
+
     const newVechile = new Vechile({
       vregistrationnumber,
       vtype,
@@ -3794,6 +4335,9 @@ app.post("/vechile", authMiddleware, async (req, res) => {
       vcapacity,
       vfuletype,
       vstatus,
+      driver,
+      driverPhone,
+      location,
       documents: {
         insurance,
         rc,
@@ -3806,6 +4350,75 @@ app.post("/vechile", authMiddleware, async (req, res) => {
     await newVechile.save();
 
     res.status(201).json({ message: "Vechile Created", vehicle: newVechile });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update vehicle details (driver, location, status, specs)
+app.put("/vechile/:id", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = {};
+
+    if (req.body.vregistrationnumber || req.body.registrationNumber) {
+      updateData.vregistrationnumber = (
+        req.body.vregistrationnumber || req.body.registrationNumber
+      )
+        .trim()
+        .toUpperCase();
+    }
+    if (req.body.vtype || req.body.type) {
+      updateData.vtype = req.body.vtype || req.body.type;
+    }
+    if (req.body.vmodel || req.body.model) {
+      updateData.vmodel = (req.body.vmodel || req.body.model).trim();
+    }
+    if (
+      req.body.vcapacity !== undefined ||
+      req.body.capacityValue !== undefined ||
+      req.body.capacity !== undefined
+    ) {
+      const rawCap =
+        req.body.vcapacity ?? req.body.capacityValue ?? req.body.capacity;
+      const numMatch = String(rawCap || "").match(/[\d.]+/);
+      updateData.vcapacity = numMatch
+        ? parseFloat(numMatch[0])
+        : Number(rawCap);
+    }
+    if (req.body.vfuletype || req.body.fuelType) {
+      updateData.vfuletype = req.body.vfuletype || req.body.fuelType;
+    }
+    if (req.body.vstatus || req.body.status) {
+      updateData.vstatus = req.body.vstatus || req.body.status;
+    }
+    if (req.body.driver !== undefined) {
+      updateData.driver = req.body.driver.trim();
+    }
+    if (req.body.driverPhone !== undefined) {
+      updateData.driverPhone = req.body.driverPhone.trim();
+    }
+    if (req.body.location !== undefined) {
+      updateData.location = req.body.location.trim();
+    }
+    if (req.body.documents) {
+      updateData.documents = req.body.documents;
+    }
+
+    const updatedVehicle = await Vechile.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedVehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+
+    res.status(200).json({
+      message: "Vehicle updated successfully",
+      vehicle: updatedVehicle,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -3920,15 +4533,23 @@ app.post("/vechile-fuel", authMiddleware, async (req, res) => {
   const fuelDate = req.body.fuelDate || req.body.date;
   const fuelType = req.body.fuelType;
   const rawQuantity =
-    req.body.quantity !== undefined && req.body.quantity !== null && req.body.quantity !== ""
+    req.body.quantity !== undefined &&
+    req.body.quantity !== null &&
+    req.body.quantity !== ""
       ? req.body.quantity
-      : req.body.quatity !== undefined && req.body.quatity !== null && req.body.quatity !== ""
+      : req.body.quatity !== undefined &&
+          req.body.quatity !== null &&
+          req.body.quatity !== ""
         ? req.body.quatity
         : req.body.litres;
   const rawCost =
-    req.body.fuelCost !== undefined && req.body.fuelCost !== null && req.body.fuelCost !== ""
+    req.body.fuelCost !== undefined &&
+    req.body.fuelCost !== null &&
+    req.body.fuelCost !== ""
       ? req.body.fuelCost
-      : req.body.fuelConst !== undefined && req.body.fuelConst !== null && req.body.fuelConst !== ""
+      : req.body.fuelConst !== undefined &&
+          req.body.fuelConst !== null &&
+          req.body.fuelConst !== ""
         ? req.body.fuelConst
         : req.body.totalCost;
   const rawOdometer = req.body.odometer;
@@ -3985,6 +4606,3225 @@ app.get("/vechile-fuel/:vehicleId", authMiddleware, async (req, res) => {
     res.status(200).json(logs);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+//warehouse
+
+async function generateWarehouseId() {
+  let warehouseId;
+  let exists = true;
+
+  while (exists) {
+    warehouseId = `WH-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const existingCustomer = await Warehouse.findOne({
+      warehouseId,
+    });
+
+    exists = !!existingCustomer;
+  }
+
+  return warehouseId;
+}
+
+app.post("/warehouse-create", authMiddleware, async (req, res) => {
+  const { warName, warAddress, warCity, warCapacity, warStatus } = req.body;
+
+  try {
+    if (!warName || !warAddress || !warCity || !warCapacity || !warStatus) {
+      return res.status(400).json({ message: "Please Filled the All Details" });
+    }
+
+    const warid = await generateWarehouseId();
+
+    const newWarehouse = new Warehouse({
+      warehouseId: warid,
+      warName,
+      warAddress,
+      warCity,
+      warCapacity,
+      warStatus,
+    });
+    await newWarehouse.save();
+    res.status(200).json({ message: "Warehouse Created" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/warehouse-list", authMiddleware, async (req, res) => {
+  try {
+    const listwarehouse = await Warehouse.find();
+
+    res.status(200).json({ message: "List of Warehouse", listwarehouse });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/warehouse-update/:id", authMiddleware, async (req, res) => {
+  const warid = req.params.id;
+  const { warName, warAddress, warCity, warCapacity, warStatus } = req.body;
+
+  try {
+    if (!warName || !warAddress || !warCity || !warCapacity || !warStatus) {
+      return res.status(400).json({ message: "Please Filled the All Details" });
+    }
+
+    const findwarhouse = await Warehouse.findById(warid);
+
+    if (!findwarhouse) {
+      return res.status(404).json({ message: "Warehouse Not Found" });
+    }
+
+    findwarhouse.warName = warName;
+    findwarhouse.warAddress = warAddress;
+    findwarhouse.warCity = warCity;
+    findwarhouse.warCapacity = warCapacity;
+    findwarhouse.warStatus = warStatus;
+
+    await findwarhouse.save();
+    res.status(200).json({ message: "Warehouse Detail Updated" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/warehouse-update-status/:id", authMiddleware, async (req, res) => {
+  const warid = req.params.id;
+  const { warStatus } = req.body;
+
+  try {
+    const findwarhouse = await Warehouse.findById(warid);
+
+    if (!findwarhouse) {
+      return res.status(404).json({ message: "Warehouse Not Found" });
+    }
+
+    const updateStatus = await Warehouse.findByIdAndUpdate(warid, {
+      warStatus,
+    });
+
+    res.status(200).json({ message: "Status Updated" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/warehouse-location", authMiddleware, async (req, res) => {
+  const {
+    warehouseId,
+    warlocZone,
+    warlocRack,
+    warlocBin,
+    warlocCapacity,
+    warlocStatus,
+  } = req.body;
+
+  try {
+    if (
+      !warehouseId ||
+      !warlocZone ||
+      !warlocRack ||
+      !warlocBin ||
+      !warlocCapacity ||
+      !warlocStatus
+    ) {
+      return res.status(400).json({ message: "Please Fille the All Details" });
+    }
+
+    const findWarehouse = await Warehouse.findById(warehouseId);
+
+    if (!findWarehouse) {
+      return res.status(400).json({ message: "Warehouse Not Found" });
+    }
+
+    const newWareloc = await WarehouseLocation({
+      warehouseId,
+      warlocZone,
+      warlocRack,
+      warlocBin,
+      warlocCapacity,
+      warlocStatus,
+    });
+
+    await newWareloc.save();
+
+    res.status(200).json({ message: "Warehouse Location Save" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/warehouse-location-get/:id", authMiddleware, async (req, res) => {
+  const warehouseId = req.params.id;
+  try {
+    if (!warehouseId) {
+      return res.status(400).json({ message: "Warehouse Not Found" });
+    }
+
+    const warhouseloclist = await WarehouseLocation.find({ warehouseId });
+
+    res.status(200).json({ message: "Warehouse Location", warhouseloclist });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch(
+  "/warehouse-location-update/:id",
+  authMiddleware,
+  async (req, res) => {
+    const warehouseId = req.params.id;
+    const { warlocZone, warlocRack, warlocBin, warlocCapacity, warlocStatus } =
+      req.body;
+
+    try {
+      if (!warehouseId) {
+        return res
+          .status(400)
+          .json({ message: "Warehouse Location Not Found" });
+      }
+      if (
+        !warehouseId ||
+        !warlocZone ||
+        !warlocRack ||
+        !warlocBin ||
+        !warlocCapacity ||
+        !warlocStatus
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Please Fille the All Details" });
+      }
+
+      const findWarehouse = await WarehouseLocation.findById(warehouseId);
+
+      if (!findWarehouse) {
+        return res
+          .status(400)
+          .json({ message: "Warehouse Location Not Found" });
+      }
+
+      findWarehouse.warlocZone = warlocZone;
+      findWarehouse.warlocRack = warlocRack;
+      findWarehouse.warlocBin = warlocBin;
+      findWarehouse.warlocCapacity = warlocCapacity;
+      findWarehouse.warlocStatus = warlocStatus;
+
+      await findWarehouse.save();
+      res.status(200).json({ message: "Warehouse Location Update" });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.patch(
+  "/warehouse-location-status/:id",
+  authMiddleware,
+  async (req, res) => {
+    const warehouselocId = req.params.id;
+
+    const { warlocStatus } = req.body;
+
+    try {
+      const warloc = await WarehouseLocation.findById(warehouselocId);
+
+      if (!warloc) {
+        return res
+          .status(400)
+          .json({ message: "Warehouse Location Not Found" });
+      }
+
+      warloc.warlocStatus = warlocStatus;
+
+      await warloc.save();
+      res.status(200).json({ message: "Warehouse Location Status Update" });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get("/warehouse-scane/:id", async (req, res) => {
+  const trackingId = req.params.id;
+
+  try {
+    let findshipment = await Shipment.findOne({ trackingId: trackingId })
+      .populate("vehicleNo")
+      .populate({
+        path: "tripNo",
+        populate: [
+          {
+            path: "driverId",
+            populate: {
+              path: "userId",
+              select: "name email phone phonenumber",
+            },
+          },
+          { path: "vehicleId" },
+        ],
+      })
+      .populate({
+        path: "driverName",
+        populate: {
+          path: "userId",
+          select: "name email phone phonenumber",
+        },
+      });
+
+    if (!findshipment && mongosse.Types.ObjectId.isValid(trackingId)) {
+      findshipment = await Shipment.findById(trackingId)
+        .populate("vehicleNo")
+        .populate({
+          path: "tripNo",
+          populate: [
+            {
+              path: "driverId",
+              populate: {
+                path: "userId",
+                select: "name email phone phonenumber",
+              },
+            },
+            { path: "vehicleId" },
+          ],
+        })
+        .populate({
+          path: "driverName",
+          populate: {
+            path: "userId",
+            select: "name email phone phonenumber",
+          },
+        });
+    }
+
+    if (!findshipment) {
+      findshipment = await Shipment.findOne({ shipmentId: trackingId })
+        .populate("vehicleNo")
+        .populate({
+          path: "tripNo",
+          populate: [
+            {
+              path: "driverId",
+              populate: {
+                path: "userId",
+                select: "name email phone phonenumber",
+              },
+            },
+            { path: "vehicleId" },
+          ],
+        })
+        .populate({
+          path: "driverName",
+          populate: {
+            path: "userId",
+            select: "name email phone phonenumber",
+          },
+        });
+    }
+
+    if (!findshipment) {
+      return res.status(400).json({ message: "Shipment Not Found" });
+    }
+
+    if (findshipment.status !== "picked_up") {
+      return res.status(400).json({
+        message: `Shipment cannot be received. Current status: ${findshipment.status}`,
+      });
+    }
+
+    const shipmentData = findshipment.toObject();
+
+    // Fallbacks if vehicleNo / driverName weren't directly populated or stored as raw IDs
+    if (
+      shipmentData.vehicleNo &&
+      !shipmentData.vehicleNo.vregistrationnumber &&
+      !shipmentData.vehicleNo.vmodel
+    ) {
+      if (mongosse.Types.ObjectId.isValid(shipmentData.vehicleNo)) {
+        const foundVeh = await Vechile.findById(shipmentData.vehicleNo);
+        if (foundVeh) shipmentData.vehicleNo = foundVeh;
+      }
+    }
+    if (
+      (!shipmentData.vehicleNo ||
+        (!shipmentData.vehicleNo.vregistrationnumber &&
+          !shipmentData.vehicleNo.vmodel)) &&
+      shipmentData.tripNo?.vehicleId
+    ) {
+      shipmentData.vehicleNo = shipmentData.tripNo.vehicleId;
+    }
+
+    if (
+      shipmentData.driverName &&
+      !shipmentData.driverName.driverId &&
+      !shipmentData.driverName.userId
+    ) {
+      if (mongosse.Types.ObjectId.isValid(shipmentData.driverName)) {
+        const foundDrv = await Driver.findById(
+          shipmentData.driverName,
+        ).populate("userId", "name email phone phonenumber");
+        if (foundDrv) shipmentData.driverName = foundDrv;
+      }
+    }
+    if (
+      (!shipmentData.driverName ||
+        (!shipmentData.driverName.driverId &&
+          !shipmentData.driverName.userId)) &&
+      shipmentData.tripNo?.driverId
+    ) {
+      shipmentData.driverName = shipmentData.tripNo.driverId;
+    }
+
+    if (shipmentData.tripNo && !shipmentData.tripNo.tripId) {
+      if (mongosse.Types.ObjectId.isValid(shipmentData.tripNo)) {
+        const foundTrip = await Trip.findById(shipmentData.tripNo);
+        if (foundTrip) shipmentData.tripNo = foundTrip;
+      }
+    }
+
+    res
+      .status(200)
+      .json({ message: "Verify the Shipment", findshipment: shipmentData });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/warehouse/inbound", authMiddleware, async (req, res) => {
+  const { warehouseId, shipmentId, locationId, wartansactonProcessBy } =
+    req.body;
+
+  try {
+    if (!warehouseId || !shipmentId || !locationId) {
+      return res.status(400).json({
+        message: "Please Fill all details",
+      });
+    }
+
+    let findwarehouse = null;
+    if (mongosse.Types.ObjectId.isValid(warehouseId)) {
+      findwarehouse = await Warehouse.findById(warehouseId);
+    }
+    if (!findwarehouse) {
+      findwarehouse = await Warehouse.findOne({ warehouseId });
+    }
+
+    if (!findwarehouse) {
+      return res.status(400).json({
+        message: "Warehouse Not Found",
+      });
+    }
+
+    let findShipment = null;
+    if (mongosse.Types.ObjectId.isValid(shipmentId)) {
+      findShipment = await Shipment.findById(shipmentId);
+    }
+    if (!findShipment) {
+      findShipment = await Shipment.findOne({
+        $or: [{ shipmentId: shipmentId }, { trackingId: shipmentId }],
+      });
+    }
+
+    if (!findShipment) {
+      return res.status(400).json({
+        message: "Shipment Not Found",
+      });
+    }
+
+    // Shipment must be picked up before entering warehouse
+    if (findShipment.status !== "picked_up") {
+      return res.status(400).json({
+        message: `Shipment cannot be received. Current status: ${findShipment.status}`,
+      });
+    }
+
+    let findLocation = null;
+    if (mongosse.Types.ObjectId.isValid(locationId)) {
+      findLocation = await WarehouseLocation.findById(locationId);
+    }
+    if (!findLocation) {
+      findLocation = await WarehouseLocation.findOne({
+        warehouseId: findwarehouse._id,
+      });
+    }
+
+    if (!findLocation) {
+      return res.status(400).json({
+        message: "Location Not Found",
+      });
+    }
+
+    let findUser = null;
+    if (
+      wartansactonProcessBy &&
+      mongosse.Types.ObjectId.isValid(wartansactonProcessBy)
+    ) {
+      findUser = await User.findById(wartansactonProcessBy);
+    }
+    if (!findUser && wartansactonProcessBy) {
+      findUser = await User.findOne({
+        $or: [
+          { name: new RegExp(`^${wartansactonProcessBy.trim()}$`, "i") },
+          { email: wartansactonProcessBy.trim().toLowerCase() },
+        ],
+      });
+    }
+    if (!findUser && req.user?.userId) {
+      findUser = await User.findById(req.user.userId);
+    }
+    if (!findUser) {
+      findUser = await User.findOne();
+    }
+
+    if (!findUser) {
+      return res.status(400).json({
+        message: "User Not Found",
+      });
+    }
+
+    // Check whether shipment is already stored
+    const findShipmentInWarehouse = await WarehouseStorage.findOne({
+      shipmentId: findShipment._id,
+      warstorStatus: "store",
+    });
+
+    if (findShipmentInWarehouse) {
+      return res.status(400).json({
+        message: "Shipment Already Stored In Warehouse",
+      });
+    }
+
+    // Update shipment
+    findShipment.status = "at_warehouse";
+    await findShipment.save();
+
+    // Create storage record
+    const newWarehouseStorage = new WarehouseStorage({
+      warehouseId,
+      shipmentId,
+      locationId,
+      warstorStatus: "store",
+      removeAt: null,
+    });
+
+    await newWarehouseStorage.save();
+
+    // Create inbound transaction
+    const newWarehouseTransaction = new WarehouseTransaction({
+      warehouseId,
+      shipmentId,
+      wartransactionType: "inbound",
+      locationId,
+      wartansactonProcessBy: findUser._id,
+    });
+
+    await newWarehouseTransaction.save();
+
+    res.status(200).json({
+      message: "Shipment Stored in Warehouse Successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+});
+
+app.get("/warehouse/:id/storage", authMiddleware, async (req, res) => {
+  const warhouseId = req.params.id;
+
+  try {
+    const findWarehouse = await Warehouse.findOne({ _id: warhouseId });
+
+    if (!findWarehouse) {
+      return res.status(400).json({ message: "Warehouse Not Found" });
+    }
+
+    const warehouseStorage = await WarehouseStorage.find({
+      warehouseId: warhouseId,
+    }).populate("warehouseId shipmentId locationId");
+
+    if (!warehouseStorage) {
+      return res
+        .status(400)
+        .json({ message: "Storage Not Found of the Warehouse" });
+    }
+
+    res.status(200).json({ message: "Warehouse Storage", warehouseStorage });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get(
+  "/warehouses/storage/shipment/:shipmentId",
+  authMiddleware,
+  async (req, res) => {
+    const shipmentId = req.params.shipmentId;
+
+    try {
+      const findShipmentId = await Shipment.findById(shipmentId);
+
+      if (!findShipmentId) {
+        return res.status(400).json({ message: "Shipment Not Found" });
+      }
+
+      const warehouseStorage = await WarehouseStorage.findOne({
+        shipmentId,
+      }).populate("warehouseId shipmentId locationId");
+
+      if (!warehouseStorage) {
+        return res
+          .status(400)
+          .json({ message: "Shipment Not Found in Warehouse" });
+      }
+
+      res
+        .status(200)
+        .json({ message: "Shipment Warehouse Information", warehouseStorage });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get(
+  "/warehouse/storage/tracking/:trackingId",
+  authMiddleware,
+  async (req, res) => {
+    const trackingId = req.params.trackingId;
+
+    try {
+      const findShipment = await Shipment.findOne({ trackingId });
+
+      if (!findShipment) {
+        return res.status(400).json({ message: "Shipment Not Found" });
+      }
+
+      const findWarehouseStorage = await WarehouseStorage.findOne({
+        shipmentId: findShipment._id,
+      }).populate("warehouseId shipmentId locationId");
+
+      if (!findWarehouseStorage) {
+        return res
+          .status(400)
+          .json({ message: "Shipment Not Found In Warehouse Storage" });
+      }
+
+      res.status(200).json({
+        message: "Shipment Found By Tracking ID",
+        findWarehouseStorage,
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.patch("/warehouse/outbound", authMiddleware, async (req, res) => {
+  const { shipmentId } = req.body;
+
+  try {
+    if (!shipmentId) {
+      return res.status(400).json({
+        message: "Shipment ID is required",
+      });
+    }
+
+    const findShipment = await Shipment.findById(shipmentId);
+
+    if (!findShipment) {
+      return res.status(400).json({
+        message: "Shipment Not Found",
+      });
+    }
+
+    // Shipment must currently be inside warehouse
+    if (findShipment.status !== "at_warehouse") {
+      return res.status(400).json({
+        message: `Shipment cannot be dispatched. Current status: ${findShipment.status}`,
+      });
+    }
+
+    const warehouseStorage = await WarehouseStorage.findOne({
+      shipmentId: findShipment._id,
+      warstorStatus: "store",
+    });
+
+    if (!warehouseStorage) {
+      return res.status(400).json({
+        message: "Shipment Not Found In Warehouse",
+      });
+    }
+
+    // Update shipment
+    findShipment.status = "dispatched";
+    await findShipment.save();
+
+    // Remove from current storage
+    warehouseStorage.warstorStatus = "remove";
+    warehouseStorage.removeAt = new Date();
+    await warehouseStorage.save();
+
+    // Create NEW outbound transaction
+    const newWarehouseTransaction = new WarehouseTransaction({
+      warehouseId: warehouseStorage.warehouseId,
+      shipmentId: findShipment._id,
+      wartransactionType: "outbound",
+      locationId: warehouseStorage.locationId,
+      wartansactonProcessBy: req.user.userId,
+    });
+
+    await newWarehouseTransaction.save();
+
+    res.status(200).json({
+      message: "Shipment Out of Warehouse",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+});
+
+app.get(
+  "/warehouses/:warehouseId/inbound-history",
+  authMiddleware,
+  async (req, res) => {
+    const warehouseId = req.params.warehouseId;
+
+    try {
+      const findWarehouse = await Warehouse.findById(warehouseId);
+
+      if (!findWarehouse) {
+        return res.status(400).json({ message: "Warehouse Not Found" });
+      }
+
+      const warehouseTransaction = await WarehouseTransaction.find({
+        warehouseId,
+        wartransactionType: "inbound",
+      }).populate("shipmentId locationId wartansactonProcessBy");
+
+      res
+        .status(200)
+        .json({ message: "Warehouse Inbound History", warehouseTransaction });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get(
+  "/warehouses/:warehouseId/outbound-history",
+  authMiddleware,
+  async (req, res) => {
+    const warehouseId = req.params.warehouseId;
+
+    try {
+      const findWarehouse = await Warehouse.findById(warehouseId);
+
+      if (!findWarehouse) {
+        return res.status(400).json({ message: "Warehouse Not Found" });
+      }
+
+      const warehouseTransaction = await WarehouseTransaction.find({
+        warehouseId,
+        wartransactionType: "outbound",
+      }).populate("shipmentId locationId wartansactonProcessBy");
+
+      res
+        .status(200)
+        .json({ message: "Warehouse Outbound History", warehouseTransaction });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+async function generateTripID() {
+  let tripId;
+  let exists = true;
+
+  while (exists) {
+    tripId = `TRP-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const existingShipment = await Trip.findOne({
+      tripId,
+    });
+
+    exists = !!existingShipment;
+  }
+
+  return tripId;
+}
+
+app.post("/trip", authMiddleware, async (req, res) => {
+  const {
+    origin,
+    destination,
+    stops,
+    driverId,
+    vechileId,
+    shipmentIds,
+    plannedDeparture,
+    plannedArrival,
+    plannedDistance,
+    tripCost,
+  } = req.body;
+
+  try {
+    // ── Validate required fields ──────────────────────────────────────────
+    if (!origin || !destination) {
+      return res
+        .status(400)
+        .json({ message: "Origin and destination are required" });
+    }
+
+    if (!driverId) {
+      return res.status(400).json({ message: "Driver is required" });
+    }
+
+    if (!vechileId) {
+      return res.status(400).json({ message: "Vehicle is required" });
+    }
+
+    if (
+      !shipmentIds ||
+      !Array.isArray(shipmentIds) ||
+      shipmentIds.length === 0
+    ) {
+      return res
+        .status(400)
+        .json({ message: "At least one shipment is required" });
+    }
+
+    if (!plannedDeparture || !plannedArrival) {
+      return res
+        .status(400)
+        .json({ message: "Planned departure and arrival dates are required" });
+    }
+
+    // ── Validate stops array ──────────────────────────────────────────────
+    if (stops && !Array.isArray(stops)) {
+      return res.status(400).json({ message: "Stops must be an array" });
+    }
+
+    if (stops && stops.length > 0) {
+      for (let i = 0; i < stops.length; i++) {
+        if (!stops[i].location || stops[i].stopOrder === undefined) {
+          return res.status(400).json({
+            message: `Each stop must have a location and stopOrder (issue at stop index ${i})`,
+          });
+        }
+      }
+    }
+
+    // ── Verify driver exists and is available ─────────────────────────────
+    const driver = await Driver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ message: "Driver not found" });
+    }
+    if (driver.availability !== "available") {
+      return res.status(400).json({ message: "Driver is not available" });
+    }
+
+    // ── Verify vehicle exists and is available ────────────────────────────
+    const vehicle = await Vechile.findById(vechileId);
+    if (!vehicle) {
+      return res.status(404).json({ message: "Vehicle not found" });
+    }
+    if (vehicle.vstatus !== "Available") {
+      return res.status(400).json({ message: "Vehicle is not available" });
+    }
+
+    // ── Verify all shipments exist ────────────────────────────────────────
+    const shipments = await Shipment.find({ _id: { $in: shipmentIds } });
+    if (shipments.length !== shipmentIds.length) {
+      return res
+        .status(404)
+        .json({ message: "One or more shipments not found" });
+    }
+
+    // ── Generate unique trip ID ───────────────────────────────────────────
+    const tripId = await generateTripID();
+
+    // ── Build sorted stops ────────────────────────────────────────────────
+    const sortedStops = stops
+      ? stops
+          .map((s) => ({
+            location: s.location,
+            stopOrder: Number(s.stopOrder),
+          }))
+          .sort((a, b) => a.stopOrder - b.stopOrder)
+      : [];
+
+    // ── Create trip ───────────────────────────────────────────────────────
+    const trip = await Trip.create({
+      tripId,
+      origin,
+      destination,
+      stops: sortedStops,
+      driverId,
+      vehicleId: vechileId,
+      shipmentIds,
+      plannedDeparture,
+      plannedArrival,
+      plannedDistance: plannedDistance || 0,
+      tripCost: tripCost || 0,
+      status: "planned",
+    });
+
+    // ── Update driver availability to "assigned" ──────────────────────────
+    await Driver.findByIdAndUpdate(driverId, { availability: "assigned" });
+
+    // ── Update vehicle status to "Assigned" ───────────────────────────────
+    await Vechile.findByIdAndUpdate(vechileId, { vstatus: "Assigned" });
+
+    // ── Update each shipment: status → dispatched, tripNo → trip._id ─────
+    await Shipment.updateMany(
+      { _id: { $in: shipmentIds } },
+      {
+        $set: {
+          tripNo: trip._id,
+          driverName: driver._id,
+          vehicleNo: vehicle._id,
+        },
+      },
+    );
+
+    const driverFind = await Driver.findById(driverId).populate("userId");
+
+    const driveremail = driverFind.userId.email;
+
+    const driverName = driverFind.userId.name;
+
+    const shipmentNumber = shipments[0].shipmentId;
+
+    const vehicleName = vehicle.vmodel;
+
+    const vehicleNumber = vehicle.vregistrationnumber;
+
+    const sendMail = await sendShipmentAssignedEmail(
+      driveremail,
+      driverName,
+      shipmentNumber,
+      origin,
+      destination,
+      vehicleName,
+      vehicleNumber,
+      sortedStops,
+    );
+
+    res.status(201).json({ message: "Trip created successfully", trip });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/trip", authMiddleware, async (req, res) => {
+  try {
+    const getTrip = await Trip.find()
+      .populate({
+        path: "driverId",
+        populate: { path: "userId", select: "name email phone phonenumber" },
+      })
+      .populate("vehicleId")
+      .populate("shipmentIds")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ message: "List of Trips", getTrip });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/trip/:id", authMiddleware, async (req, res) => {
+  const tripId = req.params.id;
+
+  try {
+    let getTrip = null;
+    if (mongosse.Types.ObjectId.isValid(tripId)) {
+      getTrip = await Trip.findById(tripId)
+        .populate({
+          path: "driverId",
+          populate: { path: "userId", select: "name email phone phonenumber" },
+        })
+        .populate("vehicleId")
+        .populate("shipmentIds");
+    }
+    if (!getTrip) {
+      getTrip = await Trip.findOne({ tripId })
+        .populate({
+          path: "driverId",
+          populate: { path: "userId", select: "name email phone phonenumber" },
+        })
+        .populate("vehicleId")
+        .populate("shipmentIds");
+    }
+
+    if (!getTrip) {
+      return res.status(400).json({ message: "Trip Not Found" });
+    }
+
+    res.status(200).json({ message: `Trip ${getTrip.tripId}`, getTrip });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/trip-update/:id", authMiddleware, async (req, res) => {
+  const {
+    origin,
+    destination,
+    stops,
+    driverId,
+    vehicleId,
+    shipmentIds,
+    plannedDeparture,
+    plannedArrival,
+    plannedDistance,
+    tripCost,
+  } = req.body;
+
+  try {
+    // ── Find existing trip ────────────────────────────────────────────────
+    const existingTrip = await Trip.findById(req.params.id);
+    if (!existingTrip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // ── Only allow updates on planned/dispatched trips ────────────────────
+    if (!["planned", "dispatched"].includes(existingTrip.status)) {
+      return res.status(400).json({
+        message: `Cannot update a trip with status "${existingTrip.status}"`,
+      });
+    }
+
+    // ── Build update object (only include fields that were sent) ──────────
+    const updateFields = {};
+
+    if (origin !== undefined) updateFields.origin = origin;
+    if (destination !== undefined) updateFields.destination = destination;
+    if (plannedDeparture !== undefined)
+      updateFields.plannedDeparture = plannedDeparture;
+    if (plannedArrival !== undefined)
+      updateFields.plannedArrival = plannedArrival;
+    if (plannedDistance !== undefined)
+      updateFields.plannedDistance = plannedDistance;
+    if (tripCost !== undefined) updateFields.tripCost = tripCost;
+
+    // ── Handle stops update ───────────────────────────────────────────────
+    if (stops !== undefined) {
+      if (!Array.isArray(stops)) {
+        return res.status(400).json({ message: "Stops must be an array" });
+      }
+      for (let i = 0; i < stops.length; i++) {
+        if (!stops[i].location || stops[i].stopOrder === undefined) {
+          return res.status(400).json({
+            message: `Each stop must have a location and stopOrder (issue at stop index ${i})`,
+          });
+        }
+      }
+      updateFields.stops = stops
+        .map((s) => ({ location: s.location, stopOrder: Number(s.stopOrder) }))
+        .sort((a, b) => a.stopOrder - b.stopOrder);
+    }
+
+    // ── Handle driver change ──────────────────────────────────────────────
+    if (
+      driverId !== undefined &&
+      String(driverId) !== String(existingTrip.driverId)
+    ) {
+      // Validate new driver
+      const newDriver = await Driver.findById(driverId);
+      if (!newDriver) {
+        return res.status(404).json({ message: "New driver not found" });
+      }
+      if (newDriver.availability !== "available") {
+        return res.status(400).json({ message: "New driver is not available" });
+      }
+
+      // Release old driver
+      await Driver.findByIdAndUpdate(existingTrip.driverId, {
+        availability: "available",
+      });
+
+      // Assign new driver
+      await Driver.findByIdAndUpdate(driverId, {
+        availability: "assigned",
+      });
+
+      updateFields.driverId = driverId;
+    }
+
+    // ── Handle vehicle change ─────────────────────────────────────────────
+    if (
+      vehicleId !== undefined &&
+      String(vehicleId) !== String(existingTrip.vehicleId)
+    ) {
+      // Validate new vehicle
+      const newVehicle = await Vechile.findById(vehicleId);
+      if (!newVehicle) {
+        return res.status(404).json({ message: "New vehicle not found" });
+      }
+      if (newVehicle.vstatus !== "Available") {
+        return res
+          .status(400)
+          .json({ message: "New vehicle is not available" });
+      }
+
+      // Release old vehicle
+      await Vechile.findByIdAndUpdate(existingTrip.vehicleId, {
+        vstatus: "Available",
+      });
+
+      // Assign new vehicle
+      await Vechile.findByIdAndUpdate(vehicleId, {
+        vstatus: "Assigned",
+      });
+
+      updateFields.vehicleId = vehicleId;
+    }
+
+    // ── Handle shipmentIds change ─────────────────────────────────────────
+    if (shipmentIds !== undefined) {
+      if (!Array.isArray(shipmentIds) || shipmentIds.length === 0) {
+        return res.status(400).json({
+          message: "At least one shipment is required",
+        });
+      }
+
+      // Validate all new shipments exist
+      const newShipments = await Shipment.find({ _id: { $in: shipmentIds } });
+      if (newShipments.length !== shipmentIds.length) {
+        return res.status(404).json({
+          message: "One or more shipments not found",
+        });
+      }
+
+      const oldShipmentIds = existingTrip.shipmentIds.map(String);
+      const newShipmentIdStrs = shipmentIds.map(String);
+
+      // Shipments that were removed from trip
+      const removedIds = oldShipmentIds.filter(
+        (id) => !newShipmentIdStrs.includes(id),
+      );
+
+      // Shipments that were added to trip
+      const addedIds = newShipmentIdStrs.filter(
+        (id) => !oldShipmentIds.includes(id),
+      );
+
+      // Determine the current driver and vehicle for shipment assignment
+      const finalDriverId = updateFields.driverId || existingTrip.driverId;
+      const finalVehicleId = updateFields.vehicleId || existingTrip.vehicleId;
+
+      // Get driver and vehicle _ids for shipment fields
+      const assignedDriver = await Driver.findById(finalDriverId);
+      const assignedVehicle = await Vechile.findById(finalVehicleId);
+
+      // Clear removed shipments (unlink from this trip)
+      if (removedIds.length > 0) {
+        await Shipment.updateMany(
+          { _id: { $in: removedIds } },
+          {
+            $set: {
+              status: "created",
+              tripNo: null,
+              driverName: null,
+              vehicleNo: null,
+            },
+          },
+        );
+      }
+
+      // Assign newly added shipments to this trip
+      if (addedIds.length > 0) {
+        await Shipment.updateMany(
+          { _id: { $in: addedIds } },
+          {
+            $set: {
+              status: "dispatched",
+              tripNo: existingTrip._id,
+              driverName: assignedDriver ? assignedDriver._id : null,
+              vehicleNo: assignedVehicle ? assignedVehicle._id : null,
+            },
+          },
+        );
+      }
+
+      updateFields.shipmentIds = shipmentIds;
+    }
+
+    // ── If driver or vehicle changed, update all remaining shipments ──────
+    if ((updateFields.driverId || updateFields.vehicleId) && !shipmentIds) {
+      const finalDriverId = updateFields.driverId || existingTrip.driverId;
+      const finalVehicleId = updateFields.vehicleId || existingTrip.vehicleId;
+
+      const assignedDriver = await Driver.findById(finalDriverId);
+      const assignedVehicle = await Vechile.findById(finalVehicleId);
+
+      await Shipment.updateMany(
+        { _id: { $in: existingTrip.shipmentIds } },
+        {
+          $set: {
+            driverName: assignedDriver ? assignedDriver._id : null,
+            vehicleNo: assignedVehicle ? assignedVehicle._id : null,
+          },
+        },
+      );
+    }
+
+    // ── Apply update ──────────────────────────────────────────────────────
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { new: true, runValidators: true },
+    );
+
+    res
+      .status(200)
+      .json({ message: "Trip updated successfully", trip: updatedTrip });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ── 1. Trip Status API — Dispatch ──────────────────────────────────────
+app.patch("/trips/:id/status", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  try {
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    let trip = null;
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      trip = await Trip.findById(id);
+    }
+    if (!trip) {
+      trip = await Trip.findOne({ tripId: id });
+    }
+
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // Workflow: Dispatch
+    if (status === "dispatched") {
+      // Verify trip is currently "planned"
+      if (trip.status !== "planned") {
+        return res.status(400).json({
+          message: `Cannot dispatch trip: current status is '${trip.status}'. Trip must be in 'planned' status to be dispatched.`,
+        });
+      }
+
+      // Verify trip has shipments assigned
+      if (!trip.shipmentIds || trip.shipmentIds.length === 0) {
+        return res.status(400).json({
+          message: "Trip has no shipments assigned",
+        });
+      }
+
+      // Verify its shipments are ready (at_warehouse)
+      // Verify all shipments are already dispatched from warehouse
+      const shipments = await Shipment.find({
+        _id: { $in: trip.shipmentIds },
+      });
+
+      const notReady = shipments.filter((s) => s.status !== "dispatched");
+
+      if (notReady.length > 0) {
+        return res.status(400).json({
+          message:
+            "All shipments must be 'dispatched' before dispatching the trip",
+          notReadyShipments: notReady.map((s) => ({
+            shipmentId: s.shipmentId,
+            status: s.status,
+          })),
+        });
+      }
+
+      // Change Trip: planned -> dispatched
+      trip.status = "dispatched";
+      await trip.save();
+
+      // Change all shipments belonging to the trip: at_warehouse -> dispatched
+      // await Shipment.updateMany(
+      //   { _id: { $in: trip.shipmentIds } },
+      //   { $set: { status: "dispatched" } },
+      // );
+
+      // Create shipment timeline/event for each shipment
+      // const updatedBy = req.user?.userId || req.user?._id || null;
+      // const historyRecords = trip.shipmentIds.map((shipmentId) => ({
+      //   shipmentId,
+      //   status: "dispatched",
+      //   notes: "Shipment dispatched from warehouse",
+      //   updatedBy,
+      // }));
+      // await ShipmentStatusHistory.insertMany(historyRecords);
+
+      return res.status(200).json({
+        message: `Trip ${trip.tripId} status updated to dispatched`,
+        trip,
+      });
+    }
+
+    // Status validation for other transitions
+    const validTransitions = {
+      planned: ["dispatched", "cancelled"],
+      dispatched: ["in_transit", "cancelled"],
+      in_transit: ["arrived", "cancelled"],
+      arrived: ["completed", "cancelled"],
+      completed: [],
+      cancelled: [],
+    };
+
+    if (!validTransitions[trip.status]?.includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status transition from '${trip.status}' to '${status}'`,
+      });
+    }
+
+    trip.status = status;
+    await trip.save();
+
+    // Release vehicle and driver when trip is completed or cancelled
+    if (status === "completed" || status === "cancelled") {
+      if (trip.vehicleId) {
+        await Vechile.findByIdAndUpdate(trip.vehicleId, {
+          vstatus: "Available",
+        });
+      }
+      if (trip.driverId) {
+        await Driver.findByIdAndUpdate(trip.driverId, {
+          availability: "available",
+        });
+      }
+    }
+
+    return res.status(200).json({
+      message: `Trip ${trip.tripId} status updated to ${status}`,
+      trip,
+    });
+  } catch (error) {
+    console.error("TRIP STATUS ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// ── 2. Trip Departure API ──────────────────────────────────────────────
+app.patch("/trips/:id/depart", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    let trip = null;
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      trip = await Trip.findById(id);
+    }
+    if (!trip) {
+      trip = await Trip.findOne({ tripId: id });
+    }
+
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // Verify current trip status is dispatched
+    if (trip.status !== "dispatched") {
+      return res.status(400).json({
+        message: `Cannot depart trip: current status is '${trip.status}'. Trip must be in 'dispatched' status.`,
+      });
+    }
+
+    // Set trip status and actualDeparture
+    const departureTime = new Date();
+    trip.status = "in_transit";
+    trip.actualDeparture = departureTime;
+    await trip.save();
+
+    // Update all shipments belonging to this trip: dispatched -> in_transit
+    if (trip.shipmentIds && trip.shipmentIds.length > 0) {
+      await Shipment.updateMany(
+        { _id: { $in: trip.shipmentIds } },
+        { $set: { status: "in_transit" } },
+      );
+
+      // Create timeline/event for each shipment
+      const updatedBy = req.user?.userId || req.user?._id || null;
+      const historyRecords = trip.shipmentIds.map((shipmentId) => ({
+        shipmentId,
+        status: "in_transit",
+        notes: "Trip departed, shipment in transit",
+        updatedBy,
+      }));
+      await ShipmentStatusHistory.insertMany(historyRecords);
+    }
+
+    return res.status(200).json({
+      message: `Trip ${trip.tripId} departed successfully`,
+      trip,
+      actualDeparture: departureTime,
+    });
+  } catch (error) {
+    console.error("TRIP DEPART ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// ── 3. Trip Arrival API ────────────────────────────────────────────────
+app.patch("/trips/:id/arrive", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    let trip = null;
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      trip = await Trip.findById(id);
+    }
+    if (!trip) {
+      trip = await Trip.findOne({ tripId: id });
+    }
+
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // Verify current trip status is in_transit
+    if (trip.status !== "in_transit") {
+      return res.status(400).json({
+        message: `Cannot mark trip as arrived: current status is '${trip.status}'. Trip must be in 'in_transit' status.`,
+      });
+    }
+
+    // Set trip status and actualArrival (do NOT automatically mark shipments as delivered)
+    const arrivalTime = new Date();
+    trip.status = "arrived";
+    trip.actualArrival = arrivalTime;
+    await trip.save();
+
+    return res.status(200).json({
+      message: `Trip ${trip.tripId} marked as arrived`,
+      trip,
+      actualArrival: arrivalTime,
+    });
+  } catch (error) {
+    console.error("TRIP ARRIVE ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+//delivery management
+app.patch(
+  "/delivery-fail-note/:shipmentId",
+  authMiddleware,
+  async (req, res) => {
+    const { reason, notes } = req.body;
+    const shipmentId = req.params.shipmentId;
+
+    try {
+      if (!reason || !notes) {
+        return res
+          .status(400)
+          .json({ message: "Please Fill All The Detailes" });
+      }
+
+      const isHexId = /^[0-9a-fA-F]{24}$/.test(String(shipmentId).trim());
+      let findShipment = isHexId ? await Shipment.findById(shipmentId) : null;
+      if (!findShipment) {
+        findShipment = await Shipment.findOne({
+          $or: [{ shipmentId: shipmentId }, { trackingId: shipmentId }],
+        });
+      }
+
+      if (!findShipment) {
+        return res.status(400).json({ message: "Shipment Not Found" });
+      }
+
+      let findDelivery = await Delivery.findOne({
+        $or: [
+          { shipmentId: findShipment._id },
+          ...(isHexId ? [{ shipmentId: shipmentId }] : []),
+        ],
+      });
+
+      if (!findDelivery) {
+        findDelivery = new Delivery({
+          shipmentId: findShipment._id,
+          status: "failed",
+          reason,
+          notes,
+        });
+      } else {
+        findDelivery.reason = reason;
+        findDelivery.notes = notes;
+        findDelivery.status = "failed";
+      }
+
+      await findDelivery.save();
+
+      res.status(200).json({
+        message: "Reason & Note are Submited",
+        delivery: findDelivery,
+      });
+    } catch (error) {
+      console.error("DELIVERY FAIL NOTE ERROR:", error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.patch(
+  "/delivery-reattempt-scheduled/:deliveryId",
+  authMiddleware,
+  async (req, res) => {
+    const deliveryId = req.params.deliveryId;
+    const { reattemptDate, driverName, driverId, notes } = req.body;
+
+    try {
+      const isHexId = /^[0-9a-fA-F]{24}$/.test(String(deliveryId).trim());
+      let findDeliveryId = isHexId ? await Delivery.findById(deliveryId) : null;
+      if (!findDeliveryId) {
+        findDeliveryId = await Delivery.findOne({ shipmentId: deliveryId });
+      }
+
+      if (!findDeliveryId) {
+        return res.status(400).json({ message: "Delivery Not Found" });
+      }
+
+      findDeliveryId.status = "reattempt_scheduled";
+      findDeliveryId.attemptNumber = (findDeliveryId.attemptNumber || 1) + 1;
+      if (reattemptDate) {
+        findDeliveryId.reattemptDate = reattemptDate;
+      }
+      if (notes) {
+        findDeliveryId.notes = notes;
+      }
+
+      await findDeliveryId.save();
+
+      if (findDeliveryId.shipmentId && (driverName || driverId)) {
+        const updateShipment = {};
+        if (driverName) updateShipment.driverName = driverName;
+        if (driverId) updateShipment.driverId = driverId;
+        await Shipment.findByIdAndUpdate(
+          findDeliveryId.shipmentId,
+          updateShipment,
+        );
+      }
+
+      res.status(200).json({
+        message: "Delivery Rescheduled Successfully",
+        delivery: findDeliveryId,
+      });
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get("/deliveries", authMiddleware, async (req, res) => {
+  try {
+    // 1. Auto-sync existing shipments that don't have a Delivery record yet
+    const existingShipments = await Shipment.find().select("_id status").lean();
+    if (existingShipments && existingShipments.length > 0) {
+      const existingDeliveries = await Delivery.find()
+        .select("shipmentId")
+        .lean();
+      const existingDelShipmentIds = new Set(
+        existingDeliveries.map((d) => String(d.shipmentId)),
+      );
+
+      const missingShipments = existingShipments.filter(
+        (s) => !existingDelShipmentIds.has(String(s._id)),
+      );
+      if (missingShipments.length > 0) {
+        const toInsert = missingShipments.map((s) => ({
+          shipmentId: s._id,
+          status:
+            s.status === "delivered"
+              ? "delivered"
+              : s.status === "out_for_delivery"
+                ? "out_for_delivery"
+                : s.status === "failed_delivery"
+                  ? "failed"
+                  : "pending",
+          reason: null,
+          notes: "",
+        }));
+        await Delivery.insertMany(toInsert, { ordered: false }).catch(() => {});
+      }
+    }
+
+    // 2. Query all deliveries and populate shipment, customer, driver and vehicle
+    const deliveries = await Delivery.find()
+      .populate({
+        path: "shipmentId",
+        populate: [
+          { path: "customerId" },
+          {
+            path: "driverName",
+            populate: {
+              path: "userId",
+              select: "name email phonenumber",
+            },
+          },
+          { path: "vehicleNo" },
+        ],
+      })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ message: "List of Delivries", deliveries });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/delivery/shipment/:shipmentId", authMiddleware, async (req, res) => {
+  const shipmentId = req.params.shipmentId;
+
+  try {
+    const isHexId = /^[0-9a-fA-F]{24}$/.test(String(shipmentId).trim());
+    let verifyShipment = isHexId ? await Shipment.findById(shipmentId) : null;
+    if (!verifyShipment) {
+      verifyShipment = await Shipment.findOne({
+        $or: [{ shipmentId: shipmentId }, { trackingId: shipmentId }],
+      });
+    }
+
+    if (!verifyShipment) {
+      return res.status(400).json({ message: "Shipment Not Found" });
+    }
+
+    const deliveryget = await Delivery.findOne({
+      $or: [
+        { shipmentId: verifyShipment._id },
+        ...(isHexId ? [{ shipmentId: shipmentId }] : []),
+      ],
+    });
+
+    if (!deliveryget) {
+      return res.status(400).json({ message: "Delivery Not Found" });
+    }
+
+    res.status(200).json({
+      message: "Delivery Shipment Info",
+      delivery: deliveryget,
+      deliveryget,
+      data: deliveryget,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.get(
+  "/deliveries/tracking/:trackingId",
+  authMiddleware,
+  async (req, res) => {
+    const trackingId = req.params.trackingId;
+
+    try {
+      const verifyTrackingId = await Shipment.findOne({
+        trackingId: trackingId,
+      });
+
+      if (!verifyTrackingId) {
+        return res.status(400).json({ message: "Tracking Id Not Found" });
+      }
+
+      const deliveryFind = await Delivery.findOne({
+        shipmentId: verifyTrackingId._id,
+      });
+
+      if (!deliveryFind) {
+        return res
+          .status(400)
+          .json({ message: "Delivery of Shipment Not Found" });
+      }
+
+      res.status(200).json({ message: "Delivery Found", deliveryFind });
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+// Handler for sending receiver delivery OTP
+const handleSendReceiverDeliveryOtp = async (req, res) => {
+  const shipmentId = req.params.shipmentId;
+
+  try {
+    let findShipment = null;
+    if (mongosse.Types.ObjectId.isValid(shipmentId)) {
+      findShipment = await Shipment.findById(shipmentId);
+    }
+    if (!findShipment) {
+      findShipment = await Shipment.findOne({
+        $or: [{ trackingId: shipmentId }, { shipmentId: shipmentId }],
+      });
+    }
+
+    if (!findShipment) {
+      return res.status(404).json({ message: "Shipment Not Found" });
+    }
+
+    let receiverEmail = (findShipment.receiverEmail || "").trim();
+    if (!receiverEmail && findShipment.customerId) {
+      const cust = await Customer.findById(findShipment.customerId);
+      if (cust && cust.email) {
+        receiverEmail = cust.email.trim();
+      }
+    }
+
+    if (!receiverEmail) {
+      return res.status(400).json({
+        message: "Receiver email address is missing for this shipment.",
+      });
+    }
+
+    const receiverName = findShipment.receiverName || "Valued Customer";
+    const trackingId = findShipment.trackingId || findShipment.shipmentId;
+    const otp = crypto.randomInt(1000, 10000).toString();
+
+    // Store OTP with 10-minute expiry
+    findShipment.deliveryOtp = otp;
+    findShipment.deliveryOtpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    findShipment.deliveryOtpVerified = false;
+    await findShipment.save();
+
+    await Delivery.updateMany(
+      { shipmentId: findShipment._id },
+      {
+        $set: {
+          deliveryOtp: otp,
+          deliveryOtpExpiresAt: findShipment.deliveryOtpExpiresAt,
+          deliveryOtpVerified: false,
+        },
+      },
+    );
+
+    await sendDeliveryOtpEmail(receiverEmail, otp, receiverName, trackingId);
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully",
+      receiverEmail,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// Handler for verifying receiver delivery OTP
+const handleVerifyReceiverDeliveryOtp = async (req, res) => {
+  const shipmentId = req.params.shipmentId;
+  const enteredOtp =
+    req.body && req.body.otp ? String(req.body.otp).trim() : "";
+
+  try {
+    let findShipment = null;
+    if (mongosse.Types.ObjectId.isValid(shipmentId)) {
+      findShipment = await Shipment.findById(shipmentId);
+    }
+    if (!findShipment) {
+      findShipment = await Shipment.findOne({
+        $or: [{ trackingId: shipmentId }, { shipmentId: shipmentId }],
+      });
+    }
+
+    if (!findShipment) {
+      return res.status(404).json({ message: "Shipment Not Found" });
+    }
+
+    if (!findShipment.deliveryOtp) {
+      return res.status(400).json({
+        message:
+          "No OTP was requested for this shipment. Please generate an OTP first.",
+      });
+    }
+
+    if (
+      findShipment.deliveryOtpExpiresAt &&
+      new Date() > new Date(findShipment.deliveryOtpExpiresAt)
+    ) {
+      return res.status(400).json({
+        message: "Delivery OTP has expired. Please request a new OTP.",
+      });
+    }
+
+    if (findShipment.deliveryOtp !== enteredOtp) {
+      return res.status(400).json({
+        message:
+          "Invalid OTP code. Please enter the OTP sent to the receiver's email.",
+      });
+    }
+
+    findShipment.deliveryOtpVerified = true;
+    await findShipment.save();
+
+    await Delivery.updateMany(
+      { shipmentId: findShipment._id },
+      { $set: { deliveryOtpVerified: true } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// Dual-purpose endpoint: if req.body.otp is supplied, verify it; otherwise, send OTP to receiver
+app.post(
+  "/receiver/otpverify/:shipmentId",
+  authMiddleware,
+  async (req, res) => {
+    if (req.body && req.body.otp) {
+      return handleVerifyReceiverDeliveryOtp(req, res);
+    }
+    return handleSendReceiverDeliveryOtp(req, res);
+  },
+);
+
+// Dedicated route aliases
+app.post(
+  "/receiver/send-delivery-otp/:shipmentId",
+  authMiddleware,
+  handleSendReceiverDeliveryOtp,
+);
+
+app.post(
+  "/receiver/verify-delivery-otp/:shipmentId",
+  authMiddleware,
+  handleVerifyReceiverDeliveryOtp,
+);
+
+app.post("/pod-submit/:shipmentId", authMiddleware, async (req, res) => {
+  const shipmentId = req.params.shipmentId;
+
+  const {
+    name,
+    recipientName,
+    relationship,
+    recipientRelation,
+    phone,
+    recipientPhone,
+    deliveryAddress,
+    location,
+    photo,
+    photoUrl,
+    signatureData,
+    signatureUrl,
+    notes,
+    podDocumentUrl,
+    otpVerified,
+  } = req.body;
+
+  try {
+    let findShipment = null;
+    if (mongosse.Types.ObjectId.isValid(shipmentId)) {
+      findShipment = await Shipment.findById(shipmentId);
+    }
+    if (!findShipment) {
+      findShipment = await Shipment.findOne({
+        $or: [{ trackingId: shipmentId }, { shipmentId: shipmentId }],
+      });
+    }
+
+    if (!findShipment) {
+      return res.status(404).json({ message: "Shipment Not Found" });
+    }
+
+    const finalReceiverName = String(
+      name || recipientName || findShipment.receiverName || "Customer",
+    ).trim();
+
+    if (!finalReceiverName) {
+      return res.status(400).json({ message: "Receiver name is required" });
+    }
+
+    const finalRelationship = String(
+      relationship || recipientRelation || "Self (Customer)",
+    ).trim();
+
+    const finalPhone = String(
+      phone || recipientPhone || findShipment.receiverPhoneNumber || "",
+    ).trim();
+
+    const finalAddress = String(
+      deliveryAddress ||
+        location ||
+        findShipment.receiverAddress ||
+        "Customer Address",
+    ).trim();
+
+    const finalNotes = String(notes || "Delivered safely.").trim();
+
+    // Determine submittedBy user ObjectId
+    const tokenUserId = req.user?.userId || req.user?._id;
+    let submittedBy = null;
+    if (tokenUserId && mongosse.Types.ObjectId.isValid(tokenUserId)) {
+      submittedBy = tokenUserId;
+    } else {
+      const anyUser = await User.findOne();
+      submittedBy = anyUser ? anyUser._id : null;
+    }
+
+    const podData = {
+      shipmentId: findShipment._id,
+      receiver: {
+        name: finalReceiverName,
+        relationship: finalRelationship,
+        phone: finalPhone,
+      },
+      deliveryAddress: finalAddress,
+      deliveryDate: new Date(),
+      otpVerified: otpVerified !== undefined ? Boolean(otpVerified) : true,
+      signatureUrl: String(signatureData || signatureUrl || ""),
+      photoUrl: String(photo || photoUrl || ""),
+      notes: finalNotes,
+      podDocumentUrl: String(podDocumentUrl || ""),
+      submittedBy,
+    };
+
+    // 1. Save or update POD
+    const savedPod = await POD.findOneAndUpdate(
+      { shipmentId: findShipment._id },
+      { $set: podData },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+
+    // 2. Update Shipment status to delivered
+    findShipment.status = "delivered";
+    await findShipment.save();
+
+    await ShipmentStatusHistory.create({
+      shipmentId: findShipment._id,
+      status: "delivered",
+    }).catch(() => {});
+
+    // 3. Update Delivery collection
+    await Delivery.findOneAndUpdate(
+      { shipmentId: findShipment._id },
+      {
+        $set: {
+          status: "delivered",
+          deliveredAt: new Date(),
+          notes: finalNotes,
+        },
+        $unset: {
+          reattemptDate: "",
+          reason: "",
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Proof of Delivery submitted successfully",
+      pod: savedPod,
+      shipment: findShipment,
+    });
+  } catch (error) {
+    console.error("Error submitting POD:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/pod/:shipmentId", authMiddleware, async (req, res) => {
+  const shipmentId = req.params.shipmentId;
+  try {
+    let findShipment = null;
+    if (mongosse.Types.ObjectId.isValid(shipmentId)) {
+      findShipment = await Shipment.findById(shipmentId);
+    }
+    if (!findShipment) {
+      findShipment = await Shipment.findOne({
+        $or: [{ trackingId: shipmentId }, { shipmentId: shipmentId }],
+      });
+    }
+
+    let pod = null;
+    if (findShipment) {
+      pod = await POD.findOne({ shipmentId: findShipment._id }).populate(
+        "submittedBy",
+        "name email",
+      );
+    }
+
+    if (!pod && mongosse.Types.ObjectId.isValid(shipmentId)) {
+      pod = await POD.findOne({ shipmentId }).populate(
+        "submittedBy",
+        "name email",
+      );
+    }
+
+    if (!pod) {
+      return res
+        .status(404)
+        .json({ message: "POD not found for this shipment" });
+    }
+
+    return res.status(200).json({ success: true, pod, shipment: findShipment });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// Alias for GET /pod-submit/:shipmentId
+app.get("/pod-submit/:shipmentId", authMiddleware, async (req, res) => {
+  const shipmentId = req.params.shipmentId;
+  try {
+    let findShipment = null;
+    if (mongosse.Types.ObjectId.isValid(shipmentId)) {
+      findShipment = await Shipment.findById(shipmentId);
+    }
+    if (!findShipment) {
+      findShipment = await Shipment.findOne({
+        $or: [{ trackingId: shipmentId }, { shipmentId: shipmentId }],
+      });
+    }
+
+    let pod = null;
+    if (findShipment) {
+      pod = await POD.findOne({ shipmentId: findShipment._id }).populate(
+        "submittedBy",
+        "name email",
+      );
+    }
+
+    if (!pod && mongosse.Types.ObjectId.isValid(shipmentId)) {
+      pod = await POD.findOne({ shipmentId }).populate(
+        "submittedBy",
+        "name email",
+      );
+    }
+
+    if (!pod) {
+      return res
+        .status(404)
+        .json({ message: "POD not found for this shipment" });
+    }
+
+    return res.status(200).json({ success: true, pod, shipment: findShipment });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// GET all PODs
+app.get("/pods", authMiddleware, async (req, res) => {
+  try {
+    const pods = await POD.find()
+      .populate({
+        path: "shipmentId",
+        populate: [
+          { path: "customerId", select: "customerId name email phonenumber" },
+          {
+            path: "driverName",
+            populate: { path: "userId", select: "name email" },
+          },
+          { path: "vehicleNo", select: "vregistrationnumber vtype" },
+        ],
+      })
+      .populate("submittedBy", "name email role")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ success: true, pods });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/driver-reminder/:driverId", authMiddleware, async (req, res) => {
+  const driverId = req.params.driverId;
+
+  try {
+    const findDriverid = await Driver.findOne({ _id: driverId });
+
+    if (!findDriverid) {
+      return res.status(400).json({ message: "Driver Not Found" });
+    }
+
+    const driverGet = await Driver.findById(driverId).populate("userId");
+
+    const driverName = driverGet.userId.name;
+
+    const driverLicence = driverGet.license.licensenumber;
+
+    const driverExpiredate = driverGet.license.expiredate;
+
+    const driverEmail = driverGet.userId.email;
+
+    const drvId = driverGet.driverId;
+
+    const senddMail = await sendDrivertoReminder(
+      driverEmail,
+      driverName,
+      driverLicence,
+      driverExpiredate,
+      drvId,
+    );
+
+    res.status(200).json({ message: "Email Send Successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// ── Helper: Format relative time for dashboard alerts ────────────────────────
+function formatDashboardRelativeTime(date) {
+  if (!date) return "Recently";
+  const diffMs = Date.now() - new Date(date).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "Just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hr ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+}
+
+// ── GET /dashboard/overview ──────────────────────────────────────────────────
+app.get("/dashboard/overview", authMiddleware, async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999,
+    );
+
+    // 1. Shipments KPI
+    const totalShipments = await Shipment.countDocuments();
+    const pendingShipments = await Shipment.countDocuments({
+      status: {
+        $in: ["created", "pickup_scheduled", "picked_up", "at_warehouse"],
+      },
+    });
+    const inTransitShipments = await Shipment.countDocuments({
+      status: { $in: ["dispatched", "in_transit", "out_for_delivery"] },
+    });
+    const deliveredShipments = await Shipment.countDocuments({
+      status: "delivered",
+    });
+    const failedShipments = await Shipment.countDocuments({
+      status: "failed_delivery",
+    });
+
+    // 2. Deliveries KPI
+    const deliveriesTodayCount = await Delivery.countDocuments({
+      $or: [
+        { createdAt: { $gte: startOfDay } },
+        { deliveredAt: { $gte: startOfDay } },
+        { reattemptDate: { $gte: startOfDay, $lte: endOfDay } },
+      ],
+    });
+    const completedToday = await Delivery.countDocuments({
+      status: "delivered",
+      deliveredAt: { $gte: startOfDay },
+    });
+    const pendingDeliveries = await Delivery.countDocuments({
+      status: { $in: ["pending", "out_for_delivery", "reattempt_scheduled"] },
+    });
+    const totalDeliveries = await Delivery.countDocuments();
+    const allCompletedDeliveries = await Delivery.countDocuments({
+      status: "delivered",
+    });
+
+    // 3. Fleet KPI
+    const totalFleet = await Vechile.countDocuments();
+    const availableFleet = await Vechile.countDocuments({
+      vstatus: { $regex: /^available$/i },
+    });
+    const assignedFleet = await Vechile.countDocuments({
+      vstatus: {
+        $in: ["Assigned", "assigned", "In Maintenance", "in maintenance"],
+      },
+    });
+
+    // 4. Drivers KPI
+    const totalDrivers = await Driver.countDocuments();
+    const availableDrivers = await Driver.countDocuments({
+      availability: "available",
+    });
+    const assignedDrivers = await Driver.countDocuments({
+      availability: { $in: ["assigned", "unavailable"] },
+    });
+    const driverWorkload =
+      totalDrivers > 0 ? Math.round((assignedDrivers / totalDrivers) * 100) : 0;
+
+    // 5. Warehouse KPI (Currently in warehouse / active in transit only, excluding historical delivered)
+    // Currently inbound: packages picked up en-route to warehouse or currently at warehouse
+    const inboundCount = await Shipment.countDocuments({
+      status: { $in: ["picked_up", "at_warehouse"] },
+    });
+
+    // Currently outbound: packages dispatched from warehouse en-route to destination/delivery
+    const outboundCount = await Shipment.countDocuments({
+      status: { $in: ["dispatched", "out_for_delivery"] },
+    });
+
+    // Storage: Active packages currently stored in warehouse bins
+    const activeStorageCount = await WarehouseStorage.countDocuments({
+      warstorStatus: "store",
+    });
+    const totalLocations = await WarehouseLocation.countDocuments();
+    const fullLocations = await WarehouseLocation.countDocuments({
+      warlocStatus: "full",
+    });
+    const currentlyOccupied = Math.max(activeStorageCount, fullLocations);
+    const storageUsedPct =
+      totalLocations > 0
+        ? Math.min(100, Math.round((currentlyOccupied / totalLocations) * 100))
+        : 0;
+
+    // 6. Trips KPI
+    const activeTrips = await Trip.countDocuments({
+      status: { $in: ["dispatched", "in_transit"] },
+    });
+    const completedTrips = await Trip.countDocuments({ status: "completed" });
+    const tripsTodayCount = await Trip.countDocuments({
+      $or: [
+        { createdAt: { $gte: startOfDay } },
+        { plannedDeparture: { $gte: startOfDay, $lte: endOfDay } },
+        { actualDeparture: { $gte: startOfDay } },
+      ],
+    });
+    const totalTrips = await Trip.countDocuments();
+
+    // 7. Shipment Volume (Mon - Sun)
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const volumeMap = {
+      Mon: 0,
+      Tue: 0,
+      Wed: 0,
+      Thu: 0,
+      Fri: 0,
+      Sat: 0,
+      Sun: 0,
+    };
+
+    const d = new Date();
+    const currentDay = d.getDay();
+    const diff = d.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
+    const startOfWeek = new Date(d.setDate(diff));
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const weekShipments = await Shipment.find({
+      createdAt: { $gte: startOfWeek },
+    })
+      .select("createdAt")
+      .lean();
+
+    if (weekShipments.length > 0) {
+      for (const s of weekShipments) {
+        const dt = new Date(s.createdAt);
+        const name = dayNames[dt.getDay()];
+        if (volumeMap[name] !== undefined) volumeMap[name]++;
+      }
+    } else {
+      const allRecentShipments = await Shipment.find()
+        .select("createdAt")
+        .lean();
+      for (const s of allRecentShipments) {
+        const dt = new Date(s.createdAt);
+        const name = dayNames[dt.getDay()];
+        if (volumeMap[name] !== undefined) volumeMap[name]++;
+      }
+    }
+
+    const shipmentVolume = dayOrder.map((day) => ({
+      day,
+      shipments: volumeMap[day],
+    }));
+
+    // 8. Delivery Performance
+    const failedCount =
+      (await Shipment.countDocuments({ status: "failed_delivery" })) +
+      (await Delivery.countDocuments({ status: "failed" }));
+
+    const deliveredList = await Shipment.find({ status: "delivered" })
+      .select("expectedDeliveryDate updatedAt")
+      .lean();
+
+    let onTimeCount = 0;
+    let delayedCount = 0;
+
+    for (const shp of deliveredList) {
+      if (
+        shp.expectedDeliveryDate &&
+        new Date(shp.updatedAt) > new Date(shp.expectedDeliveryDate)
+      ) {
+        delayedCount++;
+      } else {
+        onTimeCount++;
+      }
+    }
+
+    const activeDelayed = await Shipment.countDocuments({
+      status: {
+        $in: [
+          "created",
+          "pickup_scheduled",
+          "picked_up",
+          "at_warehouse",
+          "dispatched",
+          "in_transit",
+          "out_for_delivery",
+        ],
+      },
+      expectedDeliveryDate: { $lt: now },
+    });
+    delayedCount += activeDelayed;
+
+    const deliveryPerformance = [
+      { label: "On time", value: onTimeCount },
+      { label: "Delayed", value: delayedCount },
+      { label: "Failed", value: failedCount },
+    ];
+
+    // 9. Alerts
+    const alerts = [];
+
+    // Failed deliveries
+    const failedDeliveries = await Delivery.find({
+      status: { $in: ["failed", "failed_delivery"] },
+    })
+      .populate("shipmentId")
+      .sort({ updatedAt: -1 })
+      .limit(3)
+      .lean();
+
+    for (const d of failedDeliveries) {
+      const tracking =
+        d.shipmentId?.trackingId || d.shipmentId?.shipmentId || "Unknown";
+      alerts.push({
+        id: `fail_${d._id}`,
+        type: "failedDelivery",
+        message: `Shipment #${tracking} failed delivery — ${d.reason || "delivery issue recorded"}`,
+        time: formatDashboardRelativeTime(d.updatedAt || d.createdAt),
+        timestamp: new Date(d.updatedAt || d.createdAt).getTime(),
+      });
+    }
+
+    if (alerts.length === 0) {
+      const failedShipmentsList = await Shipment.find({
+        status: "failed_delivery",
+      })
+        .sort({ updatedAt: -1 })
+        .limit(3)
+        .lean();
+      for (const s of failedShipmentsList) {
+        alerts.push({
+          id: `fail_shp_${s._id}`,
+          type: "failedDelivery",
+          message: `Shipment #${s.trackingId || s.shipmentId} delivery failed`,
+          time: formatDashboardRelativeTime(s.updatedAt || s.createdAt),
+          timestamp: new Date(s.updatedAt || s.createdAt).getTime(),
+        });
+      }
+    }
+
+    // Driver license expiry
+    const drivers = await Driver.find().populate("userId").lean();
+    for (const drv of drivers) {
+      if (drv.license?.expiredate) {
+        const expDate = new Date(drv.license.expiredate);
+        const diffDays = Math.round((expDate - now) / (1000 * 60 * 60 * 24));
+        const drvName = drv.userId?.name || drv.name || drv.driverId;
+        if (diffDays <= 30 && diffDays >= 0) {
+          alerts.push({
+            id: `drv_exp_${drv._id}`,
+            type: "documentExpiry",
+            message: `Driver license for ${drvName} expires in ${diffDays} day${diffDays === 1 ? "" : "s"}`,
+            time: `${diffDays}d left`,
+            timestamp: expDate.getTime(),
+          });
+        } else if (diffDays < 0 && diffDays >= -30) {
+          alerts.push({
+            id: `drv_exp_past_${drv._id}`,
+            type: "documentExpiry",
+            message: `Driver license for ${drvName} expired ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`,
+            time: "Urgent",
+            timestamp: expDate.getTime(),
+          });
+        }
+      }
+    }
+
+    // Vehicle documents expiry
+    const vehicles = await Vechile.find().lean();
+    for (const veh of vehicles) {
+      const docs = veh.documents || {};
+      const docKeys = ["insurance", "rc", "puc", "fitness", "permit"];
+      for (const key of docKeys) {
+        const doc = docs[key];
+        if (doc?.expireDate) {
+          const expDate = new Date(doc.expireDate);
+          const diffDays = Math.round((expDate - now) / (1000 * 60 * 60 * 24));
+          const docLabel = doc.documentName || key.toUpperCase();
+          if (diffDays <= 30 && diffDays >= 0) {
+            alerts.push({
+              id: `veh_${key}_${veh._id}`,
+              type: "documentExpiry",
+              message: `${docLabel} for vehicle ${veh.vregistrationnumber} expires in ${diffDays} day${diffDays === 1 ? "" : "s"}`,
+              time: `${diffDays}d left`,
+              timestamp: expDate.getTime(),
+            });
+          } else if (diffDays < 0 && diffDays >= -30) {
+            alerts.push({
+              id: `veh_${key}_past_${veh._id}`,
+              type: "documentExpiry",
+              message: `${docLabel} for vehicle ${veh.vregistrationnumber} expired ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`,
+              time: "Urgent",
+              timestamp: expDate.getTime(),
+            });
+          }
+        }
+      }
+    }
+
+    // Trips
+    const recentTrips = await Trip.find()
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(3)
+      .lean();
+    for (const t of recentTrips) {
+      const statusText =
+        t.status === "dispatched"
+          ? "dispatched from"
+          : t.status === "in_transit"
+            ? "in transit to"
+            : t.status === "completed"
+              ? "completed at"
+              : "scheduled for";
+      alerts.push({
+        id: `trip_${t._id}`,
+        type: "dispatch",
+        message: `Trip #${t.tripId} ${statusText} ${t.destination || t.origin}`,
+        time: formatDashboardRelativeTime(
+          t.actualDeparture || t.updatedAt || t.createdAt,
+        ),
+        timestamp: new Date(
+          t.actualDeparture || t.updatedAt || t.createdAt,
+        ).getTime(),
+      });
+    }
+
+    alerts.sort((a, b) => b.timestamp - a.timestamp);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        shipments: {
+          total: totalShipments,
+          pending: pendingShipments,
+          inTransit: inTransitShipments,
+          delivered: deliveredShipments,
+          failed: failedShipments,
+        },
+        deliveries: {
+          today:
+            deliveriesTodayCount > 0
+              ? deliveriesTodayCount
+              : totalDeliveries > 0
+                ? totalDeliveries
+                : 0,
+          completed:
+            completedToday > 0 ? completedToday : allCompletedDeliveries,
+          pending: pendingDeliveries,
+        },
+        fleet: {
+          total: totalFleet,
+          available: availableFleet,
+          assigned: assignedFleet,
+        },
+        drivers: {
+          available: availableDrivers,
+          assigned: assignedDrivers,
+          workload: driverWorkload,
+        },
+        warehouse: {
+          inbound: inboundCount,
+          outbound: outboundCount,
+          storageUsedPct,
+        },
+        trips: {
+          today: tripsTodayCount > 0 ? tripsTodayCount : totalTrips,
+          active: activeTrips,
+          completed: completedTrips,
+        },
+        shipmentVolume,
+        deliveryPerformance,
+        alerts: alerts.slice(0, 6),
+        lastUpdated: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard overview error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get("/report", authMiddleware, async (req, res) => {
+  try {
+    const getShipmentDetail = await Shipment.find()
+      .populate("customerId")
+      .populate({ path: "driverName", populate: { path: "userId" } })
+      .populate("vehicleNo")
+      .populate("tripNo");
+
+    const getDriverDetail = await Driver.find().populate("userId");
+
+    const getvehicleDetail = await Vechile.find();
+
+    const getVehicleMaintenanceDetail = await VehicleMaintenance.find();
+
+    const getVehicleFuelDetail = await VehicleFuel.find();
+
+    const getWarehouseDetail = await Warehouse.find();
+
+    const getWarehouseStorageDetail = await WarehouseStorage.find()
+      .populate("warehouseId")
+      .populate("shipmentId")
+      .populate("locationId");
+
+    const getWarehouseLocationDetail = await WarehouseLocation.find();
+
+    const getWarehouseTxnDetail = await WarehouseTransaction.find()
+      .populate("warehouseId")
+      .populate("shipmentId")
+      .populate("locationId")
+      .populate("wartansactonProcessBy");
+
+    const getTripDetail = await Trip.find()
+      .populate({ path: "driverId", populate: { path: "userId" } })
+      .populate("vehicleId")
+      .populate("shipmentIds");
+
+    const getDeliveryDetail = await Delivery.find().populate({
+      path: "shipmentId",
+      populate: [
+        { path: "customerId" },
+        { path: "driverName", populate: { path: "userId" } },
+        { path: "vehicleNo" },
+      ],
+    });
+
+    const getCustomerDetail = await Customer.find();
+
+    // ── Helper Status Mappers ──────────────────────────────────────────────
+    const mapShipmentStatus = (s) => {
+      if (!s) return "Created";
+      const map = {
+        created: "Created",
+        pickup_scheduled: "Pickup Scheduled",
+        picked_up: "Picked Up",
+        at_warehouse: "At Warehouse",
+        dispatched: "Dispatched",
+        in_transit: "In Transit",
+        out_for_delivery: "Out for Delivery",
+        delivered: "Delivered",
+        failed_delivery: "Failed Delivery",
+      };
+      return map[s.toLowerCase()] || s.charAt(0).toUpperCase() + s.slice(1);
+    };
+
+    const mapDeliveryStatus = (s) => {
+      if (!s) return "Pending";
+      const map = {
+        pending: "Pending",
+        out_for_delivery: "Out for Delivery",
+        delivered: "Delivered",
+        failed: "Failed",
+        reattempt_scheduled: "Re-attempt Scheduled",
+      };
+      return map[s.toLowerCase()] || s.charAt(0).toUpperCase() + s.slice(1);
+    };
+
+    const mapTripStatus = (s) => {
+      if (!s) return "Planned";
+      const map = {
+        planned: "Planned",
+        dispatched: "Dispatched",
+        in_transit: "In Transit",
+        arrived: "Arrived",
+        completed: "Completed",
+        cancelled: "Cancelled",
+      };
+      return map[s.toLowerCase()] || s.charAt(0).toUpperCase() + s.slice(1);
+    };
+
+    // ── Dropdown Options ───────────────────────────────────────────────────
+    const customerOptions = [
+      "All",
+      ...new Set([
+        ...getCustomerDetail.map((c) => c.name).filter(Boolean),
+        ...getShipmentDetail.map((s) => s.customerId?.name || s.senderName).filter(Boolean),
+      ]),
+    ];
+
+    const driverOptions = [
+      "All",
+      ...new Set([
+        ...getDriverDetail.map((d) => d.userId?.name).filter(Boolean),
+        ...getShipmentDetail.map((s) => s.driverName?.userId?.name).filter(Boolean),
+      ]),
+    ];
+
+    const vehicleOptions = [
+      "All",
+      ...new Set([
+        ...getvehicleDetail.map((v) => v.vregistrationnumber).filter(Boolean),
+        ...getShipmentDetail.map((s) => s.vehicleNo?.vregistrationnumber).filter(Boolean),
+      ]),
+    ];
+
+    const warehouseOptions = [
+      "All",
+      ...new Set([
+        ...getWarehouseDetail.map((w) => w.warName).filter(Boolean),
+        ...getWarehouseTxnDetail.map((tx) => tx.warehouseId?.warName).filter(Boolean),
+      ]),
+    ];
+
+    const options = {
+      customers: customerOptions,
+      drivers: driverOptions,
+      vehicles: vehicleOptions,
+      warehouses: warehouseOptions,
+    };
+
+    // ── 1. Shipment Report Data ───────────────────────────────────────────
+    const shipmentData = getShipmentDetail.map((s) => {
+      const assignedTrip = s.tripNo || getTripDetail.find(
+        (t) => t.shipmentIds && t.shipmentIds.some((id) => id.toString() === s._id.toString())
+      );
+      const originStr = s.senderCity
+        ? s.senderState
+          ? `${s.senderCity}, ${s.senderState}`
+          : s.senderCity
+        : s.senderAddress || "N/A";
+      const destStr = s.receiverCity
+        ? s.receiverState
+          ? `${s.receiverCity}, ${s.receiverState}`
+          : s.receiverCity
+        : s.receiverAddress || "N/A";
+      const driverName =
+        s.driverName?.userId?.name ||
+        (typeof s.driverName === "string" ? s.driverName : "") ||
+        assignedTrip?.driverId?.userId?.name ||
+        "Unassigned";
+      const driverPhone =
+        s.driverName?.phonenumber ||
+        s.driverName?.userId?.phonenumber ||
+        assignedTrip?.driverId?.phonenumber ||
+        "";
+      const vehicleNum =
+        s.vehicleNo?.vregistrationnumber ||
+        assignedTrip?.vehicleId?.vregistrationnumber ||
+        s.vehicleNo?.vmodel ||
+        "Unassigned";
+      const vehicleDetails = s.vehicleNo?.vmodel
+        ? `${s.vehicleNo.vmodel} (${s.vehicleNo.vtype || "Truck"})`
+        : assignedTrip?.vehicleId?.vmodel
+          ? `${assignedTrip.vehicleId.vmodel} (${assignedTrip.vehicleId.vtype || "Truck"})`
+          : "";
+
+      return {
+        id: s.shipmentId || String(s._id),
+        tracking: s.trackingId || "N/A",
+        customer: s.customerId?.name || s.senderName || "Unknown",
+        customerContact:
+          s.customerId?.phonenumber ||
+          s.senderPhoneNumber ||
+          s.customerId?.email ||
+          s.senderEmail ||
+          "",
+        status: mapShipmentStatus(s.status),
+        driver: driverName,
+        driverPhone,
+        vehicle: vehicleNum,
+        vehicleDetails,
+        origin: originStr,
+        destination: destStr,
+        routeDetails: `${s.packageCount || 1} pkg(s) • ${s.totalWeight || 0} kg • ${s.priority || "Standard"}`,
+        date: s.pickupDate
+          ? new Date(s.pickupDate).toISOString().split("T")[0]
+          : s.createdAt
+            ? new Date(s.createdAt).toISOString().split("T")[0]
+            : "N/A",
+        expectedDate: s.expectedDeliveryDate
+          ? new Date(s.expectedDeliveryDate).toISOString().split("T")[0]
+          : "",
+        totalWeight: s.totalWeight || 0,
+        packageCount: s.packageCount || 0,
+      };
+    });
+
+    // ── 2. Delivery Report Data ───────────────────────────────────────────
+    const deliveryData = getDeliveryDetail.map((d) => {
+      const s = d.shipmentId || {};
+      const fullAddress = [
+        s.receiverAddress,
+        s.receiverCity,
+        s.receiverState,
+        s.receiverpincode ? `- ${s.receiverpincode}` : null,
+      ]
+        .filter(Boolean)
+        .join(", ") || "N/A";
+
+      const driverName =
+        s.driverName?.userId?.name ||
+        (typeof s.driverName === "string" ? s.driverName : "") ||
+        "Unassigned";
+      const driverPhone =
+        s.driverName?.phonenumber || s.driverName?.userId?.phonenumber || "";
+
+      return {
+        id: d._id
+          ? "DEL-" + d._id.toString().slice(-6).toUpperCase()
+          : s.shipmentId || "DEL-N/A",
+        tracking: s.trackingId || "N/A",
+        customer: s.customerId?.name || s.senderName || "N/A",
+        recipient: s.receiverName || "",
+        address: fullAddress,
+        driver: driverName,
+        driverPhone,
+        attempts: d.attemptNumber || 1,
+        status: mapDeliveryStatus(d.status),
+        deliveryDate: d.deliveredAt
+          ? new Date(d.deliveredAt).toISOString().split("T")[0]
+          : d.reattemptDate
+            ? new Date(d.reattemptDate).toISOString().split("T")[0]
+            : s.expectedDeliveryDate
+              ? new Date(s.expectedDeliveryDate).toISOString().split("T")[0]
+              : d.updatedAt
+                ? new Date(d.updatedAt).toISOString().split("T")[0]
+                : "Pending",
+        actualTime: d.deliveredAt
+          ? new Date(d.deliveredAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : d.status === "pending"
+            ? "Pending Delivery"
+            : "",
+        date: d.deliveredAt
+          ? new Date(d.deliveredAt).toISOString().split("T")[0]
+          : d.reattemptDate
+            ? new Date(d.reattemptDate).toISOString().split("T")[0]
+            : d.updatedAt
+              ? new Date(d.updatedAt).toISOString().split("T")[0]
+              : "Pending",
+      };
+    });
+
+    // ── 3. Customer Report Data ───────────────────────────────────────────
+    const customerData = getCustomerDetail.map((c) => {
+      const custShipments = getShipmentDetail.filter(
+        (s) =>
+          s.customerId?._id?.toString() === c._id?.toString() ||
+          s.customerId?.toString() === c._id?.toString() ||
+          s.senderName === c.name
+      );
+      const totalBookings = custShipments.length;
+      const inTransit = custShipments.filter((s) =>
+        ["in_transit", "dispatched", "out_for_delivery"].includes(
+          s.status?.toLowerCase()
+        )
+      ).length;
+      const delivered = custShipments.filter(
+        (s) => s.status?.toLowerCase() === "delivered"
+      ).length;
+      const failed = custShipments.filter(
+        (s) => s.status?.toLowerCase() === "failed_delivery"
+      ).length;
+      const totalWeight = custShipments.reduce(
+        (sum, s) => sum + (s.totalWeight || 0),
+        0
+      );
+      const totalPkgs = custShipments.reduce(
+        (sum, s) => sum + (s.packageCount || 0),
+        0
+      );
+      let lastDate = "N/A";
+      if (custShipments.length > 0) {
+        const dates = custShipments
+          .map((s) => new Date(s.pickupDate || s.createdAt))
+          .sort((a, b) => b - a);
+        lastDate = dates[0].toISOString().split("T")[0];
+      }
+      return {
+        customer: c.name,
+        customerId: c.customerId || "",
+        contact: [c.phonenumber, c.email].filter(Boolean).join(" • "),
+        totalBookings,
+        inTransit,
+        delivered,
+        failed,
+        packages: totalPkgs,
+        weight: `${totalWeight.toFixed(1)} kg`,
+        lastDate,
+        date: lastDate,
+      };
+    });
+
+    // ── 4. Driver Report Data ─────────────────────────────────────────────
+    const driverData = getDriverDetail.map((d) => {
+      const driverName = d.userId?.name || "Driver " + d.driverId;
+      const driverShipments = getShipmentDetail.filter(
+        (s) =>
+          s.driverName?._id?.toString() === d._id?.toString() ||
+          s.driverName?.toString() === d._id?.toString()
+      );
+      const assigned = driverShipments.length;
+      const completed = driverShipments.filter(
+        (s) => s.status?.toLowerCase() === "delivered"
+      ).length;
+      const delayed = driverShipments.filter((s) => {
+        if (
+          s.status?.toLowerCase() === "delivered" &&
+          s.updatedAt &&
+          s.expectedDeliveryDate
+        ) {
+          return new Date(s.updatedAt) > new Date(s.expectedDeliveryDate);
+        }
+        return false;
+      }).length;
+      const successRate =
+        assigned > 0 ? `${Math.round((completed / assigned) * 100)}%` : "100%";
+      const status = d.status === "active" ? "Active" : "Inactive";
+      const availability = d.availability
+        ? d.availability.charAt(0).toUpperCase() + d.availability.slice(1)
+        : "Available";
+
+      return {
+        driverName,
+        driverId: d.driverId,
+        phone: d.phonenumber || d.userId?.phonenumber || "N/A",
+        licenseNumber: d.license?.licensenumber || "",
+        licenseExpiry: d.license?.expiredate
+          ? new Date(d.license.expiredate).toISOString().split("T")[0]
+          : "",
+        assigned,
+        completed,
+        delayed,
+        successRate,
+        status,
+        availability,
+        date: d.updatedAt
+          ? new Date(d.updatedAt).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
+      };
+    });
+
+    // ── 5. Vehicle Report Data ────────────────────────────────────────────
+    const vehicleData = getvehicleDetail.map((v) => {
+      const vehTrips = getTripDetail.filter(
+        (t) =>
+          t.vehicleId?._id?.toString() === v._id?.toString() ||
+          t.vehicleId?.toString() === v._id?.toString()
+      );
+      const tripsCount = vehTrips.length;
+      const totalDistance = vehTrips.reduce(
+        (sum, t) => sum + (t.plannedDistance || 0),
+        0
+      );
+      const vehFuels = getVehicleFuelDetail.filter(
+        (f) =>
+          f.vehicleId?._id?.toString() === v._id?.toString() ||
+          f.vehicleId?.toString() === v._id?.toString()
+      );
+      const totalFuelCost = vehFuels.reduce(
+        (sum, f) => sum + (f.fuelCost || 0),
+        0
+      );
+
+      // Resolve driver from vehicle, trips, or shipments
+      let driverName = v.driver && v.driver.trim() ? v.driver : "";
+      let driverPhone = v.driverPhone || "";
+
+      if (!driverName || driverName === "Unassigned") {
+        const tripWithDriver = vehTrips.find((t) => t.driverId?.userId?.name);
+        if (tripWithDriver) {
+          driverName = tripWithDriver.driverId.userId.name;
+          driverPhone = tripWithDriver.driverId.phonenumber || "";
+        } else {
+          const shpWithDriver = getShipmentDetail.find(
+            (s) =>
+              (s.vehicleNo?._id?.toString() === v._id?.toString() ||
+                s.vehicleNo?.vregistrationnumber === v.vregistrationnumber) &&
+              s.driverName?.userId?.name
+          );
+          if (shpWithDriver) {
+            driverName = shpWithDriver.driverName.userId.name;
+            driverPhone = shpWithDriver.driverName.phonenumber || "";
+          }
+        }
+      }
+
+      if (!driverName) driverName = "Unassigned";
+
+      return {
+        vehicleNo: v.vregistrationnumber,
+        model: v.vmodel,
+        type: v.vtype,
+        capacity: v.vcapacity ? `${v.vcapacity} Tons` : "",
+        fuelType: v.vfuletype || "",
+        driver: driverName,
+        driverPhone,
+        trips: tripsCount,
+        distance: `${totalDistance} km`,
+        fuelCost: `₹${totalFuelCost.toLocaleString()}`,
+        status: v.vstatus || "Available",
+        date: v.updatedAt
+          ? new Date(v.updatedAt).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
+      };
+    });
+
+    // ── 6. Warehouse Report Data ──────────────────────────────────────────
+    const txnRows = getWarehouseTxnDetail.map((tx) => ({
+      txnId: "TXN-" + tx._id.toString().slice(-6).toUpperCase(),
+      warehouse: tx.warehouseId?.warName || "Warehouse",
+      city: tx.warehouseId?.warCity || "",
+      type: tx.wartransactionType === "inbound" ? "Inbound" : "Outbound",
+      shipment: tx.shipmentId?.shipmentId || "N/A",
+      tracking: tx.shipmentId?.trackingId || "",
+      location: tx.locationId
+        ? `${tx.locationId.warlocZone || ""} - ${tx.locationId.warlocRack || ""} - ${tx.locationId.warlocBin || ""}`
+        : "General Area",
+      user: tx.wartansactonProcessBy?.name || "Admin",
+      time: tx.wartransactionDate
+        ? new Date(tx.wartransactionDate)
+            .toISOString()
+            .replace("T", " ")
+            .substring(0, 16)
+        : "",
+      date: tx.wartransactionDate
+        ? new Date(tx.wartransactionDate).toISOString().split("T")[0]
+        : "",
+    }));
+
+    const storageRows = getWarehouseStorageDetail.map((st) => ({
+      txnId: "STR-" + st._id.toString().slice(-6).toUpperCase(),
+      warehouse: st.warehouseId?.warName || "Warehouse",
+      city: st.warehouseId?.warCity || "",
+      type: "Storage",
+      shipment: st.shipmentId?.shipmentId || "N/A",
+      tracking: st.shipmentId?.trackingId || "",
+      location: st.locationId
+        ? `${st.locationId.warlocZone || ""} - ${st.locationId.warlocRack || ""} - ${st.locationId.warlocBin || ""}`
+        : "General Area",
+      user: "System",
+      time: st.storeAt
+        ? new Date(st.storeAt).toISOString().replace("T", " ").substring(0, 16)
+        : "",
+      date: st.storeAt
+        ? new Date(st.storeAt).toISOString().split("T")[0]
+        : "",
+    }));
+
+    const warehouseData = [...txnRows, ...storageRows].sort((a, b) =>
+      (b.time || "").localeCompare(a.time || "")
+    );
+
+    // ── 7. Trip Report Data ───────────────────────────────────────────────
+    const tripData = getTripDetail.map((t) => ({
+      tripId: t.tripId,
+      origin: t.origin,
+      destination: t.destination,
+      driver: t.driverId?.userId?.name || "Unassigned",
+      driverPhone: t.driverId?.phonenumber || "",
+      vehicle: t.vehicleId?.vregistrationnumber || "Unassigned",
+      vehicleModel: t.vehicleId?.vmodel
+        ? `${t.vehicleId.vmodel} (${t.vehicleId.vtype || "Truck"})`
+        : "",
+      packages: t.shipmentIds ? t.shipmentIds.length : 0,
+      departure: t.actualDeparture
+        ? new Date(t.actualDeparture).toISOString().replace("T", " ").substring(0, 16)
+        : t.plannedDeparture
+          ? new Date(t.plannedDeparture).toISOString().replace("T", " ").substring(0, 16)
+          : "N/A",
+      arrival: t.actualArrival
+        ? new Date(t.actualArrival).toISOString().replace("T", " ").substring(0, 16)
+        : t.plannedArrival
+          ? new Date(t.plannedArrival).toISOString().replace("T", " ").substring(0, 16)
+          : "Pending",
+      status: mapTripStatus(t.status),
+      date: t.plannedDeparture
+        ? new Date(t.plannedDeparture).toISOString().split("T")[0]
+        : new Date(t.createdAt).toISOString().split("T")[0],
+    }));
+
+    // ── 8. Invoice Report Data ────────────────────────────────────────────
+    const invoiceData = getShipmentDetail.map((s, idx) => {
+      const invNum =
+        "INV-" +
+        new Date(s.createdAt || Date.now()).getFullYear() +
+        "-" +
+        String(idx + 1).padStart(3, "0");
+      const invDate = s.createdAt
+        ? new Date(s.createdAt).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+      const weightCharge = (s.totalWeight || 5) * 40;
+      const pkgCharge = (s.packageCount || 1) * 300;
+      const baseRate = 1200;
+      const amountVal = baseRate + weightCharge + pkgCharge;
+      const taxVal = Math.round(amountVal * 0.18);
+      const totalAmount = amountVal + taxVal;
+      const dueDateObj = new Date(s.createdAt || Date.now());
+      dueDateObj.setDate(dueDateObj.getDate() + 15);
+      const dueDate = dueDateObj.toISOString().split("T")[0];
+
+      let invStatus = "Pending";
+      if (s.status?.toLowerCase() === "delivered") {
+        invStatus = "Paid";
+      } else if (new Date() > dueDateObj) {
+        invStatus = "Overdue";
+      }
+
+      return {
+        invoiceNo: invNum,
+        date: invDate,
+        customer: s.customerId?.name || s.senderName || "Unknown",
+        customerEmail: s.customerId?.email || s.senderEmail || "",
+        shipment: s.shipmentId || "N/A",
+        tracking: s.trackingId || "",
+        amount: `₹${amountVal.toLocaleString()}`,
+        amountVal: totalAmount,
+        tax: `₹${taxVal.toLocaleString()}`,
+        dueDate,
+        status: invStatus,
+      };
+    });
+
+    // ── 9. Failed Delivery Report Data ────────────────────────────────────
+    const failedDeliveryData = [];
+    getDeliveryDetail.forEach((d) => {
+      const isFailed =
+        d.status === "failed" ||
+        d.status === "reattempt_scheduled" ||
+        Boolean(d.reason);
+      const isShipmentFailed =
+        d.shipmentId?.status === "failed_delivery";
+      if (isFailed || isShipmentFailed) {
+        const s = d.shipmentId || {};
+        const driverName =
+          s.driverName?.userId?.name ||
+          (typeof s.driverName === "string" ? s.driverName : "") ||
+          "Unassigned";
+        const driverPhone =
+          s.driverName?.phonenumber || s.driverName?.userId?.phonenumber || "";
+
+        failedDeliveryData.push({
+          id: s.shipmentId || ("DEL-" + d._id.toString().slice(-6).toUpperCase()),
+          tracking: s.trackingId || "N/A",
+          customer: s.customerId?.name || s.senderName || "N/A",
+          recipient: s.receiverName || "",
+          driver: driverName,
+          driverPhone,
+          reason:
+            d.reason ||
+            d.notes ||
+            "Customer Unavailable / Door Closed",
+          attempts: d.attemptNumber || 1,
+          reattemptDate: d.reattemptDate
+            ? new Date(d.reattemptDate).toISOString().split("T")[0]
+            : "Pending",
+          status:
+            d.reattemptDate || d.status === "reattempt_scheduled"
+              ? "Re-attempt Scheduled"
+              : d.status === "failed"
+                ? "Failed"
+                : "Re-attempt Scheduled",
+          date: d.updatedAt
+            ? new Date(d.updatedAt).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
+        });
+      }
+    });
+
+    getShipmentDetail
+      .filter((s) => s.status?.toLowerCase() === "failed_delivery")
+      .forEach((s) => {
+        if (!failedDeliveryData.some((f) => f.tracking === s.trackingId)) {
+          failedDeliveryData.push({
+            id: s.shipmentId,
+            tracking: s.trackingId,
+            customer: s.customerId?.name || s.senderName || "N/A",
+            recipient: s.receiverName || "",
+            driver: s.driverName?.userId?.name || "Unassigned",
+            driverPhone: s.driverName?.phonenumber || "",
+            reason: "Delivery Attempt Failed",
+            attempts: 1,
+            reattemptDate: "Pending",
+            status: "Failed",
+            date: s.updatedAt
+              ? new Date(s.updatedAt).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+          });
+        }
+      });
+
+    // ── 10. Summary Report Data ───────────────────────────────────────────
+    const monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+
+    const summaryData = [];
+    monthNames.forEach((mName, mIdx) => {
+      const mShipments = getShipmentDetail.filter((s) => {
+        const d = new Date(s.pickupDate || s.createdAt);
+        return d.getFullYear() === 2026 && d.getMonth() === mIdx;
+      });
+      const mDelivered = mShipments.filter(
+        (s) => s.status?.toLowerCase() === "delivered"
+      );
+      const mInbound = getWarehouseTxnDetail.filter((t) => {
+        const d = new Date(t.wartransactionDate || t.createdAt);
+        return (
+          t.wartransactionType === "inbound" &&
+          d.getFullYear() === 2026 &&
+          d.getMonth() === mIdx
+        );
+      }).length;
+      const mOutbound = getWarehouseTxnDetail.filter((t) => {
+        const d = new Date(t.wartransactionDate || t.createdAt);
+        return (
+          t.wartransactionType === "outbound" &&
+          d.getFullYear() === 2026 &&
+          d.getMonth() === mIdx
+        );
+      }).length;
+
+      const mFuels = getVehicleFuelDetail.filter((f) => {
+        const d = new Date(f.fuelDate || f.createdAt);
+        return d.getFullYear() === 2026 && d.getMonth() === mIdx;
+      });
+      const mMaints = getVehicleMaintenanceDetail.filter((m) => {
+        const d = new Date(m.serviceDate || m.createdAt);
+        return d.getFullYear() === 2026 && d.getMonth() === mIdx;
+      });
+      const mFuelMaintCost =
+        mFuels.reduce((sum, f) => sum + (f.fuelCost || 0), 0) +
+        mMaints.reduce((sum, m) => sum + (m.serviceCost || 0), 0);
+
+      const totalShp = mShipments.length;
+      const onTime = mDelivered.length;
+      const eff =
+        totalShp > 0 ? `${((onTime / totalShp) * 100).toFixed(1)}%` : "100%";
+      const cost =
+        mFuelMaintCost > 0
+          ? `₹${Math.round(mFuelMaintCost).toLocaleString()}`
+          : "₹0";
+
+      summaryData.push({
+        period: `${mName} 2026`,
+        periodType: "Monthly",
+        year: "2026",
+        month: mName,
+        shipments: totalShp,
+        onTime,
+        fuelCost: cost,
+        inbound: mInbound,
+        outbound: mOutbound,
+        efficiency: eff,
+      });
+    });
+
+    const yShipments = getShipmentDetail.filter(
+      (s) => new Date(s.pickupDate || s.createdAt).getFullYear() === 2026
+    );
+    const yDelivered = yShipments.filter(
+      (s) => s.status?.toLowerCase() === "delivered"
+    );
+    const totalYearFuelCost =
+      getVehicleFuelDetail.reduce((sum, f) => sum + (f.fuelCost || 0), 0) +
+      getVehicleMaintenanceDetail.reduce((sum, m) => sum + (m.serviceCost || 0), 0);
+
+    summaryData.push({
+      period: "Year 2026",
+      periodType: "Yearly",
+      year: "2026",
+      month: "All",
+      shipments: yShipments.length,
+      onTime: yDelivered.length,
+      fuelCost: `₹${totalYearFuelCost.toLocaleString()}`,
+      inbound: getWarehouseTxnDetail.filter(
+        (t) => t.wartransactionType === "inbound"
+      ).length,
+      outbound: getWarehouseTxnDetail.filter(
+        (t) => t.wartransactionType === "outbound"
+      ).length,
+      efficiency:
+        yShipments.length > 0
+          ? `${((yDelivered.length / yShipments.length) * 100).toFixed(1)}%`
+          : "100%",
+    });
+
+    // ── Complete Database Reports (All 10 Reports sent together) ──────────
+    const reports = {
+      shipment: shipmentData,
+      delivery: deliveryData,
+      customer: customerData,
+      driver: driverData,
+      vehicle: vehicleData,
+      warehouse: warehouseData,
+      trip: tripData,
+      invoice: invoiceData,
+      failed_delivery: failedDeliveryData,
+      summary: summaryData,
+    };
+
+    return res.status(200).json({
+      success: true,
+      options,
+      reports,
+      data: reports[req.query.type] || shipmentData,
+    });
+  } catch (error) {
+    console.error("Report fetch error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

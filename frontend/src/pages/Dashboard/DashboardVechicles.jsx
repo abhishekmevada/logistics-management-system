@@ -49,11 +49,34 @@ import {
   X,
 } from "lucide-react";
 
-import {
-  VEHICLE_TYPES,
-  VEHICLE_STATUSES,
-  SORT_OPTIONS,
-} from "../data/vehicleData";
+const VEHICLE_TYPES = [
+  "All Types",
+  "Truck",
+  "Mini Truck",
+  "Van",
+  "Tempo",
+  "Pickup",
+  "Trailer",
+  "Container Truck",
+];
+
+const VEHICLE_STATUSES = [
+  "All",
+  "Available",
+  "Assigned",
+  "In Maintenance",
+  "Inactive",
+];
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "reg-asc", label: "Reg. Number (A-Z)" },
+  { value: "reg-desc", label: "Reg. Number (Z-A)" },
+  { value: "capacity-asc", label: "Capacity (Low-High)" },
+  { value: "capacity-desc", label: "Capacity (High-Low)" },
+];
+
 import "../../styles/ShipmentManagement.css";
 
 const API_BASE_URL =
@@ -427,7 +450,13 @@ function VehicleTable({
 
                     <td>
                       {v.driver && v.driver !== "Unassigned" ? (
-                        <p className="shp-cell-title">{v.driver}</p>
+                        <p className="shp-cell-title font-bold text-slate-800">
+                          {v.driver}
+                        </p>
+                      ) : v.status === "Assigned" ? (
+                        <p className="shp-cell-title font-semibold text-blue-700">
+                          Assigned Driver
+                        </p>
                       ) : (
                         <span className="shp-text-muted">Unassigned</span>
                       )}
@@ -436,15 +465,15 @@ function VehicleTable({
                           className="shp-route-flow"
                           style={{ marginTop: "2px" }}
                         >
-                          <span className="shp-route-city">
+                          <span className="shp-route-city font-semibold text-slate-700">
                             {v.currentTrip.origin
                               ? v.currentTrip.origin.split(",")[0]
                               : ""}
                           </span>
-                          <span className="shp-route-arrow">
+                          <span className="shp-route-arrow text-blue-600">
                             <ArrowRight size={11} />
                           </span>
-                          <span className="shp-route-city">
+                          <span className="shp-route-city font-semibold text-slate-700">
                             {v.currentTrip.destination
                               ? v.currentTrip.destination.split(",")[0]
                               : ""}
@@ -452,7 +481,12 @@ function VehicleTable({
                         </div>
                       ) : (
                         <span className="shp-cell-sub">
-                          {v.location ? v.location.split(",")[0] : "In Yard"}
+                          {v.status === "Assigned" &&
+                          (!v.location || v.location.includes("Central Depot"))
+                            ? "Assigned (In Transit)"
+                            : v.location
+                              ? v.location.split(",")[0]
+                              : "In Yard"}
                         </span>
                       )}
                     </td>
@@ -1858,7 +1892,9 @@ function VehicleDetailsModal({
                     <span className="font-bold text-slate-800">
                       {vehicle.driver && vehicle.driver !== "Unassigned"
                         ? vehicle.driver
-                        : "No driver assigned"}
+                        : vehicle.status === "Assigned"
+                          ? "Assigned Driver"
+                          : "No driver assigned"}
                     </span>
                     {vehicle.driverPhone && (
                       <span className="block text-[11px] text-slate-500">
@@ -4928,14 +4964,27 @@ export default function Vehicles({ onVehicleCountChange }) {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/vechile`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const [vehRes, tripRes] = await Promise.allSettled([
+        fetch(`${API_BASE_URL}/vechile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE_URL}/trip`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
 
-      if (res.ok) {
-        const data = await res.json();
+      let tripList = [];
+      if (tripRes.status === "fulfilled" && tripRes.value.ok) {
+        try {
+          const tripData = await tripRes.value.json();
+          tripList = Array.isArray(tripData?.getTrip) ? tripData.getTrip : [];
+        } catch (e) {
+          console.error("Error parsing trips in vehicles dashboard:", e);
+        }
+      }
+
+      if (vehRes.status === "fulfilled" && vehRes.value.ok) {
+        const data = await vehRes.value.json();
         if (Array.isArray(data)) {
           const mapped = data.map((v, index) => {
             const regNum = (
@@ -4943,6 +4992,67 @@ export default function Vehicles({ onVehicleCountChange }) {
               v.registrationNumber ||
               `VEH-${index + 1}`
             ).toUpperCase();
+
+            // Match active trip for this vehicle if assigned
+            const activeTrip = tripList.find((t) => {
+              const matchesVehicle =
+                (t.vehicleId?._id && String(t.vehicleId._id) === String(v._id)) ||
+                (t.vehicleId && String(t.vehicleId) === String(v._id)) ||
+                (t.vehicleId?.vregistrationnumber &&
+                  t.vehicleId.vregistrationnumber.toUpperCase() === regNum);
+              const isActive = [
+                "planned",
+                "dispatched",
+                "in_transit",
+                "arrived",
+              ].includes(t.status);
+              return matchesVehicle && isActive;
+            });
+
+            const resolvedDriver =
+              v.driver ||
+              activeTrip?.driverId?.userId?.name ||
+              activeTrip?.driverId?.name ||
+              activeTrip?.driverId?.driverId ||
+              "";
+
+            const resolvedDriverPhone =
+              v.driverPhone ||
+              activeTrip?.driverId?.phonenumber ||
+              activeTrip?.driverId?.userId?.phone ||
+              activeTrip?.driverId?.userId?.phonenumber ||
+              "";
+
+            const resolvedCurrentTrip =
+              v.currentTrip ||
+              (activeTrip
+                ? {
+                    id: activeTrip.tripId,
+                    tripId: activeTrip.tripId,
+                    origin: activeTrip.origin,
+                    destination: activeTrip.destination,
+                    status: activeTrip.status,
+                    plannedDeparture: activeTrip.plannedDeparture,
+                    plannedArrival: activeTrip.plannedArrival,
+                    eta: activeTrip.plannedArrival
+                      ? new Date(activeTrip.plannedArrival).toLocaleString()
+                      : "",
+                  }
+                : null);
+
+            const resolvedLocation =
+              (resolvedCurrentTrip
+                ? `${resolvedCurrentTrip.origin} → ${resolvedCurrentTrip.destination}`
+                : v.location) || "Central Depot, Mumbai";
+
+            const resolvedStatus =
+              v.vstatus === "In Maintenance" || v.vstatus === "Inactive"
+                ? v.vstatus
+                : activeTrip || resolvedDriver
+                  ? "Assigned"
+                  : v.vstatus === "Avaliable"
+                    ? "Available"
+                    : v.vstatus || "Available";
             const ins = v.documents?.insurance || {};
             const rc = v.documents?.rc || {};
             const puc = v.documents?.puc || {};
@@ -5006,13 +5116,11 @@ export default function Vehicles({ onVehicleCountChange }) {
               capacity: `${cap} Ton`,
               capacityValue: Number(cap) || 1,
               fuelType: v.vfuletype || v.fuelType || "Diesel",
-              driver: v.driver || "",
-              driverPhone: v.driverPhone || "",
-              status:
-                v.vstatus === "Avaliable"
-                  ? "Available"
-                  : v.vstatus || "Available",
-              location: v.location || "Central Depot, Mumbai",
+              driver: resolvedDriver,
+              driverPhone: resolvedDriverPhone,
+              status: resolvedStatus,
+              location: resolvedLocation,
+              currentTrip: resolvedCurrentTrip,
               documents: {
                 insurance: {
                   documentName: ins.documentName || "Insurance",
@@ -5105,16 +5213,46 @@ export default function Vehicles({ onVehicleCountChange }) {
     setIsVehicleModalOpen(true);
   };
 
-  const handleSaveVehicle = (vehicleData) => {
+  const handleSaveVehicle = async (vehicleData) => {
     if (editingVehicle) {
       setVehicles((prev) =>
         prev.map((v) =>
-          v.id === editingVehicle.id ? { ...v, ...vehicleData } : v,
+          v.id === editingVehicle.id || (v._id && v._id === editingVehicle._id)
+            ? { ...v, ...vehicleData }
+            : v,
         ),
       );
       showToast(
         `Vehicle ${vehicleData.registrationNumber} updated successfully!`,
       );
+
+      // Persist to backend if editingVehicle has a database ID
+      const targetDbId = editingVehicle._id || editingVehicle.id;
+      const token = localStorage.getItem("token");
+      if (token && targetDbId) {
+        try {
+          await fetch(`${API_BASE_URL}/vechile/${targetDbId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              vregistrationnumber: vehicleData.registrationNumber,
+              vtype: vehicleData.type,
+              vmodel: vehicleData.model,
+              vcapacity: vehicleData.capacityValue,
+              vfuletype: vehicleData.fuelType,
+              vstatus: vehicleData.status,
+              driver: vehicleData.driver,
+              driverPhone: vehicleData.driverPhone,
+              location: vehicleData.location,
+            }),
+          });
+        } catch (e) {
+          console.error("Error updating vehicle in backend:", e);
+        }
+      }
     } else {
       const assignedId =
         vehicleData.id || `VEH-${String(vehicles.length + 1).padStart(3, "0")}`;

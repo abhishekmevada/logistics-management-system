@@ -75,6 +75,9 @@ export default function Login() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+      if (data.driver) {
+        localStorage.setItem("driver", JSON.stringify(data.driver));
+      }
 
       if (data.role === "Driver") {
         navigate("/driver-dashboard");
@@ -117,19 +120,12 @@ export default function Login() {
           {/* Hero Content */}
           <div className="my-auto py-8 z-10 flex flex-col items-center">
             <h2 className="text-3xl font-extrabold text-white mb-4 tracking-tight">
-              Hello, User!
+              Welcome Back!
             </h2>
             <p className="text-xs md:text-sm font-medium text-white/90 leading-relaxed max-w-60 mb-8">
-              Enter your personal details and start your logistics journey with
-              us
+              Sign in to access your logistics dashboard and manage shipments,
+              deliveries, drivers, and operations from one place.
             </p>
-            <Link
-              to="/register"
-              id="switch-to-register-btn"
-              className="px-10 py-3 rounded-full border-2 border-white text-white font-bold text-xs tracking-wider uppercase hover:bg-white hover:text-[#338cff] transition-all duration-200 transform hover:-translate-y-0.5 active:translate-y-0 shadow-sm inline-block"
-            >
-              SIGN UP
-            </Link>
           </div>
 
           {/* Footer note */}

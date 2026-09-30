@@ -1,0 +1,286 @@
+/* Delivery Management Specific Styles */
+
+/* Status Badges */
+.dlv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.dlv-badge--pending {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.dlv-badge--out_for_delivery {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.dlv-badge--delivered {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.dlv-badge--failed {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.dlv-badge--reattempt {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border: 1px solid #e9d5ff;
+}
+
+/* Attempt Tag */
+.dlv-attempt-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.dlv-attempt-tag--warn {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #ffedd5;
+}
+
+/* Toast */
+.dlv-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #1e293b;
+  color: #ffffff;
+  padding: 12px 18px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 9999;
+  animation: dlvSlideIn 0.25s ease-out;
+}
+
+.dlv-toast--success {
+  background: #065f46;
+  border-left: 4px solid #34d399;
+}
+
+.dlv-toast--error {
+  background: #881337;
+  border-left: 4px solid #f87171;
+}
+
+.dlv-toast--info {
+  background: #1e3a8a;
+  border-left: 4px solid #60a5fa;
+}
+
+@keyframes dlvSlideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Delivery History Timeline */
+.dlv-timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-left: 20px;
+  margin: 12px 0 0 0;
+  border-left: 2px solid #e2e8f0;
+  gap: 16px;
+}
+
+.dlv-timeline-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dlv-timeline-dot {
+  position: absolute;
+  left: -27px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #94a3b8;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px #cbd5e1;
+}
+
+.dlv-timeline-dot--delivered {
+  background: #10b981;
+  box-shadow: 0 0 0 1px #059669;
+}
+
+.dlv-timeline-dot--failed {
+  background: #ef4444;
+  box-shadow: 0 0 0 1px #dc2626;
+}
+
+.dlv-timeline-dot--out {
+  background: #3b82f6;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.dlv-timeline-dot--reattempt {
+  background: #a855f7;
+  box-shadow: 0 0 0 1px #7c3aed;
+}
+
+.dlv-timeline-dot--note {
+  background: #f59e0b;
+  box-shadow: 0 0 0 1px #d97706;
+}
+
+.dlv-timeline-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.dlv-timeline-meta {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dlv-timeline-body {
+  font-size: 12.5px;
+  color: #334155;
+  background: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  margin-top: 4px;
+}
+
+.dlv-timeline-reason {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #b91c1c;
+  background: #fee2e2;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+/* Notes List */
+.dlv-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dlv-note-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dlv-note-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.dlv-note-author {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.dlv-note-text {
+  font-size: 12.5px;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+/* Quick Action Tooltip Buttons */
+.dlv-action-btn-success {
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.dlv-action-btn-success:hover {
+  background: #d1fae5 !important;
+}
+
+.dlv-action-btn-danger {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+  border-color: #fecaca !important;
+}
+
+.dlv-action-btn-danger:hover {
+  background: #fee2e2 !important;
+}
+
+.dlv-action-btn-warning {
+  background: #fffbeb !important;
+  color: #d97706 !important;
+  border-color: #fde68a !important;
+}
+
+.dlv-action-btn-warning:hover {
+  background: #fef3c7 !important;
+}
+
+.dlv-action-btn-info {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border-color: #bfdbfe !important;
+}
+
+.dlv-action-btn-info:hover {
+  background: #dbeafe !important;
+}
+
+.dlv-action-btn-purple {
+  background: #faf5ff !important;
+  color: #7e22ce !important;
+  border-color: #e9d5ff !important;
+}
+
+.dlv-action-btn-purple:hover {
+  background: #f3e8ff !important;
+}

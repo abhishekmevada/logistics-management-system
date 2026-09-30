@@ -98,6 +98,42 @@ const getStepIndex = (status) => {
   return 0; // Order placed / created / scheduled
 };
 
+const resolveDriverDisplay = (shipment) => {
+  if (!shipment) return "";
+  const d = shipment.driverDetails || shipment.driverName || shipment.driverId;
+  if (!d) return "";
+  if (typeof d === "object") {
+    return (
+      d.userId?.name ||
+      d.name ||
+      (d.driverId ? `Driver (${d.driverId})` : "")
+    );
+  }
+  const str = String(d).trim();
+  if (!str || str.toLowerCase() === "unassigned") return "";
+  if (/^[0-9a-fA-F]{24}$/.test(str)) return "";
+  return str;
+};
+
+const resolveVehicleDisplay = (shipment) => {
+  if (!shipment) return "";
+  const v = shipment.vehicleDetails || shipment.vehicleNo || shipment.vehicleId;
+  if (!v) return "";
+  if (typeof v === "object") {
+    return (
+      v.vregistrationnumber ||
+      v.registrationNumber ||
+      v.vehicleName ||
+      v.vmodel ||
+      ""
+    );
+  }
+  const str = String(v).trim();
+  if (!str || str.toLowerCase() === "unassigned") return "";
+  if (/^[0-9a-fA-F]{24}$/.test(str)) return "";
+  return str;
+};
+
 export default function CustomerDashboard() {
   const { customerId } = useParams();
   const navigate = useNavigate();
@@ -799,8 +835,13 @@ export default function CustomerDashboard() {
                   <div className="shp-stepper">
                     {timelineSteps.map((step, idx) => {
                       const currentIdx = getStepIndex(viewingShipment.status);
-                      const isCompleted = idx < currentIdx;
-                      const isCurrent = idx === currentIdx;
+                      const isDelivered = String(viewingShipment?.status || "")
+                        .toLowerCase()
+                        .includes("delivered");
+                      const isCompleted = isDelivered
+                        ? idx <= currentIdx
+                        : idx < currentIdx;
+                      const isCurrent = !isDelivered && idx === currentIdx;
 
                       return (
                         <div
@@ -979,19 +1020,19 @@ export default function CustomerDashboard() {
                             : "—"}
                         </span>
                       </div>
-                      {viewingShipment.driverName && (
+                      {resolveDriverDisplay(viewingShipment) && (
                         <div className="shp-kv">
                           <span className="shp-kv__label">Assigned Driver</span>
                           <span className="shp-kv__value">
-                            {viewingShipment.driverName}
+                            {resolveDriverDisplay(viewingShipment)}
                           </span>
                         </div>
                       )}
-                      {viewingShipment.vehicleNo && (
+                      {resolveVehicleDisplay(viewingShipment) && (
                         <div className="shp-kv">
                           <span className="shp-kv__label">Vehicle No.</span>
                           <span className="shp-kv__value">
-                            {viewingShipment.vehicleNo}
+                            {resolveVehicleDisplay(viewingShipment)}
                           </span>
                         </div>
                       )}

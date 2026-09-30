@@ -8,6 +8,11 @@ import DashboardShipment from "./DashboardShipment";
 import DashboardVechiles from "./DashboardVechicles";
 import { canAccess, accessLabel } from "../../utils/rolePermissions";
 import DashboardDriver from "./DashboardDriver";
+import DashboardWarehouse from "./DashboardWarehouse";
+import DashboardTrip from "./DashboardTrip";
+import DashboardDelivery from "./DashboardDelivery";
+import DashboardPod from "./DashboardPod";
+import DashboardReport from "./DashboardReport";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -76,6 +81,12 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
     shipments: "/shipments",
     vehicles: "/vehicles",
     drivers: "/drivers",
+    warehouses: "/warehouses",
+    trips: "/trips",
+    delivery: "/deliveries",
+    deliveries: "/deliveries",
+    pod: "/pod",
+    reports: "/reports",
   };
 
   return (
@@ -92,7 +103,8 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
             const label = accessLabel(role, item.key);
             const isActive =
               activeTab === item.key ||
-              (item.key === "vehicles" && activeTab === "vechiles");
+              (item.key === "vehicles" && activeTab === "vechiles") ||
+              (item.key === "delivery" && activeTab === "deliveries");
             return (
               <button
                 key={item.key}
@@ -140,7 +152,7 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
       </div>
 
       <div className="dash-topbar__actions">
-        <input
+        {/* <input
           type="search"
           className="dash-topbar__search"
           placeholder="Search shipments, customers, trips…"
@@ -154,7 +166,7 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
           {alertCount > 0 && (
             <span className="dash-topbar__badge">{alertCount}</span>
           )}
-        </button>
+        </button> */}
         <button
           type="button"
           id="navbar-create-user-btn"
@@ -217,11 +229,31 @@ export default function Dashboardx({ initialTab = "dashboard" }) {
           {(activeTab === "vehicles" || activeTab === "vechiles") && (
             <DashboardVechiles />
           )}
+          {(activeTab === "warehouses" || activeTab === "warehouse") && (
+            <DashboardWarehouse />
+          )}
+          {(activeTab === "trips" || activeTab === "trip") && <DashboardTrip />}
+          {(activeTab === "delivery" || activeTab === "deliveries") && (
+            <DashboardDelivery />
+          )}
+          {activeTab === "pod" && <DashboardPod />}
+          {(activeTab === "reports" || activeTab === "report") && (
+            <DashboardReport />
+          )}
           {activeTab !== "customers" &&
             activeTab !== "shipments" &&
             activeTab !== "drivers" &&
             activeTab !== "vehicles" &&
-            activeTab !== "vechiles" && <DashboardOverview />}
+            activeTab !== "vechiles" &&
+            activeTab !== "warehouses" &&
+            activeTab !== "warehouse" &&
+            activeTab !== "trips" &&
+            activeTab !== "trip" &&
+            activeTab !== "delivery" &&
+            activeTab !== "deliveries" &&
+            activeTab !== "pod" &&
+            activeTab !== "reports" &&
+            activeTab !== "report" && <DashboardOverview />}
         </main>
       </div>
     </div>

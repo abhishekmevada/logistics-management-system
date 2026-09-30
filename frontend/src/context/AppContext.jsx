@@ -1,15 +1,9 @@
 import React, { createContext, useContext, useState } from "react";
-import {
-  initialCustomers,
-  mockOverviewData,
-  mockDrivers,
-  mockShipments,
-} from "../data/mockShipments";
 
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  const [customers, setCustomers] = useState(initialCustomers);
+  const [customers, setCustomers] = useState([]);
   const [activeCustomerId, setActiveCustomerId] = useState("CUST-001");
   const [users, setUsers] = useState([
     { name: "Admin User", email: "admin@logistics.com", role: "Admin" },
@@ -123,7 +117,7 @@ export const AppProvider = ({ children }) => {
   };
 
   const activeCustomer =
-    customers.find((c) => c.id === activeCustomerId) || customers[0];
+    customers.find((c) => c.id === activeCustomerId) || customers[0] || null;
 
   return (
     <AppContext.Provider
@@ -146,9 +140,9 @@ export const AppProvider = ({ children }) => {
         setGlobalSearch,
         activeTrackingCode,
         setActiveTrackingCode,
-        overviewData: mockOverviewData,
-        drivers: mockDrivers,
-        shipments: mockShipments,
+        overviewData: {},
+        drivers: [],
+        shipments: [],
       }}
     >
       {children}

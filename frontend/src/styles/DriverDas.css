@@ -903,6 +903,15 @@
   background: var(--drv-rose);
 }
 
+.drv-status--reattempt_scheduled {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fde68a;
+}
+.drv-status--reattempt_scheduled .drv-status-dot {
+  background: #d97706;
+}
+
 /* Card Body Layout */
 .drv-card-body {
   padding: 0.85rem 1.15rem;
@@ -1091,9 +1100,9 @@
 
 .drv-parcel-row {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   font-size: 0.78rem;
+  gap: 10px;
 }
 
 .drv-parcel-label {

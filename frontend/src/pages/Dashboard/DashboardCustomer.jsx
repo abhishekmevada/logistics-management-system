@@ -504,7 +504,12 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errs.email = "Please enter a valid email address.";
     }
-    if (!formData.phone.trim()) errs.phone = "Phone number is required.";
+    const cleanPhone = (formData.phone || "").replace(/\D/g, "");
+    if (!cleanPhone) {
+      errs.phone = "Phone number is required.";
+    } else if (cleanPhone.length !== 10) {
+      errs.phone = "Phone number must be exactly 10 digits.";
+    }
     if (!formData.pickupAddress?.trim()) {
       errs.pickupAddress = "Address is required.";
     }
@@ -1232,8 +1237,13 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                   <div className="shp-stepper">
                     {timelineSteps.map((step, idx) => {
                       const currentIdx = getStepIndex(viewingShipment.status);
-                      const isCompleted = idx < currentIdx;
-                      const isCurrent = idx === currentIdx;
+                      const isDelivered = String(viewingShipment?.status || "")
+                        .toLowerCase()
+                        .includes("delivered");
+                      const isCompleted = isDelivered
+                        ? idx <= currentIdx
+                        : idx < currentIdx;
+                      const isCurrent = !isDelivered && idx === currentIdx;
 
                       return (
                         <div
@@ -2128,15 +2138,53 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                 </div>
                 <div className="shp-form-group">
                   <label>Phone Number *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="98765 43210"
-                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      borderRadius: "6px",
+                      overflow: "hidden",
+                      border: "1px solid var(--border, #cbd5e1)",
+                      background: "#fff",
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "0 0.65rem",
+                        background: "var(--bg-secondary, #f8fafc)",
+                        borderRight: "1px solid var(--border, #cbd5e1)",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        color: "var(--text-secondary, #475569)",
+                        userSelect: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        height: "100%",
+                        alignSelf: "stretch",
+                      }}
+                    >
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        setFormData({ ...formData, phone: val });
+                      }}
+                      placeholder="9876543210"
+                      style={{
+                        border: "none",
+                        borderRadius: 0,
+                        flex: 1,
+                        outline: "none",
+                        boxShadow: "none",
+                        padding: "0.55rem 0.75rem",
+                      }}
+                    />
+                  </div>
                   {formErrors.phone && (
                     <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                       {formErrors.phone}
@@ -2244,14 +2292,53 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                 </div>
                 <div className="shp-form-group">
                   <label>Phone Number *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      borderRadius: "6px",
+                      overflow: "hidden",
+                      border: "1px solid var(--border, #cbd5e1)",
+                      background: "#fff",
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "0 0.65rem",
+                        background: "var(--bg-secondary, #f8fafc)",
+                        borderRight: "1px solid var(--border, #cbd5e1)",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        color: "var(--text-secondary, #475569)",
+                        userSelect: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        height: "100%",
+                        alignSelf: "stretch",
+                      }}
+                    >
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        setFormData({ ...formData, phone: val });
+                      }}
+                      placeholder="9876543210"
+                      style={{
+                        border: "none",
+                        borderRadius: 0,
+                        flex: 1,
+                        outline: "none",
+                        boxShadow: "none",
+                        padding: "0.55rem 0.75rem",
+                      }}
+                    />
+                  </div>
                   {formErrors.phone && (
                     <span style={{ color: "var(--danger)", fontSize: "11px" }}>
                       {formErrors.phone}

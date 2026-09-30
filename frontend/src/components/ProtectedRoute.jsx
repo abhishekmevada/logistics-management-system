@@ -1,5 +1,5 @@
 import { Navigate } from "react-router-dom";
-import { ROLE_PERMISSIONS } from "../utils/rolePermissions";
+import { ROLE_PERMISSIONS, normalizeRole } from "../utils/rolePermissions";
 
 /**
  * ProtectedRoute
@@ -18,9 +18,16 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   const role = user.role;
+  const normRole = normalizeRole(role);
 
   // Role not in allowedRoles → show 403 screen
-  if (allowedRoles && !allowedRoles.includes(role)) {
+  const isAllowed =
+    !allowedRoles ||
+    allowedRoles.some(
+      (allowed) => allowed === role || normalizeRole(allowed) === normRole
+    );
+
+  if (!isAllowed) {
     return (
       <div style={styles.wrap}>
         <div style={styles.card}>
@@ -45,7 +52,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   // Role exists in permissions map but has no access at all → also 403
-  if (role && !ROLE_PERMISSIONS[role]) {
+  if (role && !ROLE_PERMISSIONS[role] && !ROLE_PERMISSIONS[normRole]) {
     return <Navigate to="/login" replace />;
   }
 

@@ -890,6 +890,21 @@
   position: relative;
 }
 
+.shp-stepper__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.shp-stepper__step--completed:not(:last-child)::after {
+  background: var(--success);
+}
+
 .shp-stepper__circle {
   width: 24px;
   height: 24px;

@@ -67,6 +67,73 @@ const getCountdownText = (dateStr) => {
   return { status: "Valid", countdown: `${diffDays} days remaining` };
 };
 
+const formatToTrpId = (
+  val,
+  tripMap = null,
+  shipmentId = null,
+  shipmentTracking = null,
+  shipmentToTripMap = null,
+) => {
+  // 1. Check shipment-to-trip mappings if available
+  if (shipmentId && shipmentToTripMap?.has(String(shipmentId))) {
+    return shipmentToTripMap.get(String(shipmentId));
+  }
+  if (shipmentTracking && shipmentToTripMap?.has(String(shipmentTracking))) {
+    return shipmentToTripMap.get(String(shipmentTracking));
+  }
+
+  // 2. If val is an object (e.g. populated tripNo)
+  if (val && typeof val === "object") {
+    if (val.tripId && typeof val.tripId === "string" && val.tripId.trim()) {
+      const clean = val.tripId.trim();
+      return clean.toUpperCase().startsWith("TRP-")
+        ? clean.toUpperCase()
+        : clean.toUpperCase().startsWith("TRP")
+          ? `TRP-${clean.slice(3).toUpperCase()}`
+          : `TRP-${clean.toUpperCase()}`;
+    }
+    const idKey = String(val._id || val.id || "").trim();
+    if (idKey && tripMap?.has(idKey)) {
+      return tripMap.get(idKey);
+    }
+    if (/^[0-9a-fA-F]{24}$/.test(idKey)) {
+      return `TRP-${idKey.slice(-6).toUpperCase()}`;
+    }
+    val = idKey;
+  }
+
+  const str = String(val || "").trim();
+
+  // 3. If empty/missing, fall back to shipment ID or generate a TRP ID
+  if (!str) {
+    if (shipmentId) {
+      const cleanShipId = String(shipmentId).trim();
+      return `TRP-${cleanShipId.slice(-6).toUpperCase()}`;
+    }
+    return "TRP-UNKNOWN";
+  }
+
+  // 4. If it's already a TRP ID like "TRP-520170" or "TRP123"
+  if (/^TRP-?[0-9a-zA-Z]+/i.test(str)) {
+    return str.toUpperCase().startsWith("TRP-")
+      ? str.toUpperCase()
+      : `TRP-${str.slice(3).toUpperCase()}`;
+  }
+
+  // 5. If it's in tripMap (e.g. key is the 24-char ObjectId)
+  if (tripMap && tripMap.has(str)) {
+    return tripMap.get(str);
+  }
+
+  // 6. If it's a 24-character hexadecimal MongoDB ObjectId
+  if (/^[0-9a-fA-F]{24}$/.test(str)) {
+    return `TRP-${str.slice(-6).toUpperCase()}`;
+  }
+
+  // 7. Any other non-empty string, prefix with TRP-
+  return `TRP-${str.toUpperCase()}`;
+};
+
 const normalizeDriver = (d) => {
   const name = d.userId?.name || d.name || "Driver";
   const email = d.userId?.email || d.email || "";
@@ -569,14 +636,14 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
                   "Not specified"}
               </strong>
             </div>
-            <div>
+            {/* <div>
               Issuing State:{" "}
               <span>{driver.license?.issuingState || "Not specified"}</span>
-            </div>
+            </div> */}
             <div>
               Valid Dates:{" "}
               <span>
-                {driver.license?.issueDate || "N/A"} →{" "}
+                {/* {driver.license?.issueDate || "N/A"} →{" "} */}
                 <strong style={{ color: "var(--cta-but, #ea580c)" }}>
                   {driver.license?.expiryDate ||
                     driver.license?.expiredate ||
@@ -584,7 +651,7 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
                 </strong>
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {/* <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               Verification:{" "}
               <span
                 className={`badge ${driver.license?.verificationStatus === "Verified" ? "badge-valid" : "badge-unavailable"}`}
@@ -592,77 +659,9 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
                 <CheckCircle size={11} /> RTO{" "}
                 {driver.license?.verificationStatus || "Pending"}
               </span>
-            </div>
+            </div> */}
           </div>
         </div>
-
-        {/* Live Assigned Shipment Overview Card */}
-        {driver.assignedShipments && driver.assignedShipments.length > 0 && (
-          <div
-            style={{
-              backgroundColor: "#f0fdf4",
-              padding: "1rem",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid #bbf7d0",
-            }}
-          >
-            <h4
-              style={{
-                fontSize: "0.9rem",
-                marginBottom: "0.75rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                borderBottom: "1px solid #bbf7d0",
-                paddingBottom: "0.35rem",
-                color: "#166534",
-                fontWeight: 700,
-              }}
-            >
-              <Truck size={16} color="#16a34a" /> Currently Assigned Manifest
-            </h4>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-                fontSize: "0.85rem",
-                color: "#1e293b",
-              }}
-            >
-              <div>
-                Tracking No:{" "}
-                <span
-                  style={{
-                    fontFamily: "monospace",
-                    fontWeight: 700,
-                    color: "var(--primary-color)",
-                  }}
-                >
-                  {driver.assignedShipments[0].trackingId}
-                </span>
-              </div>
-              <div>
-                Customer:{" "}
-                <strong>{driver.assignedShipments[0].customerName}</strong>
-              </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                Route: <span>{driver.assignedShipments[0].senderCity}</span> →{" "}
-                <span>{driver.assignedShipments[0].receiverCity}</span>
-              </div>
-              <div>
-                Status:{" "}
-                <span className="badge badge-assigned">
-                  {driver.assignedShipments[0].status
-                    ?.replace(/_/g, " ")
-                    .toUpperCase() || "DISPATCHED"}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -671,7 +670,7 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
 // ============================================================================
 // 2. DOCUMENT EXPIRY TRACKER (Matching Image 2 exact table)
 // ============================================================================
-function DocumentExpiryTracker({ driver, onSendReminder }) {
+function DocumentExpiryTracker({ driver, onSendReminder, sendingReminderDoc }) {
   const docs = driver.documentsList || [];
 
   return (
@@ -791,9 +790,30 @@ function DocumentExpiryTracker({ driver, onSendReminder }) {
                       <button
                         type="button"
                         className="btn-remind"
-                        onClick={() => onSendReminder(doc.name)}
+                        disabled={sendingReminderDoc === doc.name}
+                        onClick={() => onSendReminder(doc.name, driver)}
+                        style={{
+                          opacity: sendingReminderDoc === doc.name ? 0.7 : 1,
+                          cursor:
+                            sendingReminderDoc === doc.name
+                              ? "not-allowed"
+                              : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
                       >
-                        <Bell size={13} /> Remind Driver
+                        {sendingReminderDoc === doc.name ? (
+                          <>
+                            <RefreshCw size={13} className="animate-spin" />
+                            <span>Sending...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Bell size={13} />
+                            <span>Remind Driver</span>
+                          </>
+                        )}
                       </button>
                     ) : (
                       <span
@@ -1005,8 +1025,8 @@ function AssignedShipments({ driver, loading, onRefresh, onOpenAssignModal }) {
 // ============================================================================
 // 4. DELIVERY HISTORY TAB
 // ============================================================================
-function DeliveryHistory({ driver }) {
-  const history = driver.deliveryHistory || [];
+function DeliveryHistory({ driver, tripsMap = null, shipmentToTripMap = null }) {
+  const history = driver?.deliveryHistory || [];
 
   return (
     <div>
@@ -1039,16 +1059,27 @@ function DeliveryHistory({ driver }) {
               </tr>
             </thead>
             <tbody>
-              {history.map((h, i) => (
-                <tr key={h.tripId || i} className="drv-table__row">
-                  <td>
-                    <strong>{h.tripId}</strong>
-                    <span className="drv-cell-sub">{h.date}</span>
-                  </td>
-                  <td>
-                    <strong>{h.route}</strong>
-                    <span className="drv-cell-sub">To: {h.recipient}</span>
-                  </td>
+              {history.map((h, i) => {
+                const displayTripId = formatToTrpId(
+                  h.tripId || h.tripNo,
+                  tripsMap,
+                  h._id || h.shipmentId,
+                  h.shipmentTracking || h.trackingId,
+                  shipmentToTripMap,
+                );
+
+                return (
+                  <tr key={h.tripId || h.shipmentTracking || i} className="drv-table__row">
+                    <td>
+                      <strong style={{ color: "var(--primary-color, #2563eb)" }}>
+                        {displayTripId}
+                      </strong>
+                      <span className="drv-cell-sub">{h.date}</span>
+                    </td>
+                    <td>
+                      <strong>{h.route}</strong>
+                      <span className="drv-cell-sub">To: {h.recipient}</span>
+                    </td>
                   <td style={{ fontFamily: "monospace", fontWeight: 600 }}>
                     {h.shipmentTracking}
                   </td>
@@ -1081,7 +1112,8 @@ function DeliveryHistory({ driver }) {
                     )}
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
@@ -1452,6 +1484,71 @@ export default function DashboardDriver() {
     fetchDrivers();
   }, [fetchDrivers]);
 
+  // Trips list to map trip ObjectId to readable TRP ID
+  const [tripsList, setTripsList] = useState([]);
+
+  const fetchTrips = useCallback(async () => {
+    try {
+      const authToken = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/trip`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data.getTrip)
+          ? data.getTrip
+          : Array.isArray(data.trips)
+            ? data.trips
+            : Array.isArray(data)
+              ? data
+              : [];
+        setTripsList(list);
+      }
+    } catch (err) {
+      console.warn("Could not fetch trips for driver history resolution:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTrips();
+  }, [fetchTrips]);
+
+  const { tripsMap, shipmentToTripMap } = useMemo(() => {
+    const tMap = new Map();
+    const sMap = new Map();
+    (tripsList || []).forEach((t) => {
+      if (!t) return;
+      const formattedTripId = t.tripId
+        ? (String(t.tripId).toUpperCase().startsWith("TRP-")
+            ? String(t.tripId).toUpperCase()
+            : String(t.tripId).toUpperCase().startsWith("TRP")
+              ? `TRP-${String(t.tripId).slice(3).toUpperCase()}`
+              : `TRP-${String(t.tripId).toUpperCase()}`)
+        : (t._id ? `TRP-${String(t._id).slice(-6).toUpperCase()}` : "");
+
+      if (t._id) tMap.set(String(t._id), formattedTripId);
+      if (t.id) tMap.set(String(t.id), formattedTripId);
+      if (t.tripId) tMap.set(String(t.tripId), formattedTripId);
+
+      if (Array.isArray(t.shipmentIds)) {
+        t.shipmentIds.forEach((s) => {
+          if (typeof s === "object" && s !== null) {
+            if (s._id) sMap.set(String(s._id), formattedTripId);
+            if (s.trackingId) sMap.set(String(s.trackingId), formattedTripId);
+            if (s.shipmentId) sMap.set(String(s.shipmentId), formattedTripId);
+          } else if (s) {
+            sMap.set(String(s), formattedTripId);
+          }
+        });
+      }
+    });
+    return { tripsMap: tMap, shipmentToTripMap: sMap };
+  }, [tripsList]);
+
   // Active drivers list from backend API
   const drivers = useMemo(() => {
     return apiDrivers || [];
@@ -1550,8 +1647,21 @@ export default function DashboardDriver() {
             eta: s.expectedDeliveryDate
               ? new Date(s.expectedDeliveryDate).toLocaleDateString()
               : "Scheduled",
-            vehicleNo: s.vehicleNo,
-            tripNo: s.tripNo,
+            vehicleNo:
+              (typeof s.vehicleNo === "object"
+                ? s.vehicleNo?.registrationNumber ||
+                  s.vehicleNo?.vehicleName ||
+                  s.vehicleNo?._id
+                : s.vehicleNo) || "",
+            tripNo:
+              (typeof s.tripNo === "object"
+                ? s.tripNo?.tripId || s.tripNo?._id
+                : s.tripNo) || "",
+            rawTripNo: s.tripNo,
+            tripId:
+              (typeof s.tripNo === "object" ? s.tripNo?.tripId : null) ||
+              s.tripId ||
+              "",
           })),
         );
       } else {
@@ -1628,8 +1738,13 @@ export default function DashboardDriver() {
     );
 
     const mappedDeliveredHistory = deliveredShipments.map((s) => ({
-      tripId:
-        s.tripNo || s.shipmentId || `TRP-${String(s._id || "").slice(-4)}`,
+      tripId: formatToTrpId(
+        s.tripId || s.tripNo || s.rawTripNo,
+        tripsMap,
+        s._id || s.shipmentId,
+        s.trackingId,
+        shipmentToTripMap,
+      ),
       date: s.eta || "Completed",
       route: `${s.senderCity} → ${s.receiverCity}`,
       shipmentTracking: s.trackingId,
@@ -1664,7 +1779,14 @@ export default function DashboardDriver() {
               successRate: 0,
             },
     };
-  }, [drivers, selectedDriverId, backendDriverShipments, backendPerformance]);
+  }, [
+    drivers,
+    selectedDriverId,
+    backendDriverShipments,
+    backendPerformance,
+    tripsMap,
+    shipmentToTripMap,
+  ]);
 
   // Confirm Status Toggle handler (with backend PATCH /drivers/:id/status integration)
   const handleConfirmStatusToggle = async () => {
@@ -1770,10 +1892,54 @@ export default function DashboardDriver() {
   };
 
   // Send reminder handler
-  const handleSendReminder = (docName) => {
-    showToast(
-      `Renewal reminder notification sent to ${selectedDriver?.name} for ${docName}.`,
-    );
+  const [sendingReminderDoc, setSendingReminderDoc] = useState(null);
+
+  const handleSendReminder = async (docName, driverObj) => {
+    const targetDriver = driverObj || selectedDriver;
+    const targetDriverId =
+      targetDriver?._id ||
+      (targetDriver?.id && targetDriver.id.length === 24
+        ? targetDriver.id
+        : null);
+
+    if (!targetDriverId) {
+      showToast("Driver ID not found. Unable to send reminder.", "error");
+      return;
+    }
+
+    setSendingReminderDoc(docName || "all");
+    try {
+      const authToken = localStorage.getItem("token");
+      const res = await fetch(
+        `${API_BASE_URL}/driver-reminder/${targetDriverId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+        },
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data.message || `Failed to send reminder email (Status ${res.status})`,
+        );
+      }
+
+      showToast(
+        data.message ||
+          `Renewal reminder email sent successfully to ${targetDriver?.name || "driver"}.`,
+        "success",
+      );
+    } catch (err) {
+      console.error("Error sending driver reminder:", err);
+      showToast(err.message || "Failed to send reminder email", "error");
+    } finally {
+      setSendingReminderDoc(null);
+    }
   };
 
   // Complete shipment handler
@@ -1819,7 +1985,13 @@ export default function DashboardDriver() {
           const newHistory = completed
             ? [
                 {
-                  tripId: `TRP-${Math.floor(1000 + Math.random() * 9000)}`,
+                  tripId: formatToTrpId(
+                    completed.tripNo || completed.tripId,
+                    tripsMap,
+                    completed._id,
+                    completed.trackingId,
+                    shipmentToTripMap,
+                  ),
                   date: new Date().toISOString().split("T")[0],
                   route: `${completed.senderCity} → ${completed.receiverCity}`,
                   shipmentTracking: completed.trackingId,
@@ -1977,11 +2149,16 @@ export default function DashboardDriver() {
               boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
               fontSize: "13px",
               fontWeight: 600,
-              background: "#064e3b",
+              background:
+                toastMessage.type === "error" ? "#dc2626" : "#064e3b",
               color: "#ffffff",
             }}
           >
-            <CheckCircle2 size={16} />
+            {toastMessage.type === "error" ? (
+              <AlertCircle size={16} />
+            ) : (
+              <CheckCircle2 size={16} />
+            )}
             <span>{toastMessage.text}</span>
             <button
               type="button"
@@ -2016,39 +2193,6 @@ export default function DashboardDriver() {
             <ArrowLeft size={14} />
             <span>Back to Drivers</span>
           </button>
-
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => setIsAssignModalOpen(true)}
-            >
-              <Truck size={14} /> Assign Trip
-            </button>
-            {isDriverActive(selectedDriver) ? (
-              <button
-                type="button"
-                onClick={() => setDeactivatingDriver(selectedDriver)}
-                className="btn btn-ghost btn-sm"
-                style={{
-                  color: "var(--danger, #dc2626)",
-                  borderColor: "var(--danger, #dc2626)",
-                }}
-              >
-                <UserMinus size={14} />
-                <span>Deactivate</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setDeactivatingDriver(selectedDriver)}
-                className="btn btn-primary btn-sm"
-              >
-                <UserPlus size={14} />
-                <span>Activate</span>
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Card 1: Driver Profile Card (With Name first letter & edit form) */}
@@ -2093,6 +2237,7 @@ export default function DashboardDriver() {
             <DocumentExpiryTracker
               driver={selectedDriver}
               onSendReminder={handleSendReminder}
+              sendingReminderDoc={sendingReminderDoc}
             />
           )}
 
@@ -2106,7 +2251,11 @@ export default function DashboardDriver() {
           )}
 
           {detailActiveTab === "history" && (
-            <DeliveryHistory driver={selectedDriver} />
+            <DeliveryHistory
+              driver={selectedDriver}
+              tripsMap={tripsMap}
+              shipmentToTripMap={shipmentToTripMap}
+            />
           )}
 
           {detailActiveTab === "performance" && (
@@ -2229,11 +2378,16 @@ export default function DashboardDriver() {
             boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
             fontSize: "13px",
             fontWeight: 600,
-            background: "#064e3b",
+            background:
+              toastMessage.type === "error" ? "#dc2626" : "#064e3b",
             color: "#ffffff",
           }}
         >
-          <CheckCircle2 size={16} />
+          {toastMessage.type === "error" ? (
+            <AlertCircle size={16} />
+          ) : (
+            <CheckCircle2 size={16} />
+          )}
           <span>{toastMessage.text}</span>
           <button
             type="button"

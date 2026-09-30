@@ -30,9 +30,10 @@ import {
   Sparkles,
   Award,
   CircleDot,
-  Send,
   AlertCircle,
   FileText,
+  Mail,
+  KeyRound,
 } from "lucide-react";
 
 const API_BASE_URL =
@@ -92,6 +93,217 @@ const formatETA = (val) => {
   }
 };
 
+// Helper function to cleanly format reschedule date and time
+const formatRescheduleDate = (val) => {
+  if (!val) return "Not Scheduled";
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+    const dateStr = d.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    const timeStr = d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return `${dateStr} at ${timeStr}`;
+  } catch {
+    return String(val);
+  }
+};
+
+// Helper function to cleanly format pickup schedule date and time
+const formatPickupDate = (val) => {
+  if (!val) return "Not Scheduled";
+  if (typeof val === "string") {
+    if (val.includes("Today") || val.includes("Tomorrow")) {
+      return val;
+    }
+  }
+
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+
+    const today = new Date();
+    const isToday =
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear();
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow =
+      d.getDate() === tomorrow.getDate() &&
+      d.getMonth() === tomorrow.getMonth() &&
+      d.getFullYear() === tomorrow.getFullYear();
+
+    const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+    const timeStr = hasTime
+      ? d.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "";
+
+    if (isToday) {
+      return timeStr ? `Today, ${timeStr}` : "Today";
+    }
+    if (isTomorrow) {
+      return timeStr ? `Tomorrow, ${timeStr}` : "Tomorrow";
+    }
+
+    const dateStr = d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    return timeStr ? `${dateStr}, ${timeStr}` : dateStr;
+  } catch {
+    return String(val);
+  }
+};
+
+// Helper to check if a string is a 24-character hexadecimal MongoDB ObjectId
+const isObjectId = (val) =>
+  typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val.trim());
+
+// Helper to resolve a clean, human-readable vehicle name (e.g. "Tata 407", "Ashok Leyland")
+const formatVehicleName = (val, trip = null, vehiclesMap = {}) => {
+  // 1. If val is an object
+  if (val && typeof val === "object") {
+    const name =
+      val.vehicleName ||
+      val.vmodel ||
+      val.model ||
+      val.name ||
+      val.vregistrationnumber ||
+      val.registrationNumber ||
+      val.vtype ||
+      "";
+    if (name) return name;
+    if (val._id && vehiclesMap[String(val._id)]) {
+      const mapped = vehiclesMap[String(val._id)];
+      return (
+        mapped.vehicleName ||
+        mapped.vmodel ||
+        mapped.model ||
+        mapped.name ||
+        mapped.vregistrationnumber ||
+        ""
+      );
+    }
+  }
+
+  // 2. If val is a string
+  const str = val ? String(val).trim() : "";
+
+  // If already a clean name (not an ObjectId and not placeholder)
+  if (
+    str &&
+    !isObjectId(str) &&
+    str.toLowerCase() !== "unassigned" &&
+    str.toLowerCase() !== "null" &&
+    str.toLowerCase() !== "undefined" &&
+    str.toLowerCase() !== "n/a"
+  ) {
+    return str;
+  }
+
+  // If it's an ObjectId or plate number, look up in vehiclesMap
+  if (str && vehiclesMap[str]) {
+    const v = vehiclesMap[str];
+    return (
+      v.vehicleName ||
+      v.vmodel ||
+      v.model ||
+      v.name ||
+      v.vregistrationnumber ||
+      v.registrationNumber ||
+      ""
+    );
+  }
+
+  // 3. Check trip fields if provided
+  if (trip) {
+    if (trip.vehicleName && !isObjectId(trip.vehicleName)) {
+      return trip.vehicleName;
+    }
+    if (trip.vehiclePlateNumber && !isObjectId(trip.vehiclePlateNumber)) {
+      return trip.vehiclePlateNumber;
+    }
+    const rawVeh = trip.rawVehicle || trip.vehicleNo || trip.vehicleId;
+    if (rawVeh) {
+      if (typeof rawVeh === "object") {
+        const v = rawVeh;
+        const name =
+          v.vehicleName ||
+          v.vmodel ||
+          v.model ||
+          v.name ||
+          v.vregistrationnumber ||
+          v.registrationNumber ||
+          "";
+        if (name) return name;
+      } else {
+        const rawKey = String(rawVeh).trim();
+        if (vehiclesMap[rawKey]) {
+          const v = vehiclesMap[rawKey];
+          return (
+            v.vehicleName ||
+            v.vmodel ||
+            v.model ||
+            v.name ||
+            v.vregistrationnumber ||
+            ""
+          );
+        }
+        if (!isObjectId(rawKey)) return rawKey;
+      }
+    }
+    if (
+      trip.tripNo &&
+      typeof trip.tripNo === "object" &&
+      trip.tripNo.vehicleId
+    ) {
+      const tv = trip.tripNo.vehicleId;
+      if (typeof tv === "object") {
+        const tvName =
+          tv.vehicleName ||
+          tv.vmodel ||
+          tv.model ||
+          tv.name ||
+          tv.vregistrationnumber ||
+          "";
+        if (tvName) return tvName;
+      } else if (vehiclesMap[String(tv)]) {
+        const mapped = vehiclesMap[String(tv)];
+        return (
+          mapped.vehicleName ||
+          mapped.vmodel ||
+          mapped.model ||
+          mapped.name ||
+          mapped.vregistrationnumber ||
+          ""
+        );
+      }
+    }
+  }
+
+  // If string is an ObjectId and could not be resolved yet
+  if (isObjectId(str)) {
+    return "Assigned Vehicle";
+  }
+
+  return str || "Unassigned";
+};
+
 const STATUS_CONFIG = {
   created: {
     label: "Created",
@@ -129,6 +341,10 @@ const STATUS_CONFIG = {
     label: "Failed Delivered",
     className: "drv-status--failed_delivery",
   },
+  reattempt_scheduled: {
+    label: "Re-attempt Scheduled",
+    className: "drv-status--reattempt_scheduled",
+  },
 };
 
 const NEXT_STATUS_MAP = {
@@ -139,6 +355,8 @@ const NEXT_STATUS_MAP = {
   dispatched: "in_transit",
   in_transit: "out_for_delivery",
   out_for_delivery: "delivered",
+  failed_delivery: "out_for_delivery",
+  reattempt_scheduled: "out_for_delivery",
 };
 
 export default function Driverdashboard() {
@@ -151,14 +369,20 @@ export default function Driverdashboard() {
     }
   }, []);
 
-  const [driverProfile, setDriverProfile] = useState(null);
+  const [driverProfile, setDriverProfile] = useState(() => {
+    try {
+      const cached = localStorage.getItem("driver");
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return null;
+  });
   const driverName =
     user?.userName || user?.name || driverProfile?.name || "Driver";
   const driverPhone =
     driverProfile?.phonenumber ||
     driverProfile?.phone ||
-    user?.phone ||
     user?.phonenumber ||
+    user?.phone ||
     "Not Provided";
   const assignedVehicle = driverProfile?.vehicleNo || "Unassigned";
 
@@ -195,6 +419,9 @@ export default function Driverdashboard() {
   // Modals state
   const [statusModalTrip, setStatusModalTrip] = useState(null);
   const [podModalTrip, setPodModalTrip] = useState(null);
+  const [failedDeliveryModalTrip, setFailedDeliveryModalTrip] = useState(null);
+  const [otpModalTrip, setOtpModalTrip] = useState(null);
+  const [otpTargetEmail, setOtpTargetEmail] = useState("");
   const [viewPodTrip, setViewPodTrip] = useState(null);
   const [tripDetailsModal, setTripDetailsModal] = useState(null);
   const [showSetupProfileModal, setShowSetupProfileModal] = useState(false);
@@ -202,6 +429,8 @@ export default function Driverdashboard() {
     useState(false);
   const [hasAutoPromptedProfile, setHasAutoPromptedProfile] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [vehiclesMap, setVehiclesMap] = useState({});
+  const [checkingTripId, setCheckingTripId] = useState(null);
 
   // Helper to get detailed list of which required driver verification fields are incomplete
   const getIncompleteFields = (profile) => {
@@ -209,7 +438,7 @@ export default function Driverdashboard() {
 
     const missing = [];
     const phone =
-      profile.phonenumber || profile.phone || user?.phone || user?.phonenumber;
+      profile.phonenumber || profile.phone || user?.phonenumber || user?.phone;
     if (!phone || !String(phone).trim()) {
       missing.push({ key: "phonenumber", label: "Phone Number" });
     }
@@ -244,7 +473,26 @@ export default function Driverdashboard() {
       if (res.ok) {
         const data = await res.json();
         if (data?.driver) {
-          setDriverProfile(data.driver);
+          setDriverProfile((prev) => {
+            const updated = {
+              ...(prev || {}),
+              ...data.driver,
+              phonenumber:
+                data.driver.phonenumber ||
+                data.driver.phone ||
+                prev?.phonenumber ||
+                prev?.phone ||
+                "",
+              license: {
+                ...(prev?.license || {}),
+                ...(data.driver.license || {}),
+              },
+            };
+            try {
+              localStorage.setItem("driver", JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
           const missing = getIncompleteFields(data.driver);
           if (missing.length > 0 && !hasAutoPromptedProfile) {
             setShowSetupProfileModal(true);
@@ -268,11 +516,127 @@ export default function Driverdashboard() {
     }
   }, [trips, storageKey]);
 
+  // Fetch vehicle master list to resolve vehicle names
+  const fetchVehicles = async () => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API_BASE_URL}/vechile`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.vehicles || [];
+        const map = {};
+        list.forEach((v) => {
+          if (!v) return;
+          const vName =
+            v.vmodel ||
+            v.vehicleName ||
+            v.model ||
+            v.name ||
+            v.vregistrationnumber ||
+            v.registrationNumber ||
+            "";
+          const info = {
+            ...v,
+            vehicleName: vName,
+          };
+          if (v._id) map[String(v._id)] = info;
+          if (v.vregistrationnumber) {
+            map[String(v.vregistrationnumber).trim()] = info;
+            map[String(v.vregistrationnumber).trim().toLowerCase()] = info;
+          }
+        });
+        setVehiclesMap(map);
+        return map;
+      }
+    } catch (err) {
+      console.warn("Could not fetch vehicles:", err);
+    }
+    return {};
+  };
+
+  // Fetch delivery shipment details via GET /delivery/shipment/:shipmentId
+  const fetchDeliveryForShipment = async (shipmentId) => {
+    const token = localStorage.getItem("token");
+    if (!token || !shipmentId) return null;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/delivery/shipment/${shipmentId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        return data?.delivery || data?.deliveryget || data?.data || null;
+      }
+    } catch (err) {
+      console.warn(
+        `Could not fetch delivery details for shipment ${shipmentId}:`,
+        err,
+      );
+    }
+    return null;
+  };
+
+  // Manually check / refresh re-attempt delivery schedule for a single failed trip
+  const checkReattemptStatus = async (trip) => {
+    const sId = trip._id || trip.shipmentId;
+    if (!sId) return;
+    setCheckingTripId(trip._id);
+    try {
+      const del = await fetchDeliveryForShipment(sId);
+      if (del) {
+        setTrips((prev) =>
+          prev.map((t) => {
+            if (t._id === trip._id) {
+              return {
+                ...t,
+                deliveryInfo: del,
+                deliveryStatus: del.status || t.deliveryStatus,
+                reattemptDate: del.reattemptDate || t.reattemptDate,
+                rescheduleDate: del.reattemptDate || t.rescheduleDate,
+                attemptNumber: del.attemptNumber || t.attemptNumber || 1,
+                reattemptNotes: del.notes || t.reattemptNotes,
+                failureReason: del.reason || t.failureReason,
+              };
+            }
+            return t;
+          }),
+        );
+
+        if (del.reattemptDate) {
+          showToast(
+            `Re-attempt scheduled for ${formatRescheduleDate(del.reattemptDate)}!`,
+            "success",
+          );
+        } else {
+          showToast(
+            "No re-attempt date has been scheduled yet by manager.",
+            "info",
+          );
+        }
+      } else {
+        showToast("No delivery record found for this shipment.", "info");
+      }
+    } catch (e) {
+      showToast("Failed to fetch delivery re-attempt status.", "error");
+    } finally {
+      setCheckingTripId(null);
+    }
+  };
+
   // Fetch backend shipments assigned specifically to this driver
-  const fetchShipments = async () => {
+  const fetchShipments = async (mapOverride = null) => {
     setLoading(true);
     const token = localStorage.getItem("token");
     try {
+      let vMap = mapOverride || vehiclesMap;
+      if (!vMap || Object.keys(vMap).length === 0) {
+        vMap = await fetchVehicles();
+      }
+
       let serverShipments = [];
 
       // 1. First attempt to call the dedicated /driver/myshipments endpoint
@@ -285,27 +649,32 @@ export default function Driverdashboard() {
           serverShipments = myData?.shipments || [];
           if (myData?.driver) {
             setDriverProfile((prev) => {
-              if (!prev) return myData.driver;
-              return {
+              const updated = {
+                ...(prev || {}),
                 ...myData.driver,
-                ...prev,
                 phonenumber:
-                  prev.phonenumber ||
                   myData.driver.phonenumber ||
                   myData.driver.phone ||
-                  prev.phone ||
+                  prev?.phonenumber ||
+                  prev?.phone ||
                   "",
+                driverId: myData.driver.driverId || prev?.driverId || "",
                 license: {
+                  ...(prev?.license || {}),
                   ...(myData.driver.license || {}),
-                  ...(prev.license || {}),
                 },
                 documents: {
+                  ...(prev?.documents || {}),
                   ...(myData.driver.documents || {}),
-                  ...(prev.documents || {}),
                 },
                 isProfileComplete:
-                  prev.isProfileComplete || myData.driver.isProfileComplete,
+                  Boolean(myData.driver.isProfileComplete) ||
+                  Boolean(prev?.isProfileComplete),
               };
+              try {
+                localStorage.setItem("driver", JSON.stringify(updated));
+              } catch {}
+              return updated;
             });
           }
         }
@@ -362,6 +731,8 @@ export default function Driverdashboard() {
         sender: {
           name: s.senderName || s.originHub || "N/A",
           address: s.senderAddress || s.originAddress || s.originCity || "N/A",
+          city: s.senderCity || "",
+          state: s.senderState || "",
           contactPerson: s.senderContact || "-",
           phone: s.senderPhoneNumber || s.senderPhone || "-",
         },
@@ -372,7 +743,14 @@ export default function Driverdashboard() {
             s.destinationAddress ||
             s.destinationCity ||
             "N/A",
+          city: s.receiverCity || "",
+          state: s.receiverState || "",
           phone: s.receiverPhoneNumber || s.receiverPhone || "-",
+          email:
+            s.receiverEmail ||
+            s.customerId?.email ||
+            s.customerEmail ||
+            "",
         },
         packageDetails: {
           type: s.packageDescription || s.packageType || "Parcel",
@@ -380,16 +758,133 @@ export default function Driverdashboard() {
           items: s.packageCount ?? s.quantity ?? 1,
           instructions: s.specialInstructions || "-",
         },
+        rawVehicle: s.vehicleNo || s.tripNo?.vehicleId || null,
         assignedVehicle:
-          s.vehicleNo ||
-          s.vehiclePlateNumber ||
-          (assignedVehicle !== "Unassigned" ? assignedVehicle : "N/A"),
+          formatVehicleName(
+            s.vehicleName ||
+              (typeof s.vehicleNo === "object" && s.vehicleNo !== null
+                ? s.vehicleNo.vehicleName ||
+                  s.vehicleNo.vmodel ||
+                  s.vehicleNo.model ||
+                  s.vehicleNo.name ||
+                  s.vehicleNo.vregistrationnumber
+                : null) ||
+              s.vehiclePlateNumber ||
+              s.vehicleNo ||
+              s.tripNo?.vehicleId,
+            s,
+            vMap,
+          ) ||
+          (assignedVehicle !== "Unassigned" && !isObjectId(assignedVehicle)
+            ? assignedVehicle
+            : "N/A"),
+        pickupDate:
+          s.pickupDate ||
+          s.pickupScheduleDate ||
+          s.scheduledPickupDate ||
+          s.pickup_date ||
+          s.pickup ||
+          null,
+        pickupScheduleDate:
+          s.pickupScheduleDate ||
+          s.pickupDate ||
+          s.scheduledPickupDate ||
+          s.pickup_date ||
+          null,
         estimatedDelivery: formatETA(
           s.expectedDeliveryDate || s.deliveryDate || s.estimatedDelivery,
         ),
+        rawShipment: s,
         createdAt: s.createdAt || "",
         pod: s.pod || null,
+        failureNote:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? ""
+            : s.failureNote || s.notes || s.statusNotes || "",
+        failureReason:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? ""
+            : s.failureReason || s.reason || "",
+        statusNotes:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? ""
+            : s.statusNotes || s.notes || s.failureNote || "",
+        failureReportedAt:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? ""
+            : s.failureReportedAt || s.updatedAt || "",
+        deliveryStatus:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? "delivered"
+            : s.deliveryStatus || "",
+        reattemptDate:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? null
+            : s.reattemptDate || s.rescheduleDate || null,
+        rescheduleDate:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? null
+            : s.rescheduleDate || s.reattemptDate || null,
+        attemptNumber: s.attemptNumber || 1,
+        reattemptNotes:
+          s.status === "delivered" || s.deliveryStatus === "delivered"
+            ? ""
+            : s.statusNotes || "",
       }));
+
+      // Enrich candidate shipments (failed delivery or re-attempt scheduled) via GET /delivery/shipment/:shipmentId
+      if (formatted.length > 0 && token) {
+        try {
+          const candidateTrips = formatted.filter(
+            (t) =>
+              t.status !== "delivered" &&
+              t.deliveryStatus !== "delivered" &&
+              (t.status === "failed_delivery" ||
+                t.status === "failed" ||
+                t.status === "reattempt_scheduled" ||
+                t.failureNote ||
+                t.failureReason ||
+                Boolean(t.reattemptDate)),
+          );
+
+          if (candidateTrips.length > 0) {
+            await Promise.allSettled(
+              candidateTrips.map(async (tripItem) => {
+                const sId = tripItem._id || tripItem.shipmentId;
+                const delData = await fetchDeliveryForShipment(sId);
+                if (delData) {
+                  tripItem.deliveryInfo = delData;
+                  if (tripItem.status === "delivered" || delData.status === "delivered") {
+                    tripItem.deliveryStatus = "delivered";
+                    tripItem.reattemptDate = null;
+                    tripItem.rescheduleDate = null;
+                    tripItem.failureReason = "";
+                    tripItem.failureNote = "";
+                    tripItem.reattemptNotes = "";
+                  } else {
+                    if (delData.status) tripItem.deliveryStatus = delData.status;
+                    if (delData.reattemptDate) {
+                      tripItem.reattemptDate = delData.reattemptDate;
+                      tripItem.rescheduleDate = delData.reattemptDate;
+                    }
+                    if (delData.attemptNumber) {
+                      tripItem.attemptNumber = delData.attemptNumber;
+                    }
+                    if (delData.notes) {
+                      tripItem.reattemptNotes = delData.notes;
+                    }
+                    if (delData.reason) {
+                      tripItem.failureReason = delData.reason;
+                    }
+                  }
+                }
+              }),
+            );
+          }
+        } catch (delErr) {
+          console.warn("Could not enrich delivery details:", delErr);
+        }
+      }
 
       setTrips(formatted);
       if (formatted.length > 0) {
@@ -407,7 +902,10 @@ export default function Driverdashboard() {
   };
 
   useEffect(() => {
-    fetchShipments();
+    (async () => {
+      const vMap = await fetchVehicles();
+      fetchShipments(vMap);
+    })();
     fetchDriverProfile();
   }, []);
 
@@ -416,14 +914,108 @@ export default function Driverdashboard() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  // Initiate delivery verification via backend OTP API before opening POD modal
+  const handleInitiateDelivery = async (trip) => {
+    const token = localStorage.getItem("token");
+    const shipmentId = trip._id || trip.shipmentId || trip.trackingId;
+
+    showToast("Sending delivery verification OTP to receiver email...", "info");
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/receiver/otpverify/${shipmentId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(
+          data.message || "Failed to send delivery verification OTP",
+          "error",
+        );
+        return;
+      }
+
+      const receiverEmail =
+        data.receiverEmail ||
+        trip.receiver?.email ||
+        trip.receiverEmail ||
+        trip.customerId?.email ||
+        "receiver email";
+
+      setOtpModalTrip(trip);
+      setOtpTargetEmail(receiverEmail);
+      showToast(
+        `Delivery OTP sent successfully to receiver (${receiverEmail})!`,
+        "success",
+      );
+    } catch (err) {
+      console.error("Error sending delivery OTP:", err);
+      showToast(
+        "Network error while sending delivery OTP. Please try again.",
+        "error",
+      );
+    }
+  };
+
+  const handleResendOtp = async (trip) => {
+    const token = localStorage.getItem("token");
+    const shipmentId = trip._id || trip.shipmentId || trip.trackingId;
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/receiver/otpverify/${shipmentId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.message || "Failed to resend OTP", "error");
+        return false;
+      }
+
+      const receiverEmail =
+        data.receiverEmail ||
+        trip.receiver?.email ||
+        trip.receiverEmail ||
+        otpTargetEmail ||
+        "receiver email";
+
+      setOtpTargetEmail(receiverEmail);
+      showToast(
+        `A new delivery OTP has been sent to ${receiverEmail}!`,
+        "success",
+      );
+      return true;
+    } catch (err) {
+      console.error("Error resending delivery OTP:", err);
+      showToast("Network error while resending delivery OTP.", "error");
+      return false;
+    }
+  };
+
   // Status progression action
   const handleNextStep = async (trip) => {
     const currentStatus = trip.status;
     const nextStatus = NEXT_STATUS_MAP[currentStatus];
 
     if (currentStatus === "out_for_delivery") {
-      // If ready to deliver, trigger the POD submission modal
-      setPodModalTrip(trip);
+      // Trigger OTP verification before POD submission
+      handleInitiateDelivery(trip);
       return;
     }
 
@@ -436,16 +1028,39 @@ export default function Driverdashboard() {
   };
 
   // Update status function (calls backend PATCH if online, and always updates local state)
-  const updateTripStatus = async (tripId, newStatus, additionalData = {}) => {
+  const updateTripStatus = async (
+    tripId,
+    newStatus,
+    additionalData = {},
+    options = {},
+  ) => {
     // 1. Optimistic local update
     setTrips((prev) =>
       prev.map((t) => {
-        if (t._id === tripId) {
-          return {
+        if (
+          t._id === tripId ||
+          t.shipmentId === tripId ||
+          t.trackingId === tripId
+        ) {
+          const updated = {
             ...t,
             status: newStatus,
             ...additionalData,
           };
+          if (newStatus === "out_for_delivery") {
+            updated.deliveryStatus = "out_for_delivery";
+          } else if (newStatus === "delivered") {
+            updated.deliveryStatus = "delivered";
+            updated.reattemptDate = null;
+            updated.rescheduleDate = null;
+            updated.failureNote = "";
+            updated.failureReason = "";
+            updated.statusNotes = "";
+            updated.reattemptNotes = "";
+          } else if (newStatus === "failed_delivery") {
+            updated.deliveryStatus = "failed";
+          }
+          return updated;
         }
         return t;
       }),
@@ -453,22 +1068,37 @@ export default function Driverdashboard() {
 
     // 2. Attempt backend API patch
     const token = localStorage.getItem("token");
-    try {
-      await fetch(`${API_BASE_URL}/shipments/${tripId}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-    } catch (error) {
-      console.warn("Backend status update skipped/offline:", error);
+    if (!options.skipBackendStatusPatch && token) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/shipments/${tripId}/status`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.warn("Backend status update error:", errData);
+          showToast(
+            errData.message || "Failed to update shipment status",
+            "error",
+          );
+          fetchShipments();
+          return;
+        }
+      } catch (error) {
+        console.warn("Backend status update skipped/offline:", error);
+      }
     }
 
-    const statusLabel =
-      STATUS_CONFIG[newStatus]?.label || newStatus.replace(/_/g, " ");
-    showToast(`Status updated to: ${statusLabel}`, "success");
+    if (!options.suppressToast) {
+      const statusLabel =
+        STATUS_CONFIG[newStatus]?.label || newStatus.replace(/_/g, " ");
+      showToast(`Status updated to: ${statusLabel}`, "success");
+    }
     setStatusModalTrip(null);
   };
 
@@ -476,14 +1106,99 @@ export default function Driverdashboard() {
   const handleSubmitPOD = async (tripId, podPayload) => {
     const updatedPod = {
       ...podPayload,
-      timestamp: new Date().toISOString(),
-      location: podPayload.location || "",
+      timestamp: podPayload.timestamp || new Date().toISOString(),
+      location: podPayload.location || podPayload.deliveryAddress || "",
     };
 
     // Update trip with delivered status and POD payload
-    await updateTripStatus(tripId, "delivered", { pod: updatedPod });
+    await updateTripStatus(
+      tripId,
+      "delivered",
+      {
+        pod: updatedPod,
+        deliveryStatus: "delivered",
+        reattemptDate: null,
+        rescheduleDate: null,
+        failureNote: "",
+        failureReason: "",
+        statusNotes: "",
+        reattemptNotes: "",
+      },
+      { skipBackendStatusPatch: true },
+    );
     setPodModalTrip(null);
     showToast("Proof of Delivery submitted! Shipment delivered.", "success");
+    fetchShipments();
+  };
+
+  // Submit Failed Delivery Note to backend PATCH /delivery-fail-note/:shipmentId
+  const handleFailedDeliverySubmit = async (tripOrId, failureData) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showToast("Authentication required. Please log in again.", "error");
+      throw new Error("Authentication token is required");
+    }
+
+    const trip =
+      typeof tripOrId === "object" && tripOrId !== null
+        ? tripOrId
+        : trips.find((t) => t._id === tripOrId || t.shipmentId === tripOrId) ||
+          {};
+
+    const tripId = trip._id || tripOrId;
+    const shipmentId = trip._id || trip.shipmentId || trip.trackingId || tripId;
+
+    const reason = (failureData?.reason || "").trim();
+    const notes = (failureData?.notes || failureData?.note || "").trim();
+
+    if (!reason || !notes) {
+      showToast("Please provide both reason and failure note.", "error");
+      throw new Error("Please Fill All The Detailes");
+    }
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/delivery-fail-note/${shipmentId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            reason,
+            notes,
+          }),
+        },
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to submit delivery fail note");
+      }
+
+      // Update local state and shipment status
+      await updateTripStatus(
+        tripId,
+        "failed_delivery",
+        {
+          failureNote: notes,
+          failureReason: reason,
+          statusNotes: notes,
+          failureReportedAt: new Date().toISOString(),
+        },
+        { suppressToast: true },
+      );
+
+      setFailedDeliveryModalTrip(null);
+      showToast(data?.message || "Reason & Note are Submited", "success");
+      return data;
+    } catch (error) {
+      console.error("Failed delivery note submission error:", error);
+      showToast(error.message || "Failed to submit failure note", "error");
+      throw error;
+    }
   };
 
   // Copy tracking number helper
@@ -767,7 +1482,25 @@ export default function Driverdashboard() {
               {filteredTrips.map((trip) => {
                 const statusInfo =
                   STATUS_CONFIG[trip.status] || STATUS_CONFIG.created;
-                const isDelivered = trip.status === "delivered";
+                const isDelivered =
+                  trip.status === "delivered" ||
+                  trip.deliveryStatus === "delivered";
+                const isOutForDelivery =
+                  trip.status === "out_for_delivery" ||
+                  trip.deliveryStatus === "out_for_delivery";
+                const isFailed =
+                  !isDelivered &&
+                  !isOutForDelivery &&
+                  (trip.status === "failed_delivery" ||
+                    trip.deliveryStatus === "failed" ||
+                    Boolean(trip.failureNote || trip.failureReason));
+                const hasReattempt =
+                  !isDelivered &&
+                  !isOutForDelivery &&
+                  Boolean(trip.reattemptDate || trip.rescheduleDate) &&
+                  (trip.status === "failed_delivery" ||
+                    trip.status === "reattempt_scheduled" ||
+                    trip.deliveryStatus === "reattempt_scheduled");
 
                 return (
                   <div key={trip._id} className="drv-trip-card">
@@ -801,6 +1534,30 @@ export default function Driverdashboard() {
                         >
                           {trip.priority}
                         </span>
+
+                        {hasReattempt && (
+                          <span
+                            className="drv-reschedule-badge"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              background: "#fef3c7",
+                              color: "#b45309",
+                              border: "1px solid #fde68a",
+                              fontSize: "0.7rem",
+                              fontWeight: 600,
+                              padding: "0.15rem 0.45rem",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            <Calendar className="w-3 h-3 text-amber-600" />
+                            Re-attempt:{" "}
+                            {formatETA(
+                              trip.reattemptDate || trip.rescheduleDate,
+                            )}
+                          </span>
+                        )}
 
                         {trip.pod && (
                           <span className="drv-pod-badge">
@@ -843,6 +1600,41 @@ export default function Driverdashboard() {
                             <p className="drv-step-addr">
                               {trip.sender?.address}
                             </p>
+                            {(trip.sender?.city || trip.sender?.state) && (
+                              <p className="drv-step-addr">
+                                {[trip.sender?.city, trip.sender?.state]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </p>
+                            )}
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                                marginTop: "0.4rem",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                                color: "#0369a1",
+                                background: "#f0f9ff",
+                                border: "1px solid #bae6fd",
+                                padding: "0.2rem 0.55rem",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                              <span>
+                                Pickup Schedule:{" "}
+                                <strong style={{ color: "#0c4a6e" }}>
+                                  {formatPickupDate(
+                                    trip.pickupDate ||
+                                      trip.pickupScheduleDate ||
+                                      trip.scheduledPickupDate ||
+                                      trip.rawShipment?.pickupDate,
+                                  )}
+                                </strong>
+                              </span>
+                            </div>
                           </div>
                         </div>
 
@@ -863,6 +1655,13 @@ export default function Driverdashboard() {
                             <p className="drv-step-addr">
                               {trip.receiver?.address}
                             </p>
+                            {(trip.receiver?.city || trip.receiver?.state) && (
+                              <p className="drv-step-addr">
+                                {[trip.receiver?.city, trip.receiver?.state]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </p>
+                            )}
                             {trip.receiver?.phone && (
                               <a
                                 href={`tel:${trip.receiver.phone}`}
@@ -876,9 +1675,105 @@ export default function Driverdashboard() {
                         </div>
                       </div>
 
-                      {/* Expected Delivery - centered between route and parcel */}
+                      {/* Expected Delivery & Pickup Schedule - centered between route and parcel */}
                       <div className="drv-expected-delivery">
-                        Expected Delivery: {formatETA(trip.estimatedDelivery)}
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "0.5rem 1.25rem",
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.35rem",
+                              fontSize: "0.78rem",
+                              color: "#0369a1",
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                            <span>
+                              Pickup Schedule:{" "}
+                              <strong style={{ color: "#0c4a6e" }}>
+                                {formatPickupDate(
+                                  trip.pickupDate ||
+                                    trip.pickupScheduleDate ||
+                                    trip.scheduledPickupDate ||
+                                    trip.rawShipment?.pickupDate,
+                                )}
+                              </strong>
+                            </span>
+                          </span>
+
+                          <span
+                            style={{
+                              color: "#cbd5e1",
+                              display: "inline-block",
+                            }}
+                          >
+                            •
+                          </span>
+
+                          {hasReattempt ? (
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                flexWrap: "wrap",
+                                gap: "0.4rem",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "0.74rem",
+                                  color: "#64748b",
+                                }}
+                              >
+                                Original ETA: {formatETA(trip.estimatedDelivery)}
+                              </span>
+                              <span
+                                style={{
+                                  color: "#b45309",
+                                  fontWeight: 700,
+                                  fontSize: "0.78rem",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.3rem",
+                                }}
+                              >
+                                <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                Rescheduled:{" "}
+                                {formatRescheduleDate(
+                                  trip.reattemptDate || trip.rescheduleDate,
+                                )}
+                              </span>
+                            </div>
+                          ) : (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                                fontSize: "0.78rem",
+                                color: "#334155",
+                                fontWeight: 500,
+                              }}
+                            >
+                              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span>
+                                Expected Delivery:{" "}
+                                <strong style={{ color: "#1e293b" }}>
+                                  {formatETA(trip.estimatedDelivery)}
+                                </strong>
+                              </span>
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Package and Notes Block */}
@@ -913,7 +1808,14 @@ export default function Driverdashboard() {
 
                         <div className="drv-parcel-footer">
                           <span>
-                            Vehicle: <strong>{trip.assignedVehicle}</strong>
+                            Vehicle:{" "}
+                            <strong>
+                              {formatVehicleName(
+                                trip.assignedVehicle,
+                                trip,
+                                vehiclesMap,
+                              )}
+                            </strong>
                           </span>
                           <button
                             type="button"
@@ -924,6 +1826,307 @@ export default function Driverdashboard() {
                           </button>
                         </div>
                       </div>
+
+                      {/* Manager Re-attempt Scheduled Banner */}
+                      {hasReattempt && (
+                        <div
+                          style={{
+                            marginTop: "0.65rem",
+                            padding: "0.75rem 0.9rem",
+                            background: "#fffbeb",
+                            border: "1.5px solid #fde68a",
+                            borderRadius: "var(--drv-radius-sm, 6px)",
+                            fontSize: "0.825rem",
+                            color: "#92400e",
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "0.65rem",
+                            boxShadow: "0 1px 3px rgba(245, 158, 11, 0.08)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              background: "#fef3c7",
+                              padding: "0.4rem",
+                              borderRadius: "6px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                              marginTop: "0.1rem",
+                            }}
+                          >
+                            <Calendar
+                              style={{
+                                width: "1.1rem",
+                                height: "1.1rem",
+                                color: "#d97706",
+                              }}
+                            />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: "0.35rem",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.4rem",
+                                }}
+                              >
+                                <strong
+                                  style={{
+                                    color: "#b45309",
+                                    fontSize: "0.85rem",
+                                  }}
+                                >
+                                  Manager Re-attempt Scheduled
+                                </strong>
+                                {trip.attemptNumber && (
+                                  <span
+                                    style={{
+                                      fontSize: "0.7rem",
+                                      background: "#fde68a",
+                                      color: "#78350f",
+                                      padding: "0.1rem 0.4rem",
+                                      borderRadius: "4px",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Attempt #{trip.attemptNumber}
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.35rem",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: "0.75rem",
+                                    color: "#b45309",
+                                    fontWeight: 600,
+                                    background: "#fef9c3",
+                                    padding: "0.1rem 0.45rem",
+                                    borderRadius: "4px",
+                                    border: "1px solid #fef08a",
+                                  }}
+                                >
+                                  {formatETA(
+                                    trip.reattemptDate || trip.rescheduleDate,
+                                  )}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => checkReattemptStatus(trip)}
+                                  disabled={checkingTripId === trip._id}
+                                  title="Refresh Re-attempt Schedule"
+                                  style={{
+                                    background: "#ffffff",
+                                    border: "1px solid #fde68a",
+                                    color: "#b45309",
+                                    padding: "0.15rem 0.35rem",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.2rem",
+                                    fontSize: "0.7rem",
+                                  }}
+                                >
+                                  <RefreshCw
+                                    className={`w-3 h-3 ${checkingTripId === trip._id ? "animate-spin" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "0.35rem",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.4rem",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: "#78350f",
+                                  fontWeight: 600,
+                                  fontSize: "0.8rem",
+                                }}
+                              >
+                                Rescheduled Date:
+                              </span>
+                              <strong
+                                style={{
+                                  color: "#92400e",
+                                  fontSize: "0.875rem",
+                                  background: "#ffffff",
+                                  padding: "0.15rem 0.5rem",
+                                  borderRadius: "4px",
+                                  border: "1px solid #fde68a",
+                                }}
+                              >
+                                {formatRescheduleDate(
+                                  trip.reattemptDate || trip.rescheduleDate,
+                                )}
+                              </strong>
+                            </div>
+
+                            {(trip.reattemptNotes ||
+                              (trip.deliveryNotes &&
+                                trip.deliveryNotes !== trip.failureNote)) && (
+                              <div
+                                style={{
+                                  marginTop: "0.35rem",
+                                  fontSize: "0.775rem",
+                                  color: "#78350f",
+                                  background: "rgba(255, 255, 255, 0.7)",
+                                  padding: "0.3rem 0.5rem",
+                                  borderRadius: "4px",
+                                  borderLeft: "3px solid #d97706",
+                                }}
+                              >
+                                <span style={{ fontWeight: 600 }}>
+                                  Manager Instructions:{" "}
+                                </span>
+                                {trip.reattemptNotes || trip.deliveryNotes}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Awaiting Manager Re-attempt banner for failed shipments */}
+                      {isFailed && !hasReattempt && (
+                        <div
+                          style={{
+                            marginTop: "0.6rem",
+                            padding: "0.55rem 0.75rem",
+                            background: "#fef3c7",
+                            border: "1px solid #fde68a",
+                            borderRadius: "var(--drv-radius-sm, 6px)",
+                            fontSize: "0.8rem",
+                            color: "#92400e",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            flexWrap: "wrap",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.4rem",
+                            }}
+                          >
+                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Awaiting Manager Re-attempt Scheduling</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => checkReattemptStatus(trip)}
+                            disabled={checkingTripId === trip._id}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                              fontSize: "0.75rem",
+                              background: "#ffffff",
+                              color: "#b45309",
+                              border: "1px solid #fde68a",
+                              borderRadius: "4px",
+                              padding: "0.2rem 0.5rem",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            <RefreshCw
+                              className={`w-3 h-3 ${checkingTripId === trip._id ? "animate-spin" : ""}`}
+                            />
+                            {checkingTripId === trip._id
+                              ? "Checking..."
+                              : "Check Reschedule"}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* If failed delivery has a note, show failure note banner */}
+                      {isFailed && (trip.failureNote || trip.statusNotes) && (
+                        <div
+                          style={{
+                            marginTop: "0.6rem",
+                            padding: "0.55rem 0.75rem",
+                            background: "#fff1f2",
+                            border: "1px solid #fecdd3",
+                            borderRadius: "var(--drv-radius-sm, 6px)",
+                            fontSize: "0.8rem",
+                            color: "#9f1239",
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <AlertCircle
+                            style={{
+                              width: "1rem",
+                              height: "1rem",
+                              flexShrink: 0,
+                              marginTop: "0.1rem",
+                              color: "#e11d48",
+                            }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "baseline",
+                                flexWrap: "wrap",
+                                gap: "0.25rem",
+                              }}
+                            >
+                              <strong style={{ color: "#be123c" }}>
+                                {trip.failureReason || "Failed Delivery Note"}:
+                              </strong>
+                              {trip.failureReportedAt && (
+                                <span
+                                  style={{
+                                    fontSize: "0.7rem",
+                                    color: "#9f1239",
+                                    opacity: 0.8,
+                                  }}
+                                >
+                                  {formatETA(trip.failureReportedAt)}
+                                </span>
+                              )}
+                            </div>
+                            <p
+                              style={{
+                                marginTop: "0.2rem",
+                                wordBreak: "break-word",
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {trip.failureNote || trip.statusNotes}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Bottom Action Strip: Update Status & Submit POD */}
@@ -938,7 +2141,9 @@ export default function Driverdashboard() {
                               onChange={(e) => {
                                 const newSt = e.target.value;
                                 if (newSt === "delivered") {
-                                  setPodModalTrip(trip);
+                                  handleInitiateDelivery(trip);
+                                } else if (newSt === "failed_delivery") {
+                                  setFailedDeliveryModalTrip(trip);
                                 } else {
                                   updateTripStatus(trip._id, newSt);
                                 }
@@ -965,6 +2170,11 @@ export default function Driverdashboard() {
                               <option value="failed_delivery">
                                 Failed Delivered
                               </option>
+                              {hasReattempt && (
+                                <option value="reattempt_scheduled">
+                                  Re-attempt Scheduled
+                                </option>
+                              )}
                             </select>
                             <ChevronDown className="drv-select-arrow w-3.5 h-3.5" />
                           </div>
@@ -981,24 +2191,77 @@ export default function Driverdashboard() {
                             View POD
                           </button>
                         )}
+
+                        {/* If failed delivery, show "View / Edit Note" button */}
+                        {isFailed && (
+                          <button
+                            type="button"
+                            onClick={() => setFailedDeliveryModalTrip(trip)}
+                            className="drv-btn-viewpod"
+                            style={{
+                              borderColor: "#fda4af",
+                              color: "#e11d48",
+                              background: "#fff1f2",
+                            }}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {trip.failureNote || trip.statusNotes
+                              ? "View Failure Note"
+                              : "Add Failure Note"}
+                          </button>
+                        )}
                       </div>
 
                       {/* Primary Workflow Progress Action */}
                       <div>
-                        {!isDelivered ? (
+                        {isDelivered ? (
+                          <div className="drv-completed-tag">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Trip Completed</span>
+                          </div>
+                        ) : isFailed ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "0.4rem",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {hasReattempt && (
+                              <div
+                                className="drv-completed-tag"
+                                style={{
+                                  background: "#fffbeb",
+                                  color: "#b45309",
+                                  borderColor: "#fde68a",
+                                }}
+                              >
+                                <Calendar className="w-4 h-4 text-amber-600" />
+                                <span>Re-attempt Scheduled</span>
+                              </div>
+                            )}
+                            <div
+                              className="drv-completed-tag"
+                              style={{
+                                background: "#fff1f2",
+                                color: "#e11d48",
+                                borderColor: "#fecdd3",
+                              }}
+                            >
+                              <AlertTriangle className="w-4 h-4 text-rose-600" />
+                              <span>Delivery Failed</span>
+                            </div>
+                          </div>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => setPodModalTrip(trip)}
+                            onClick={() => handleInitiateDelivery(trip)}
                             className="drv-btn-pod"
                           >
                             <FileCheck className="w-3.5 h-3.5" />
                             Submit Delivery Proof
                           </button>
-                        ) : (
-                          <div className="drv-completed-tag">
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Trip Completed</span>
-                          </div>
                         )}
                       </div>
                     </div>
@@ -1009,6 +2272,27 @@ export default function Driverdashboard() {
           )}
         </div>
       </div>
+
+      {/* =========================================================================
+          MODAL 0: ENTER DELIVERY VERIFICATION OTP MODAL
+      ========================================================================= */}
+      {otpModalTrip && (
+        <DeliveryOtpModal
+          trip={otpModalTrip}
+          targetEmail={otpTargetEmail}
+          onClose={() => setOtpModalTrip(null)}
+          onVerified={() => {
+            const trip = otpModalTrip;
+            setOtpModalTrip(null);
+            showToast(
+              "OTP verified successfully! Please submit Proof of Delivery.",
+              "success",
+            );
+            setPodModalTrip(trip);
+          }}
+          onResendOtp={() => handleResendOtp(otpModalTrip)}
+        />
+      )}
 
       {/* =========================================================================
           MODAL 1: SUBMIT PROOF OF DELIVERY (POD)
@@ -1022,7 +2306,20 @@ export default function Driverdashboard() {
       )}
 
       {/* =========================================================================
-          MODAL 2: UPDATE SHIPMENT STATUS MODAL
+          MODAL 2: FAILED DELIVERY NOTE MODAL
+      ========================================================================= */}
+      {failedDeliveryModalTrip && (
+        <FailedDeliveryModal
+          trip={failedDeliveryModalTrip}
+          onClose={() => setFailedDeliveryModalTrip(null)}
+          onSubmit={(failureData) =>
+            handleFailedDeliverySubmit(failedDeliveryModalTrip, failureData)
+          }
+        />
+      )}
+
+      {/* =========================================================================
+          MODAL 3: UPDATE SHIPMENT STATUS MODAL
       ========================================================================= */}
       {statusModalTrip && (
         <UpdateStatusModal
@@ -1036,7 +2333,12 @@ export default function Driverdashboard() {
           onRequestPOD={() => {
             const trip = statusModalTrip;
             setStatusModalTrip(null);
-            setPodModalTrip(trip);
+            handleInitiateDelivery(trip);
+          }}
+          onRequestFailedDelivery={() => {
+            const trip = statusModalTrip;
+            setStatusModalTrip(null);
+            setFailedDeliveryModalTrip(trip);
           }}
         />
       )}
@@ -1054,6 +2356,7 @@ export default function Driverdashboard() {
       {tripDetailsModal && (
         <TripDetailsModal
           trip={tripDetailsModal}
+          vehiclesMap={vehiclesMap}
           onClose={() => setTripDetailsModal(null)}
           onOpenPOD={() => {
             const t = tripDetailsModal;
@@ -1061,7 +2364,7 @@ export default function Driverdashboard() {
             if (t.status === "delivered") {
               setViewPodTrip(t);
             } else {
-              setPodModalTrip(t);
+              handleInitiateDelivery(t);
             }
           }}
         />
@@ -1095,11 +2398,15 @@ export default function Driverdashboard() {
           driverName={driverName}
           driverPhone={driverPhone}
           assignedVehicle={assignedVehicle}
+          vehiclesMap={vehiclesMap}
           isOnDuty={isOnDuty}
           onClose={() => setShowDriverProfileInfoModal(false)}
           onOpenUpdateProfile={() => {
             setShowDriverProfileInfoModal(false);
             setShowSetupProfileModal(true);
+          }}
+          onProfileUpdated={(updated) => {
+            setDriverProfile(updated);
           }}
         />
       )}
@@ -1141,6 +2448,271 @@ export default function Driverdashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// SUB-COMPONENT: DELIVERY VERIFICATION OTP MODAL
+// =============================================================================
+function DeliveryOtpModal({
+  trip,
+  targetEmail,
+  onClose,
+  onVerified,
+  onResendOtp,
+}) {
+  const [enteredOtp, setEnteredOtp] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    const cleanInput = enteredOtp.trim();
+    if (!cleanInput) {
+      setErrorMsg("Please enter the 4-digit verification OTP");
+      return;
+    }
+
+    if (cleanInput.length !== 4) {
+      setErrorMsg("OTP must be exactly 4 digits");
+      return;
+    }
+
+    setIsVerifying(true);
+    const token = localStorage.getItem("token");
+    const shipmentId = trip._id || trip.shipmentId || trip.trackingId;
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/receiver/otpverify/${shipmentId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ otp: cleanInput }),
+        },
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setIsVerifying(false);
+        setErrorMsg(
+          data.message ||
+            "Invalid OTP code. Please enter the OTP sent to the receiver's email.",
+        );
+        return;
+      }
+
+      setIsVerifying(false);
+      onVerified();
+    } catch (err) {
+      console.error("OTP verification error:", err);
+      setIsVerifying(false);
+      setErrorMsg("Network error verifying OTP. Please try again.");
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setErrorMsg("");
+    setEnteredOtp("");
+    const sent = await onResendOtp();
+    if (sent !== false) {
+      setResendCooldown(30);
+    }
+  };
+
+  return (
+    <div className="drv-modal-overlay">
+      <div className="drv-modal-card" style={{ maxWidth: "460px" }}>
+        {/* Header - Fixed Top */}
+        <div className="drv-modal-header drv-modal-header--emerald">
+          <div className="drv-modal-title-box">
+            <div className="drv-modal-icon-badge">
+              <ShieldCheck className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="drv-modal-title">Verify Delivery OTP</h3>
+              <p className="drv-modal-sub">
+                Shipment {trip.trackingId} &bull; {trip.receiver?.name}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="drv-modal-close"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleVerify} className="flex-1 flex flex-col">
+          <div className="drv-modal-body" style={{ padding: "1.5rem" }}>
+            <div style={{ textAlign: "center", marginBottom: "1.25rem" }}>
+              <div
+                style={{
+                  width: "52px",
+                  height: "52px",
+                  borderRadius: "50%",
+                  background: "#ecfdf5",
+                  border: "2px solid #a7f3d0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 0.75rem",
+                  color: "#059669",
+                }}
+              >
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <h4
+                style={{
+                  fontSize: "1.05rem",
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  marginBottom: "0.35rem",
+                }}
+              >
+                Delivery Verification Code Sent
+              </h4>
+              <p
+                style={{
+                  fontSize: "0.825rem",
+                  color: "#64748b",
+                  lineHeight: 1.45,
+                }}
+              >
+                A 4-digit confirmation code has been sent to the receiver's email:
+              </p>
+              <div
+                style={{
+                  display: "inline-block",
+                  marginTop: "0.35rem",
+                  padding: "0.25rem 0.65rem",
+                  background: "#f1f5f9",
+                  borderRadius: "6px",
+                  fontWeight: 600,
+                  fontSize: "0.825rem",
+                  color: "#1e293b",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                {targetEmail}
+              </div>
+            </div>
+
+            {/* OTP Input */}
+            <div className="drv-form-group">
+              <label
+                className="drv-label"
+                style={{ textAlign: "center", display: "block" }}
+              >
+                Enter 4-Digit Delivery OTP *
+              </label>
+              <input
+                type="text"
+                autoFocus
+                maxLength={4}
+                value={enteredOtp}
+                onChange={(e) => {
+                  setErrorMsg("");
+                  setEnteredOtp(e.target.value.replace(/\D/g, "").slice(0, 4));
+                }}
+                placeholder="• • • •"
+                className="drv-input"
+                style={{
+                  textAlign: "center",
+                  fontSize: "1.45rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.45rem",
+                  height: "50px",
+                  borderRadius: "8px",
+                }}
+              />
+              {errorMsg && (
+                <div
+                  style={{
+                    color: "var(--drv-rose, #e11d48)",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    marginTop: "0.4rem",
+                    textAlign: "center",
+                  }}
+                >
+                  {errorMsg}
+                </div>
+              )}
+            </div>
+
+            {/* Resend Link */}
+            <div
+              style={{
+                textAlign: "center",
+                marginTop: "0.75rem",
+                fontSize: "0.78rem",
+                color: "#64748b",
+              }}
+            >
+              Didn't receive the code?{" "}
+              <button
+                type="button"
+                disabled={resendCooldown > 0}
+                onClick={handleResend}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: resendCooldown > 0 ? "#94a3b8" : "#0284c7",
+                  fontWeight: 600,
+                  cursor: resendCooldown > 0 ? "default" : "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : "Resend OTP"}
+              </button>
+            </div>
+          </div>
+
+          {/* Sticky Footer */}
+          <div className="drv-modal-footer">
+            <button type="button" onClick={onClose} className="drv-btn-default">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isVerifying}
+              className="drv-btn-submit-emerald"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}
+            >
+              <Check className="w-4 h-4" />
+              {isVerifying ? "Verifying..." : "Verify OTP & Continue"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -1230,14 +2802,36 @@ function ProofOfDeliveryModal({ trip, onClose, onSubmit }) {
     setHasSignature(false);
   };
 
-  // Handle Photo Upload
+  // Handle Photo Upload with client-side compression
   const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
       setPhotoFile(file);
       const reader = new FileReader();
-      reader.onload = () => {
-        setPhotoPreview(reader.result);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1200;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          setPhotoPreview(compressedDataUrl);
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     }
@@ -1259,13 +2853,20 @@ function ProofOfDeliveryModal({ trip, onClose, onSubmit }) {
 
     // Prepare POD payload
     const podPayload = {
-      recipientName,
-      recipientRelation,
-      recipientPhone,
-      notes: notes || "Delivered safely.",
-      signatureData,
+      name: recipientName.trim(),
+      recipientName: recipientName.trim(),
+      relationship: recipientRelation,
+      recipientRelation: recipientRelation,
+      phone: recipientPhone.trim(),
+      recipientPhone: recipientPhone.trim(),
+      deliveryAddress: deliveryAddress.trim() || trip?.receiver?.address || "",
+      location: deliveryAddress.trim() || trip?.receiver?.address || "",
+      notes: notes.trim() || "Delivered safely.",
+      signatureData: signatureData || "",
+      signatureUrl: signatureData || "",
+      photo: photoPreview || null,
       photoUrl: photoPreview || null,
-      location: deliveryAddress || "",
+      otpVerified: true,
     };
 
     // If there's an actual file, optionally upload to backend
@@ -1284,7 +2885,38 @@ function ProofOfDeliveryModal({ trip, onClose, onSubmit }) {
       }
     }
 
-    onSubmit(podPayload);
+    // Integrate with backend POST /pod-submit/:shipmentId
+    const shipmentId = trip._id || trip.shipmentId || trip.trackingId;
+    const token = localStorage.getItem("token");
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/pod-submit/${shipmentId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(podPayload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to submit Proof of Delivery");
+      }
+
+      await onSubmit({
+        ...podPayload,
+        ...(data.pod || {}),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("POD submit error:", err);
+      alert(err.message || "Error submitting Proof of Delivery");
+      setIsSubmitting(false);
+      return;
+    }
+
     setIsSubmitting(false);
   };
 
@@ -1608,9 +3240,316 @@ function ProofOfDeliveryModal({ trip, onClose, onSubmit }) {
 }
 
 // =============================================================================
+// SUB-COMPONENT: FAILED DELIVERY NOTE MODAL
+// =============================================================================
+function FailedDeliveryModal({ trip, onClose, onSubmit }) {
+  const [note, setNote] = useState(
+    trip?.failureNote || trip?.statusNotes || "",
+  );
+  const [reason, setReason] = useState(
+    trip?.failureReason || "Customer Unavailable / Door Closed",
+  );
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const failureReasons = [
+    "Customer Unavailable / Door Closed",
+    "Customer Refused Delivery",
+    "Incorrect / Incomplete Address",
+    "Premises Inaccessible / Gate Locked",
+    "Payment / COD Not Ready",
+    "Damaged Goods on Arrival",
+    "Customer Requested Reschedule",
+    "Other Reason",
+  ];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!note.trim()) {
+      setError("Please provide a note explaining why delivery failed.");
+      return;
+    }
+    setError("");
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        reason,
+        note: note.trim(),
+        notes: note.trim(),
+      });
+      onClose();
+    } catch (err) {
+      setError(
+        err?.message || "Failed to submit failure note. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="drv-modal-overlay">
+      <div className="drv-modal-card drv-modal-card--sm">
+        {/* Header - Red/Rose Warning Theme */}
+        <div
+          className="drv-modal-header"
+          style={{
+            background: "linear-gradient(135deg, #e11d48 0%, #be123c 100%)",
+            color: "#ffffff",
+            borderBottom: "none",
+          }}
+        >
+          <div className="drv-modal-title-box">
+            <div
+              className="drv-modal-icon-badge"
+              style={{
+                background: "rgba(255, 255, 255, 0.2)",
+                color: "#ffffff",
+                padding: "0.45rem",
+                borderRadius: "0.5rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <AlertTriangle className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="drv-modal-title">Record Failed Delivery</h3>
+              <p
+                className="drv-modal-sub"
+                style={{ color: "rgba(255, 255, 255, 0.85)" }}
+              >
+                Shipment {trip?.trackingId} &bull;{" "}
+                {trip?.receiver?.name || "Recipient"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="drv-modal-close"
+            style={{ color: "rgba(255, 255, 255, 0.8)" }}
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="drv-modal-body">
+            {/* Warning Notice */}
+            <div className="drv-modal-alert drv-modal-alert--rose">
+              <AlertCircle
+                style={{
+                  width: "1.1rem",
+                  height: "1.1rem",
+                  flexShrink: 0,
+                  marginTop: "0.1rem",
+                  color: "#e11d48",
+                }}
+              />
+              <span style={{ fontSize: "0.825rem", lineHeight: "1.4" }}>
+                You are marking this delivery attempt as Failed. A note
+                explaining the situation is required for dispatch logging.
+              </span>
+            </div>
+
+            {/* Shipment Summary info */}
+            <div
+              style={{
+                padding: "0.75rem",
+                background: "#f8fafc",
+                borderRadius: "0.5rem",
+                border: "1px solid var(--drv-border)",
+                fontSize: "0.825rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: "0.25rem",
+                }}
+              >
+                <span style={{ color: "var(--drv-text-muted)" }}>
+                  Recipient:
+                </span>
+                <span style={{ fontWeight: 600 }}>
+                  {trip?.receiver?.name || "N/A"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: "0.25rem",
+                }}
+              >
+                <span style={{ color: "var(--drv-text-muted)" }}>Phone:</span>
+                <span style={{ fontWeight: 600 }}>
+                  {trip?.receiver?.phone || "N/A"}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "var(--drv-text-muted)" }}>Address:</span>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    maxWidth: "230px",
+                    textAlign: "right",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={trip?.receiver?.address}
+                >
+                  {trip?.receiver?.address || "N/A"}
+                </span>
+              </div>
+            </div>
+
+            {/* Primary Reason Dropdown */}
+            <div className="drv-form-group">
+              <label className="drv-label">Primary Failure Reason</label>
+              <div style={{ position: "relative" }}>
+                <select
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="drv-select"
+                  style={{ appearance: "none", paddingRight: "2.25rem" }}
+                >
+                  {failureReasons.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  style={{
+                    width: "1rem",
+                    height: "1rem",
+                    color: "var(--drv-text-muted)",
+                    pointerEvents: "none",
+                    position: "absolute",
+                    right: "0.75rem",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Textarea field of note */}
+            <div className="drv-form-group">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "0.35rem",
+                }}
+              >
+                <label className="drv-label" style={{ marginBottom: 0 }}>
+                  Failure Note <span style={{ color: "#e11d48" }}>*</span>
+                </label>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--drv-text-muted)",
+                  }}
+                >
+                  {note.length} characters
+                </span>
+              </div>
+              <textarea
+                rows={4}
+                value={note}
+                onChange={(e) => {
+                  setNote(e.target.value);
+                  if (error) setError("");
+                }}
+                placeholder="Write specific details explaining why this delivery failed (e.g. Called recipient multiple times with no response, gate locked, neighbor confirmed away)..."
+                className="drv-textarea"
+                style={{
+                  resize: "vertical",
+                  minHeight: "95px",
+                  borderColor: error ? "#e11d48" : undefined,
+                }}
+                required
+              />
+              {error && (
+                <p
+                  style={{
+                    color: "#e11d48",
+                    fontSize: "0.75rem",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  {error}
+                </p>
+              )}
+            </div>
+
+            {/* Timestamp Notice */}
+            <div
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--drv-text-muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.35rem",
+              }}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>
+                Timestamp will be recorded automatically as current time
+              </span>
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="drv-modal-footer">
+            <button
+              type="button"
+              onClick={onClose}
+              className="drv-btn-default"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="drv-btn-primary"
+              style={{
+                background: "#e11d48",
+                borderColor: "#be123c",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {isSubmitting ? "Recording..." : "Confirm Failed Delivery"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // SUB-COMPONENT: UPDATE STATUS MODAL
 // =============================================================================
-function UpdateStatusModal({ trip, onClose, onUpdate, onRequestPOD }) {
+function UpdateStatusModal({
+  trip,
+  onClose,
+  onUpdate,
+  onRequestPOD,
+  onRequestFailedDelivery,
+}) {
   const [selectedStatus, setSelectedStatus] = useState(
     trip?.status || "in_transit",
   );
@@ -1628,6 +3567,12 @@ function UpdateStatusModal({ trip, onClose, onUpdate, onRequestPOD }) {
     if (selectedStatus === "delivered") {
       onRequestPOD();
       return;
+    }
+    if (selectedStatus === "failed_delivery") {
+      if (onRequestFailedDelivery) {
+        onRequestFailedDelivery();
+        return;
+      }
     }
     onUpdate(selectedStatus, statusNote);
   };
@@ -1698,6 +3643,20 @@ function UpdateStatusModal({ trip, onClose, onUpdate, onRequestPOD }) {
                 </span>
               </div>
             )}
+            {selectedStatus === "failed_delivery" && (
+              <div
+                className="drv-modal-alert drv-modal-alert--rose"
+                style={{ marginTop: "0.5rem" }}
+              >
+                <AlertTriangle
+                  style={{ width: "1rem", height: "1rem", flexShrink: 0 }}
+                />
+                <span>
+                  Selecting "Failed Delivered" will proceed to the Failure Note
+                  form.
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="drv-form-group">
@@ -1720,7 +3679,9 @@ function UpdateStatusModal({ trip, onClose, onUpdate, onRequestPOD }) {
           <button onClick={handleConfirm} className="drv-btn-primary">
             {selectedStatus === "delivered"
               ? "Proceed to POD Form"
-              : "Save Status"}
+              : selectedStatus === "failed_delivery"
+                ? "Proceed to Failure Form"
+                : "Save Status"}
           </button>
         </div>
       </div>
@@ -1729,14 +3690,102 @@ function UpdateStatusModal({ trip, onClose, onUpdate, onRequestPOD }) {
 }
 
 // =============================================================================
+// =============================================================================
 // SUB-COMPONENT: VIEW POD CERTIFICATE MODAL
 // =============================================================================
 function ViewPodModal({ trip, onClose }) {
-  const pod = trip?.pod || {};
+  const [podData, setPodData] = useState(trip?.pod || null);
+  const [loading, setLoading] = useState(!trip?.pod);
+  const [error, setError] = useState(null);
+
+  const shipmentId = trip?._id || trip?.shipmentId || trip?.trackingId;
+
+  const fetchPod = async () => {
+    if (!shipmentId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/pod/${shipmentId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.pod) {
+        setPodData(data.pod);
+      } else if (!podData) {
+        setError(data.message || "Proof of Delivery record not found");
+      }
+    } catch (err) {
+      console.warn("Failed to fetch POD from backend:", err);
+      if (!podData) {
+        setError("Unable to load Proof of Delivery from server");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPod();
+  }, [shipmentId]);
+
+  const pod = podData || trip?.pod || {};
+
+  const recipientName =
+    pod.receiver?.name ||
+    pod.recipientName ||
+    pod.name ||
+    trip?.receiver?.name ||
+    "Recipient";
+
+  const recipientRelation =
+    pod.receiver?.relationship ||
+    pod.recipientRelation ||
+    pod.relationship ||
+    "Self (Customer)";
+
+  const recipientPhone =
+    pod.receiver?.phone ||
+    pod.recipientPhone ||
+    pod.phone ||
+    trip?.receiver?.phone ||
+    trip?.receiverPhoneNumber ||
+    "N/A";
+
+  const deliveryAddress =
+    pod.deliveryAddress ||
+    pod.location ||
+    trip?.receiver?.address ||
+    trip?.receiverAddress ||
+    "Customer Address";
+
+  const deliveryTimestamp =
+    pod.deliveryDate ||
+    pod.timestamp ||
+    pod.createdAt ||
+    trip?.deliveredAt ||
+    trip?.updatedAt;
+
+  const signature = pod.signatureUrl || pod.signatureData || "";
+  const photo = pod.photoUrl || pod.photo || "";
+  const notes = pod.notes || trip?.notes || "";
+  const isOtpVerified =
+    pod.otpVerified !== undefined
+      ? Boolean(pod.otpVerified)
+      : trip?.otpVerified !== undefined
+        ? Boolean(trip.otpVerified)
+        : true;
+
+  const submittedByName =
+    pod.submittedBy?.name ||
+    (typeof pod.submittedBy === "string" ? pod.submittedBy : null);
 
   return (
     <div className="drv-modal-overlay">
-      <div className="drv-modal-card drv-modal-card--sm">
+      <div className="drv-modal-card" style={{ maxWidth: "520px" }}>
         {/* Header - Fixed Top */}
         <div className="drv-modal-header drv-modal-header--teal">
           <div className="drv-modal-title-box">
@@ -1746,7 +3795,7 @@ function ViewPodModal({ trip, onClose }) {
             <div>
               <h3 className="drv-modal-title">Delivery Proof Certificate</h3>
               <p className="drv-modal-sub">
-                Tracking: {trip.trackingId} &bull; Delivered
+                Tracking: {trip?.trackingId || shipmentId} &bull; Delivered
               </p>
             </div>
           </div>
@@ -1755,128 +3804,245 @@ function ViewPodModal({ trip, onClose }) {
             className="drv-modal-close"
             aria-label="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content - Scrollable */}
         <div className="drv-modal-body">
-          {/* Details Card */}
-          <div className="drv-info-box">
-            <div className="drv-info-row">
-              <span className="drv-info-label">Delivered To:</span>
-              <span className="drv-info-value">
-                {pod.recipientName || trip.receiver?.name || "Recipient"}
-              </span>
+          {loading && !podData ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "2.5rem 1rem",
+                color: "var(--drv-text-muted)",
+              }}
+            >
+              <RefreshCw
+                className="w-6 h-6 animate-spin"
+                style={{ margin: "0 auto 0.75rem", color: "var(--drv-teal)" }}
+              />
+              <p style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                Loading Proof of Delivery...
+              </p>
             </div>
-            <div className="drv-info-row">
-              <span className="drv-info-label">Relation:</span>
-              <span className="drv-info-value">
-                {pod.recipientRelation || "Customer Self"}
-              </span>
-            </div>
-            <div className="drv-info-row">
-              <span className="drv-info-label">Contact:</span>
-              <span className="drv-info-value">
-                {pod.recipientPhone || trip.receiver?.phone || "N/A"}
-              </span>
-            </div>
-            <div className="drv-info-row">
-              <span className="drv-info-label">Timestamp:</span>
-              <span
-                className="drv-info-value"
-                style={{ fontFamily: "monospace" }}
-              >
-                {pod.timestamp
-                  ? new Date(pod.timestamp).toLocaleString()
-                  : "N/A"}
-              </span>
-            </div>
-            <div className="drv-info-row">
-              <span className="drv-info-label">
-                GPS Coordinates / Location:
-              </span>
-              <span
-                className="drv-info-value"
-                style={{ color: "var(--drv-emerald)", fontFamily: "monospace" }}
-              >
-                {pod.location || "Not recorded"}
-              </span>
-            </div>
-            {pod.notes && (
-              <div
+          ) : error && !podData && !trip?.pod ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "2rem 1rem",
+              }}
+            >
+              <AlertCircle
+                className="w-8 h-8 text-rose-500"
+                style={{ margin: "0 auto 0.75rem" }}
+              />
+              <p
                 style={{
-                  paddingTop: "0.5rem",
-                  borderTop: "1px solid var(--drv-border)",
-                  color: "var(--drv-text-muted)",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  color: "#e11d48",
+                  marginBottom: "0.75rem",
                 }}
               >
-                <strong style={{ color: "var(--drv-text-main)" }}>
-                  Remarks:{" "}
-                </strong>
-                {pod.notes}
-              </div>
-            )}
-          </div>
-
-          {/* Signature Preview */}
-          {pod.signatureData && (
-            <div className="drv-form-group">
-              <span
-                className="drv-label"
-                style={{ textTransform: "uppercase", letterSpacing: "0.03em" }}
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={fetchPod}
+                className="drv-btn-default"
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
               >
-                Recipient Signature
-              </span>
+                <RefreshCw className="w-3.5 h-3.5" />
+                Retry
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Badges strip */}
               <div
                 style={{
-                  border: "1px solid var(--drv-border)",
-                  borderRadius: "var(--drv-radius-md)",
-                  padding: "0.75rem",
-                  background: "#ffffff",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
+                  gap: "0.5rem",
+                  marginBottom: "1rem",
+                  padding: "0.6rem 0.85rem",
+                  background: "#f0fdf4",
+                  borderRadius: "8px",
+                  border: "1px solid #bbf7d0",
                 }}
               >
-                <img
-                  src={pod.signatureData}
-                  alt="Recipient Signature"
-                  style={{ maxHeight: "90px", objectFit: "contain" }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Photo Proof Preview */}
-          {pod.photoUrl && (
-            <div className="drv-form-group">
-              <span
-                className="drv-label"
-                style={{ textTransform: "uppercase", letterSpacing: "0.03em" }}
-              >
-                Delivery Location / Package Photo
-              </span>
-              <div
-                style={{
-                  borderRadius: "var(--drv-radius-md)",
-                  overflow: "hidden",
-                  border: "1px solid var(--drv-border)",
-                  maxHeight: "160px",
-                  background: "#f8fafc",
-                }}
-              >
-                <img
-                  src={pod.photoUrl}
-                  alt="Delivery Proof"
+                <div
                   style={{
-                    width: "100%",
-                    maxHeight: "160px",
-                    objectFit: "cover",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    color: "#166534",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
                   }}
-                />
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Shipment Delivered</span>
+                </div>
+                {isOtpVerified && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                      padding: "0.2rem 0.5rem",
+                      background: "#dcfce7",
+                      color: "#15803d",
+                      borderRadius: "4px",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      border: "1px solid #86efac",
+                    }}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>OTP Verified</span>
+                  </div>
+                )}
               </div>
-            </div>
+
+              {/* Details Card */}
+              <div className="drv-info-box" style={{ marginBottom: "1rem" }}>
+                <div className="drv-info-row">
+                  <span className="drv-info-label">Recipient Name:</span>
+                  <span className="drv-info-value" style={{ fontWeight: 600 }}>
+                    {recipientName}
+                  </span>
+                </div>
+                <div className="drv-info-row">
+                  <span className="drv-info-label">Relation:</span>
+                  <span className="drv-info-value">{recipientRelation}</span>
+                </div>
+                <div className="drv-info-row">
+                  <span className="drv-info-label">Contact Phone:</span>
+                  <span className="drv-info-value">{recipientPhone}</span>
+                </div>
+                <div className="drv-info-row">
+                  <span className="drv-info-label">Delivery Date & Time:</span>
+                  <span
+                    className="drv-info-value"
+                    style={{ fontFamily: "monospace", fontSize: "0.82rem" }}
+                  >
+                    {deliveryTimestamp
+                      ? new Date(deliveryTimestamp).toLocaleString()
+                      : "Recorded upon delivery"}
+                  </span>
+                </div>
+                <div className="drv-info-row">
+                  <span className="drv-info-label">Delivery Location:</span>
+                  <span
+                    className="drv-info-value"
+                    style={{ color: "var(--drv-emerald)", fontWeight: 500 }}
+                  >
+                    {deliveryAddress}
+                  </span>
+                </div>
+                {submittedByName && (
+                  <div className="drv-info-row">
+                    <span className="drv-info-label">Delivered By:</span>
+                    <span className="drv-info-value">{submittedByName}</span>
+                  </div>
+                )}
+                {notes && (
+                  <div
+                    style={{
+                      paddingTop: "0.5rem",
+                      marginTop: "0.25rem",
+                      borderTop: "1px solid var(--drv-border)",
+                      color: "var(--drv-text-muted)",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    <strong style={{ color: "var(--drv-text-main)" }}>
+                      Driver / POD Remarks:{" "}
+                    </strong>
+                    {notes}
+                  </div>
+                )}
+              </div>
+
+              {/* Signature Preview */}
+              {signature && (
+                <div className="drv-form-group" style={{ marginBottom: "1rem" }}>
+                  <span
+                    className="drv-label"
+                    style={{
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      color: "var(--drv-text-muted)",
+                    }}
+                  >
+                    Recipient Signature
+                  </span>
+                  <div
+                    style={{
+                      border: "1px solid var(--drv-border)",
+                      borderRadius: "var(--drv-radius-md)",
+                      padding: "0.75rem",
+                      background: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: "80px",
+                    }}
+                  >
+                    <img
+                      src={signature}
+                      alt="Recipient Signature"
+                      style={{ maxHeight: "100px", maxWidth: "100%", objectFit: "contain" }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Photo Proof Preview */}
+              {photo && (
+                <div className="drv-form-group">
+                  <span
+                    className="drv-label"
+                    style={{
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      color: "var(--drv-text-muted)",
+                    }}
+                  >
+                    Delivery Location / Package Photo Proof
+                  </span>
+                  <div
+                    style={{
+                      borderRadius: "var(--drv-radius-md)",
+                      overflow: "hidden",
+                      border: "1px solid var(--drv-border)",
+                      maxHeight: "220px",
+                      background: "#f8fafc",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <img
+                      src={photo}
+                      alt="Delivery Proof"
+                      style={{
+                        width: "100%",
+                        maxHeight: "220px",
+                        objectFit: "contain",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -1894,7 +4060,7 @@ function ViewPodModal({ trip, onClose }) {
 // =============================================================================
 // SUB-COMPONENT: TRIP DETAILS MODAL
 // =============================================================================
-function TripDetailsModal({ trip, onClose, onOpenPOD }) {
+function TripDetailsModal({ trip, vehiclesMap, onClose, onOpenPOD }) {
   return (
     <div className="drv-modal-overlay">
       <div className="drv-modal-card drv-modal-card--sm">
@@ -1928,6 +4094,26 @@ function TripDetailsModal({ trip, onClose, onOpenPOD }) {
                 >
                   {trip.sender?.name} &bull; {trip.sender?.address}
                 </span>
+                <div
+                  style={{
+                    color: "#0369a1",
+                    fontWeight: 600,
+                    fontSize: "0.8rem",
+                    marginTop: "0.3rem",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                  Pickup Schedule:{" "}
+                  {formatPickupDate(
+                    trip.pickupDate ||
+                      trip.pickupScheduleDate ||
+                      trip.scheduledPickupDate ||
+                      trip.rawShipment?.pickupDate,
+                  )}
+                </div>
               </div>
               <div
                 style={{
@@ -1962,11 +4148,34 @@ function TripDetailsModal({ trip, onClose, onOpenPOD }) {
             <div className="drv-info-box">
               <div className="drv-info-row">
                 <span className="drv-info-label">Vehicle:</span>
-                <span className="drv-info-value">{trip.assignedVehicle}</span>
+                <span className="drv-info-value">
+                  {formatVehicleName(trip.assignedVehicle, trip, vehiclesMap)}
+                </span>
               </div>
               <div className="drv-info-row">
                 <span className="drv-info-label">Priority:</span>
                 <span className="drv-info-value">{trip.priority}</span>
+              </div>
+              <div className="drv-info-row">
+                <span className="drv-info-label">Pickup Schedule:</span>
+                <span
+                  className="drv-info-value"
+                  style={{
+                    color: "#0369a1",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                  {formatPickupDate(
+                    trip.pickupDate ||
+                      trip.pickupScheduleDate ||
+                      trip.scheduledPickupDate ||
+                      trip.rawShipment?.pickupDate,
+                  )}
+                </span>
               </div>
               <div className="drv-info-row">
                 <span className="drv-info-label">Expected Delivery:</span>
@@ -1974,8 +4183,147 @@ function TripDetailsModal({ trip, onClose, onOpenPOD }) {
                   {formatETA(trip.estimatedDelivery)}
                 </span>
               </div>
+              {trip.status !== "delivered" &&
+                (trip.reattemptDate || trip.rescheduleDate) && (
+                  <div className="drv-info-row" style={{ color: "#b45309" }}>
+                    <span
+                      className="drv-info-label"
+                      style={{ color: "#b45309", fontWeight: 700 }}
+                    >
+                      Rescheduled Delivery:
+                    </span>
+                    <span
+                      className="drv-info-value"
+                      style={{ color: "#b45309", fontWeight: 700 }}
+                    >
+                      {formatRescheduleDate(
+                        trip.reattemptDate || trip.rescheduleDate,
+                      )}
+                    </span>
+                  </div>
+                )}
             </div>
           </div>
+
+          {trip.status !== "delivered" &&
+            (trip.reattemptDate || trip.rescheduleDate) && (
+              <div className="drv-form-group">
+                <span className="drv-label" style={{ color: "#b45309" }}>
+                  Manager Re-attempt Schedule
+                </span>
+                <div
+                  style={{
+                    padding: "0.75rem",
+                    background: "#fffbeb",
+                    borderRadius: "0.5rem",
+                    border: "1.5px solid #fde68a",
+                    fontSize: "0.825rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "0.35rem",
+                      borderBottom: "1px solid #fef08a",
+                      paddingBottom: "0.35rem",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: "#92400e" }}>
+                      Rescheduled Delivery
+                    </span>
+                    {trip.attemptNumber && (
+                      <span
+                        style={{
+                          fontSize: "0.7rem",
+                          background: "#fef3c7",
+                          color: "#92400e",
+                          padding: "0.1rem 0.45rem",
+                          borderRadius: "4px",
+                          fontWeight: 600,
+                          border: "1px solid #fde68a",
+                        }}
+                      >
+                        Attempt #{trip.attemptNumber}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ color: "#78350f", marginBottom: "0.25rem" }}>
+                    <strong>Rescheduled Date: </strong>
+                    <span style={{ color: "#b45309", fontWeight: 700 }}>
+                      {formatRescheduleDate(
+                        trip.reattemptDate || trip.rescheduleDate,
+                      )}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        marginLeft: "0.35rem",
+                        opacity: 0.85,
+                      }}
+                    >
+                      ({formatETA(trip.reattemptDate || trip.rescheduleDate)})
+                    </span>
+                  </div>
+                  {(trip.reattemptNotes ||
+                    (trip.deliveryNotes &&
+                      trip.deliveryNotes !== trip.failureNote)) && (
+                    <div style={{ color: "#78350f", marginTop: "0.25rem" }}>
+                      <strong>Manager Note: </strong>
+                      {trip.reattemptNotes || trip.deliveryNotes}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+          {trip.status !== "delivered" &&
+            (trip.status === "failed_delivery" ||
+              trip.failureReason ||
+              trip.failureNote) && (
+              <div className="drv-form-group">
+              <span className="drv-label" style={{ color: "#e11d48" }}>
+                Failed Delivery Record
+              </span>
+              <div
+                style={{
+                  padding: "0.75rem",
+                  background: "#fff1f2",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #fda4af",
+                  fontSize: "0.825rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: "#be123c",
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Reason: {trip.failureReason || "Not specified"}
+                </div>
+                <div style={{ color: "#334155" }}>
+                  Note:{" "}
+                  {trip.failureNote ||
+                    trip.statusNotes ||
+                    "No details provided"}
+                </div>
+                {trip.failureReportedAt && (
+                  <div
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "#9f1239",
+                      marginTop: "0.25rem",
+                    }}
+                  >
+                    Reported at: {formatETA(trip.failureReportedAt)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Pinned Footer */}
@@ -2001,26 +4349,140 @@ function TripDetailsModal({ trip, onClose, onOpenPOD }) {
 // phonenumber, licensenumber, expiredate, docname, docnumber, docexpiredate
 // =========================================================================
 function SetupDriverProfileModal({ profile, onClose, onSuccess }) {
+  const getInitialValue = (field) => {
+    let cachedDriver = null;
+    let cachedUser = null;
+    try {
+      cachedDriver = JSON.parse(localStorage.getItem("driver") || "null");
+    } catch {}
+    try {
+      cachedUser = JSON.parse(localStorage.getItem("user") || "null");
+    } catch {}
+
+    if (field === "phonenumber") {
+      return (
+        profile?.phonenumber ||
+        profile?.phone ||
+        profile?.phoneNumber ||
+        cachedDriver?.phonenumber ||
+        cachedDriver?.phone ||
+        cachedDriver?.phoneNumber ||
+        cachedUser?.phonenumber ||
+        cachedUser?.phone ||
+        ""
+      );
+    }
+    if (field === "licensenumber") {
+      return (
+        profile?.license?.licensenumber ||
+        profile?.license?.number ||
+        profile?.licenseNumber ||
+        cachedDriver?.license?.licensenumber ||
+        cachedDriver?.license?.number ||
+        cachedDriver?.licenseNumber ||
+        ""
+      );
+    }
+    if (field === "expiredate") {
+      const exp =
+        profile?.license?.expiredate ||
+        profile?.license?.expiryDate ||
+        profile?.expiredate ||
+        cachedDriver?.license?.expiredate ||
+        cachedDriver?.license?.expiryDate;
+      return exp ? new Date(exp).toISOString().split("T")[0] : "";
+    }
+    return "";
+  };
+
   const [formData, setFormData] = useState({
-    phonenumber: profile?.phonenumber || "",
-    licensenumber: profile?.license?.licensenumber || "",
-    expiredate: profile?.license?.expiredate
-      ? new Date(profile.license.expiredate).toISOString().split("T")[0]
-      : "",
+    phonenumber: getInitialValue("phonenumber"),
+    licensenumber: getInitialValue("licensenumber"),
+    expiredate: getInitialValue("expiredate"),
   });
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Always fetch latest profile from API on mount to guarantee fresh values
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLatestProfile = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/driver/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.driver && isMounted) {
+            const d = data.driver;
+            const phone = d.phonenumber || d.phone || d.phoneNumber || "";
+            const licNo =
+              d.license?.licensenumber ||
+              d.license?.number ||
+              d.licenseNumber ||
+              "";
+            const rawExp =
+              d.license?.expiredate ||
+              d.license?.expiryDate ||
+              d.expiredate ||
+              null;
+            const expStr = rawExp
+              ? new Date(rawExp).toISOString().split("T")[0]
+              : "";
+
+            setFormData((prev) => ({
+              phonenumber: prev.phonenumber || phone,
+              licensenumber: prev.licensenumber || licNo,
+              expiredate: prev.expiredate || expStr,
+            }));
+            try {
+              localStorage.setItem("driver", JSON.stringify(d));
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch driver profile in modal:", err);
+      }
+    };
+
+    fetchLatestProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (profile) {
-      setFormData({
-        phonenumber: profile?.phonenumber || profile?.phone || "",
-        licensenumber: profile?.license?.licensenumber || "",
-        expiredate: profile?.license?.expiredate
-          ? new Date(profile.license.expiredate).toISOString().split("T")[0]
-          : "",
-      });
+      setFormData((prev) => ({
+        phonenumber:
+          prev.phonenumber ||
+          profile?.phonenumber ||
+          profile?.phone ||
+          profile?.phoneNumber ||
+          "",
+        licensenumber:
+          prev.licensenumber ||
+          profile?.license?.licensenumber ||
+          profile?.license?.number ||
+          profile?.licenseNumber ||
+          "",
+        expiredate:
+          prev.expiredate ||
+          (profile?.license?.expiredate ||
+          profile?.license?.expiryDate ||
+          profile?.expiredate
+            ? new Date(
+                profile?.license?.expiredate ||
+                  profile?.license?.expiryDate ||
+                  profile?.expiredate,
+              )
+                .toISOString()
+                .split("T")[0]
+            : ""),
+      }));
     }
   }, [profile]);
 
@@ -2074,6 +4536,10 @@ function SetupDriverProfileModal({ profile, onClose, onSuccess }) {
           data.message || "Failed to update profile verification.",
         );
       }
+
+      try {
+        localStorage.setItem("driver", JSON.stringify(data.driver));
+      } catch {}
 
       onSuccess(data.driver);
     } catch (err) {
@@ -2511,10 +4977,121 @@ function DriverProfileInfoModal({
   driverName,
   driverPhone,
   assignedVehicle,
+  vehiclesMap,
   isOnDuty,
   onClose,
   onOpenUpdateProfile,
+  onProfileUpdated,
 }) {
+  const [modalProfile, setModalProfile] = useState(() => {
+    let cached = null;
+    try {
+      cached = JSON.parse(localStorage.getItem("driver") || "null");
+    } catch {}
+    return profile || cached || null;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLatestProfile = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/driver/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.driver && isMounted) {
+            setModalProfile(data.driver);
+            try {
+              localStorage.setItem("driver", JSON.stringify(data.driver));
+            } catch {}
+            if (typeof onProfileUpdated === "function") {
+              onProfileUpdated(data.driver);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch driver profile in info modal:", err);
+      }
+    };
+
+    fetchLatestProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  let cachedDriver = null;
+  try {
+    cachedDriver = JSON.parse(localStorage.getItem("driver") || "null");
+  } catch {}
+
+  const activeProfile = modalProfile || profile || cachedDriver;
+
+  const resolvedDriverId =
+    activeProfile?.driverId ||
+    modalProfile?.driverId ||
+    profile?.driverId ||
+    cachedDriver?.driverId ||
+    user?.driverId ||
+    (user?.userId && !/^[0-9a-fA-F]{24}$/.test(user.userId)
+      ? user.userId
+      : "") ||
+    "DRV-182786";
+
+  const resolvedPhone =
+    activeProfile?.phonenumber ||
+    activeProfile?.phone ||
+    activeProfile?.phoneNumber ||
+    modalProfile?.phonenumber ||
+    modalProfile?.phone ||
+    profile?.phonenumber ||
+    profile?.phone ||
+    cachedDriver?.phonenumber ||
+    cachedDriver?.phone ||
+    user?.phonenumber ||
+    user?.phone ||
+    (driverPhone && driverPhone !== "Not Provided" ? driverPhone : "") ||
+    "Not Provided";
+
+  const resolvedLicenseNo =
+    activeProfile?.license?.licensenumber ||
+    activeProfile?.license?.number ||
+    activeProfile?.licensenumber ||
+    activeProfile?.licenseNumber ||
+    modalProfile?.license?.licensenumber ||
+    modalProfile?.license?.number ||
+    profile?.license?.licensenumber ||
+    profile?.license?.number ||
+    cachedDriver?.license?.licensenumber ||
+    "Not Provided";
+
+  const rawExpiry =
+    activeProfile?.license?.expiredate ||
+    activeProfile?.license?.expiryDate ||
+    activeProfile?.expiredate ||
+    modalProfile?.license?.expiredate ||
+    modalProfile?.license?.expiryDate ||
+    profile?.license?.expiredate ||
+    profile?.license?.expiryDate ||
+    cachedDriver?.license?.expiredate ||
+    null;
+
+  let resolvedExpiryDate = "Not Provided";
+  if (rawExpiry) {
+    try {
+      resolvedExpiryDate = new Date(rawExpiry).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      resolvedExpiryDate = String(rawExpiry);
+    }
+  }
+
   return (
     <div className="drv-modal-overlay">
       <div className="drv-modal-card drv-modal-card--md">
@@ -2601,13 +5178,13 @@ function DriverProfileInfoModal({
             <div className="drv-info-row">
               <span className="drv-info-label">Phone Number:</span>
               <span className="drv-info-value">
-                <strong>{driverPhone}</strong>
+                <strong>{resolvedPhone}</strong>
               </span>
             </div>
             <div className="drv-info-row">
               <span className="drv-info-label">Email Address:</span>
               <span className="drv-info-value">
-                {user?.email || profile?.email || "Not Provided"}
+                {user?.email || activeProfile?.email || "Not Provided"}
               </span>
             </div>
             <div className="drv-info-row">
@@ -2620,15 +5197,16 @@ function DriverProfileInfoModal({
                   color: "var(--drv-primary)",
                 }}
               >
-                {profile?.driverId || user?.userId || "DRV-182786"}
+                {resolvedDriverId}
               </span>
             </div>
             <div className="drv-info-row">
               <span className="drv-info-label">Assigned Vehicle:</span>
               <span className="drv-info-value">
                 <strong>
-                  {assignedVehicle !== "Unassigned"
-                    ? assignedVehicle
+                  {formatVehicleName(assignedVehicle, null, vehiclesMap) !==
+                  "Unassigned"
+                    ? formatVehicleName(assignedVehicle, null, vehiclesMap)
                     : "MH-12-AB-4521"}
                 </strong>
               </span>
@@ -2639,23 +5217,12 @@ function DriverProfileInfoModal({
                 className="drv-info-value"
                 style={{ fontFamily: "monospace", fontWeight: 700 }}
               >
-                {profile?.license?.licensenumber || "DL-0420110012345"}
+                {resolvedLicenseNo}
               </span>
             </div>
             <div className="drv-info-row">
               <span className="drv-info-label">License Expiry Date:</span>
-              <span className="drv-info-value">
-                {profile?.license?.expiredate
-                  ? new Date(profile.license.expiredate).toLocaleDateString(
-                      "en-US",
-                      {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      },
-                    )
-                  : "Sep 15, 2028"}
-              </span>
+              <span className="drv-info-value">{resolvedExpiryDate}</span>
             </div>
           </div>
         </div>
