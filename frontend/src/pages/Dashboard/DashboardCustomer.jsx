@@ -347,7 +347,10 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
     setCurrentPage(1);
   }
 
-  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredCustomers.length / pageSize),
+  );
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
   const startIndex = (safeCurrentPage - 1) * pageSize;
@@ -811,7 +814,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                   </h2>
                   <span
                     className={`shp-badge shp-badge--${
-                      selectedCustomer.status === "Active" ? "success" : "danger"
+                      selectedCustomer.status === "Active"
+                        ? "success"
+                        : "danger"
                     }`}
                   >
                     {selectedCustomer.status}
@@ -932,7 +937,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                 </div>
                 <div className="shp-kv">
                   <span className="shp-kv__label">Account Status</span>
-                  <span className="shp-kv__value">{selectedCustomer.status}</span>
+                  <span className="shp-kv__value">
+                    {selectedCustomer.status}
+                  </span>
                 </div>
                 <div className="shp-kv">
                   <span className="shp-kv__label">Email Address</span>
@@ -1640,7 +1647,8 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
         <div>
           <h2 className="shp-title">Customer Management</h2>
           <p className="shp-subtitle">
-            Manage customer accounts, addresses, and logistics activity across the network.
+            Manage customer accounts, addresses, and logistics activity across
+            the network.
           </p>
         </div>
 
@@ -1681,7 +1689,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
             <span className="shp-kpi-card__title">Total Customers</span>
           </div>
           <div className="shp-kpi-card__value">{totalCustomers}</div>
-          <div className="shp-kpi-card__foot">All registered customer accounts</div>
+          <div className="shp-kpi-card__foot">
+            All registered customer accounts
+          </div>
         </div>
 
         {/* Active Customers */}
@@ -1693,7 +1703,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
             <span className="shp-kpi-card__title">Active Customers</span>
           </div>
           <div className="shp-kpi-card__value">{activeCustomers}</div>
-          <div className="shp-kpi-card__foot">Eligible for scheduling dispatches</div>
+          <div className="shp-kpi-card__foot">
+            Eligible for scheduling dispatches
+          </div>
         </div>
 
         {/* Inactive Customers */}
@@ -1705,7 +1717,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
             <span className="shp-kpi-card__title">Inactive Customers</span>
           </div>
           <div className="shp-kpi-card__value">{inactiveCustomers}</div>
-          <div className="shp-kpi-card__foot">Deactivated or suspended accounts</div>
+          <div className="shp-kpi-card__foot">
+            Deactivated or suspended accounts
+          </div>
         </div>
 
         {/* Shipments */}
@@ -1717,7 +1731,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
             <span className="shp-kpi-card__title">Shipments</span>
           </div>
           <div className="shp-kpi-card__value">{totalShipments}</div>
-          <div className="shp-kpi-card__foot">Associated logistics dispatches</div>
+          <div className="shp-kpi-card__foot">
+            Associated logistics dispatches
+          </div>
         </div>
       </div>
 
@@ -1786,24 +1802,6 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
           </select>
-
-          {loading ? (
-            <span className="shp-badge shp-badge--info">
-              <Loader2 size={12} className="animate-spin" />
-              Syncing...
-            </span>
-          ) : apiCustomers !== null ? (
-            <span className="shp-badge shp-badge--success" title="API Connected">
-              ● API Connected
-            </span>
-          ) : (
-            <span
-              className="shp-badge shp-badge--warning"
-              title={apiError || "Backend not connected. Showing local data."}
-            >
-              ● Offline Mode
-            </span>
-          )}
         </div>
       </div>
 
@@ -1818,7 +1816,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
               style={{ margin: "0 auto 8px" }}
             />
             <p className="shp-empty-state__title">Loading customers...</p>
-            <p className="shp-empty-state__text">GET {API_BASE_URL}/customers</p>
+            <p className="shp-empty-state__text">
+              GET {API_BASE_URL}/customers
+            </p>
           </div>
         )}
 
@@ -1962,11 +1962,13 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
               <span>No customers to display</span>
             ) : (
               <span>
-                Showing <strong>{startIndex + 1}</strong>–<strong>{endIndex}</strong> of{" "}
+                Showing <strong>{startIndex + 1}</strong>–
+                <strong>{endIndex}</strong> of{" "}
                 <strong>{filteredCustomers.length}</strong> customers
                 {filteredCustomers.length !== customers.length && (
                   <span className="shp-pagination-total-hint">
-                    {" "}(filtered from {customers.length} total)
+                    {" "}
+                    (filtered from {customers.length} total)
                   </span>
                 )}
               </span>
@@ -2086,7 +2088,8 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
               <div>
                 <h3 className="shp-modal__title">Add New Customer</h3>
                 <p className="shp-modal__subtitle">
-                  Create a new customer account for booking and dispatching shipments.
+                  Create a new customer account for booking and dispatching
+                  shipments.
                 </p>
               </div>
               <button
@@ -2171,7 +2174,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                       maxLength={10}
                       value={formData.phone}
                       onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        const val = e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 10);
                         setFormData({ ...formData, phone: val });
                       }}
                       placeholder="9876543210"
@@ -2325,7 +2330,9 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                       maxLength={10}
                       value={formData.phone}
                       onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        const val = e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 10);
                         setFormData({ ...formData, phone: val });
                       }}
                       placeholder="9876543210"

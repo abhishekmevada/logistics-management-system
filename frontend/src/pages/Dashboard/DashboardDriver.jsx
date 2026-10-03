@@ -874,7 +874,7 @@ function AssignedShipments({ driver, loading, onRefresh, onOpenAssignModal }) {
               }}
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-              <span style={{ fontSize: "11px" }}>Sync API</span>
+              <span style={{ fontSize: "11px" }}>Sync</span>
             </button>
           )}
         </div>
@@ -1025,7 +1025,11 @@ function AssignedShipments({ driver, loading, onRefresh, onOpenAssignModal }) {
 // ============================================================================
 // 4. DELIVERY HISTORY TAB
 // ============================================================================
-function DeliveryHistory({ driver, tripsMap = null, shipmentToTripMap = null }) {
+function DeliveryHistory({
+  driver,
+  tripsMap = null,
+  shipmentToTripMap = null,
+}) {
   const history = driver?.deliveryHistory || [];
 
   return (
@@ -1069,9 +1073,14 @@ function DeliveryHistory({ driver, tripsMap = null, shipmentToTripMap = null }) 
                 );
 
                 return (
-                  <tr key={h.tripId || h.shipmentTracking || i} className="drv-table__row">
+                  <tr
+                    key={h.tripId || h.shipmentTracking || i}
+                    className="drv-table__row"
+                  >
                     <td>
-                      <strong style={{ color: "var(--primary-color, #2563eb)" }}>
+                      <strong
+                        style={{ color: "var(--primary-color, #2563eb)" }}
+                      >
                         {displayTripId}
                       </strong>
                       <span className="drv-cell-sub">{h.date}</span>
@@ -1080,40 +1089,40 @@ function DeliveryHistory({ driver, tripsMap = null, shipmentToTripMap = null }) 
                       <strong>{h.route}</strong>
                       <span className="drv-cell-sub">To: {h.recipient}</span>
                     </td>
-                  <td style={{ fontFamily: "monospace", fontWeight: 600 }}>
-                    {h.shipmentTracking}
-                  </td>
-                  <td>
-                    <strong>{h.distanceKm} km</strong>
-                  </td>
-                  <td>
-                    <span className="badge badge-valid">
-                      <CheckCircle2 size={10} /> {h.status}
-                    </span>
-                  </td>
-                  <td>
-                    {h.podSigned ? (
-                      <span
-                        style={{
-                          color: "#166534",
-                          fontWeight: 600,
-                          fontSize: "12px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        <Check size={13} /> Verified
+                    <td style={{ fontFamily: "monospace", fontWeight: 600 }}>
+                      {h.shipmentTracking}
+                    </td>
+                    <td>
+                      <strong>{h.distanceKm} km</strong>
+                    </td>
+                    <td>
+                      <span className="badge badge-valid">
+                        <CheckCircle2 size={10} /> {h.status}
                       </span>
-                    ) : (
-                      <span style={{ color: "#64748b", fontSize: "12px" }}>
-                        Pending
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                    <td>
+                      {h.podSigned ? (
+                        <span
+                          style={{
+                            color: "#166534",
+                            fontWeight: 600,
+                            fontSize: "12px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <Check size={13} /> Verified
+                        </span>
+                      ) : (
+                        <span style={{ color: "#64748b", fontSize: "12px" }}>
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1523,12 +1532,14 @@ export default function DashboardDriver() {
     (tripsList || []).forEach((t) => {
       if (!t) return;
       const formattedTripId = t.tripId
-        ? (String(t.tripId).toUpperCase().startsWith("TRP-")
-            ? String(t.tripId).toUpperCase()
-            : String(t.tripId).toUpperCase().startsWith("TRP")
-              ? `TRP-${String(t.tripId).slice(3).toUpperCase()}`
-              : `TRP-${String(t.tripId).toUpperCase()}`)
-        : (t._id ? `TRP-${String(t._id).slice(-6).toUpperCase()}` : "");
+        ? String(t.tripId).toUpperCase().startsWith("TRP-")
+          ? String(t.tripId).toUpperCase()
+          : String(t.tripId).toUpperCase().startsWith("TRP")
+            ? `TRP-${String(t.tripId).slice(3).toUpperCase()}`
+            : `TRP-${String(t.tripId).toUpperCase()}`
+        : t._id
+          ? `TRP-${String(t._id).slice(-6).toUpperCase()}`
+          : "";
 
       if (t._id) tMap.set(String(t._id), formattedTripId);
       if (t.id) tMap.set(String(t.id), formattedTripId);
@@ -1925,7 +1936,8 @@ export default function DashboardDriver() {
 
       if (!res.ok) {
         throw new Error(
-          data.message || `Failed to send reminder email (Status ${res.status})`,
+          data.message ||
+            `Failed to send reminder email (Status ${res.status})`,
         );
       }
 
@@ -2149,8 +2161,7 @@ export default function DashboardDriver() {
               boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
               fontSize: "13px",
               fontWeight: 600,
-              background:
-                toastMessage.type === "error" ? "#dc2626" : "#064e3b",
+              background: toastMessage.type === "error" ? "#dc2626" : "#064e3b",
               color: "#ffffff",
             }}
           >
@@ -2378,8 +2389,7 @@ export default function DashboardDriver() {
             boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
             fontSize: "13px",
             fontWeight: 600,
-            background:
-              toastMessage.type === "error" ? "#dc2626" : "#064e3b",
+            background: toastMessage.type === "error" ? "#dc2626" : "#064e3b",
             color: "#ffffff",
           }}
         >

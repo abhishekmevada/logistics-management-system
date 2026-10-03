@@ -337,10 +337,79 @@ Logistics Management Team`,
   });
 };
 
+const sendAccountCreatedEmail = async (email, name, password, role) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: `Account Created Successfully`,
+
+    text: `Dear ${name},
+
+Your account has been created successfully.
+
+Account Details:
+
+Name: ${name}
+Email: ${email}
+Password: ${password}
+Role: ${role}
+
+You can now use these credentials to log in to the system.
+
+For security reasons, please keep your password confidential and do not share it with anyone.
+
+If you have any questions or face any issues while accessing your account, please contact the Administration Team.
+
+Regards,
+Administration Team`,
+
+    html: `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Account Created Successfully</h2>
+
+      <p>Dear ${name},</p>
+
+      <p>
+        Your account has been <strong>created successfully</strong>.
+      </p>
+
+      <h3>Account Details</h3>
+
+      <p>
+        <strong>Name:</strong> ${name}<br />
+        <strong>Email:</strong> ${email}<br />
+        <strong>Password:</strong> ${password}<br />
+        <strong>Role:</strong> ${role}
+      </p>
+
+      <p>
+        You can now use these credentials to log in to the system.
+      </p>
+
+      <p>
+        For security reasons, please keep your password confidential
+        and do not share it with anyone.
+      </p>
+
+      <p>
+        If you have any questions or face any issues while accessing
+        your account, please contact the Administration Team.
+      </p>
+
+      <p>
+        Regards,<br />
+        <strong>Administration Team</strong>
+      </p>
+    </div>
+  `,
+  });
+};
+
 module.exports = {
   sendOtpEmail,
   sendDeliveryOtpEmail,
   sendDrivertoReminder,
   sendShipmentStatusUpdate,
   sendShipmentAssignedEmail,
+  sendAccountCreatedEmail,
 };

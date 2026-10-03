@@ -1145,7 +1145,8 @@ export default function Warehouse() {
         <div>
           <h2 className="shp-title">Warehouse Management</h2>
           <p className="shp-subtitle">
-            Facility locations, inventory control, and barcode intake / dispatch operations across the logistics network.
+            Facility locations, inventory control, and barcode intake / dispatch
+            operations across the logistics network.
           </p>
         </div>
         <div className="shp-header__actions">
@@ -1213,7 +1214,10 @@ export default function Warehouse() {
           </div>
           <div className="shp-kpi-card__value">
             {Number(
-              String(summaryMetrics.totalCapacity || 0).replace(/[^0-9.-]+/g, "") || 0,
+              String(summaryMetrics.totalCapacity || 0).replace(
+                /[^0-9.-]+/g,
+                "",
+              ) || 0,
             ).toLocaleString()}
           </div>
           <div className="shp-kpi-card__foot">Packages max volume</div>
@@ -1239,7 +1243,9 @@ export default function Warehouse() {
             </span>
             <span className="shp-kpi-card__title">Inbound Freight</span>
           </div>
-          <div className="shp-kpi-card__value">{summaryMetrics.inboundToday}</div>
+          <div className="shp-kpi-card__value">
+            {summaryMetrics.inboundToday}
+          </div>
           <div className="shp-kpi-card__foot">Pending / received</div>
         </div>
 
@@ -1312,9 +1318,7 @@ export default function Warehouse() {
                 WH: {w.warName} ({w.warehouseId || "WH"})
               </option>
             ))}
-            {warehouses.length === 0 && (
-              <option value="">No Warehouses</option>
-            )}
+            {warehouses.length === 0 && <option value="">No Warehouses</option>}
           </select>
 
           {/* Search Box */}
@@ -1407,7 +1411,8 @@ export default function Warehouse() {
                     color: "hsla(0, 0%, 0%, 0.65)",
                   }}
                 >
-                  Manage warehouse facilities, capacities, address details, and active status.
+                  Manage warehouse facilities, capacities, address details, and
+                  active status.
                 </p>
               </div>
               <span className="shp-badge shp-badge--outline">
@@ -1432,7 +1437,9 @@ export default function Warehouse() {
                     <tr>
                       <td colSpan={6}>
                         <div className="shp-empty-state">
-                          <p className="shp-empty-state__title">No Warehouses Found</p>
+                          <p className="shp-empty-state__title">
+                            No Warehouses Found
+                          </p>
                           <p className="shp-empty-state__text">
                             Click "Create Warehouse" to add your first facility.
                           </p>
@@ -1461,15 +1468,27 @@ export default function Warehouse() {
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <MapPin size={13} style={{ color: "#64748b", flexShrink: 0 }} />
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <MapPin
+                              size={13}
+                              style={{ color: "#64748b", flexShrink: 0 }}
+                            />
                             <span className="shp-cell-title">{wh.warCity}</span>
                           </div>
                         </td>
                         <td>
                           <p className="shp-cell-title">
                             {Number(
-                              String(wh.warCapacity ?? 0).replace(/[^0-9.-]+/g, "") || 0,
+                              String(wh.warCapacity ?? 0).replace(
+                                /[^0-9.-]+/g,
+                                "",
+                              ) || 0,
                             ).toLocaleString()}{" "}
                             pkgs
                           </p>
@@ -1483,14 +1502,23 @@ export default function Warehouse() {
                               type="button"
                               className="shp-icon-btn"
                               onClick={() =>
-                                handleWarehouseStatusToggle(wh._id, wh.warStatus)
+                                handleWarehouseStatusToggle(
+                                  wh._id,
+                                  wh.warStatus,
+                                )
                               }
                               title="Toggle active status"
                             >
                               {wh.warStatus?.toLowerCase() === "active" ? (
-                                <ToggleRight size={16} style={{ color: "#16a34a" }} />
+                                <ToggleRight
+                                  size={16}
+                                  style={{ color: "#16a34a" }}
+                                />
                               ) : (
-                                <ToggleLeft size={16} style={{ color: "#94a3b8" }} />
+                                <ToggleLeft
+                                  size={16}
+                                  style={{ color: "#94a3b8" }}
+                                />
                               )}
                             </button>
                             <button
@@ -1561,7 +1589,8 @@ export default function Warehouse() {
                 >
                   <Layers size={16} style={{ color: "var(--primary-color)" }} />
                   <span>
-                    Storage Locations for {activeWarehouse?.warName || "Selected Warehouse"}
+                    Storage Locations for{" "}
+                    {activeWarehouse?.warName || "Selected Warehouse"}
                   </span>
                 </h3>
                 <p
@@ -1571,7 +1600,8 @@ export default function Warehouse() {
                     color: "hsla(0, 0%, 0%, 0.65)",
                   }}
                 >
-                  Zones, racks, and bins configured via <code>/warehouse-location</code>.
+                  Zones, racks, and bins configured via{" "}
+                  <code>/warehouse-location</code>.
                 </p>
               </div>
               <button
@@ -1601,9 +1631,12 @@ export default function Warehouse() {
                     <tr>
                       <td colSpan={6}>
                         <div className="shp-empty-state">
-                          <p className="shp-empty-state__title">No Locations Configured</p>
+                          <p className="shp-empty-state__title">
+                            No Locations Configured
+                          </p>
                           <p className="shp-empty-state__text">
-                            No locations configured for this warehouse yet. Click "+ Add Slot / Bin" to configure.
+                            No locations configured for this warehouse yet.
+                            Click "+ Add Slot / Bin" to configure.
                           </p>
                         </div>
                       </td>
@@ -1617,15 +1650,22 @@ export default function Warehouse() {
                           </span>
                         </td>
                         <td>
-                          <span className="shp-cell-title font-mono">{loc.warlocRack}</span>
+                          <span className="shp-cell-title font-mono">
+                            {loc.warlocRack}
+                          </span>
                         </td>
                         <td>
-                          <span className="shp-cell-title font-mono" style={{ fontWeight: 700 }}>
+                          <span
+                            className="shp-cell-title font-mono"
+                            style={{ fontWeight: 700 }}
+                          >
                             {loc.warlocBin}
                           </span>
                         </td>
                         <td>
-                          <span className="shp-cell-title">{loc.warlocCapacity} pkgs</span>
+                          <span className="shp-cell-title">
+                            {loc.warlocCapacity} pkgs
+                          </span>
                         </td>
                         <td style={{ textAlign: "center" }}>
                           {renderStatusBadge(loc.warlocStatus)}
@@ -1725,9 +1765,12 @@ export default function Warehouse() {
                   <tr>
                     <td colSpan={7}>
                       <div className="shp-empty-state">
-                        <p className="shp-empty-state__title">No Inbound Shipments</p>
+                        <p className="shp-empty-state__title">
+                          No Inbound Shipments
+                        </p>
                         <p className="shp-empty-state__text">
-                          There are currently no inbound shipments destined for this warehouse.
+                          There are currently no inbound shipments destined for
+                          this warehouse.
                         </p>
                       </div>
                     </td>
@@ -1748,11 +1791,26 @@ export default function Warehouse() {
                         <p className="shp-cell-title">
                           {s.receiverName || s.senderName || "Customer"}
                         </p>
-                        <span className="shp-cell-sub">{s.shipmentId || "—"}</span>
+                        <span className="shp-cell-sub">
+                          {s.shipmentId || "—"}
+                        </span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
-                          <MapPin size={13} style={{ color: "var(--primary-color)", marginTop: "2px", flexShrink: 0 }} />
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "6px",
+                          }}
+                        >
+                          <MapPin
+                            size={13}
+                            style={{
+                              color: "var(--primary-color)",
+                              marginTop: "2px",
+                              flexShrink: 0,
+                            }}
+                          />
                           <div style={{ minWidth: 0 }}>
                             <p className="shp-cell-title" style={{ margin: 0 }}>
                               {getShipmentOrigin(s)}
@@ -1772,20 +1830,31 @@ export default function Warehouse() {
                         </div>
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <span className="shp-cell-title">{s.packageCount || 1} pkgs</span>
+                        <span className="shp-cell-title">
+                          {s.packageCount || 1} pkgs
+                        </span>
                       </td>
                       <td>
-                        <span className="shp-cell-sub">{s.totalWeight || 0} kg</span>
+                        <span className="shp-cell-sub">
+                          {s.totalWeight || 0} kg
+                        </span>
                       </td>
                       <td style={{ textAlign: "center" }}>
                         {renderStatusBadge(s.status)}
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <div className="shp-action-btns" style={{ justifyContent: "flex-end" }}>
+                        <div
+                          className="shp-action-btns"
+                          style={{ justifyContent: "flex-end" }}
+                        >
                           {s.status === "picked_up" && (
                             <span
                               className="shp-badge shp-badge--warning"
-                              style={{ gap: "4px", fontSize: "11px", marginRight: "6px" }}
+                              style={{
+                                gap: "4px",
+                                fontSize: "11px",
+                                marginRight: "6px",
+                              }}
                               title="Please scan the QR code attached to the physical shipment to verify and receive it."
                             >
                               <QrCode size={12} />
@@ -1845,7 +1914,8 @@ export default function Warehouse() {
                   color: "hsla(0, 0%, 0%, 0.65)",
                 }}
               >
-                Shipments stored at warehouse ready for gate dispatch or dispatched.
+                Shipments stored at warehouse ready for gate dispatch or
+                dispatched.
               </p>
             </div>
             <span className="shp-badge shp-badge--outline">
@@ -1870,7 +1940,9 @@ export default function Warehouse() {
                   <tr>
                     <td colSpan={6}>
                       <div className="shp-empty-state">
-                        <p className="shp-empty-state__title">No Outbound Shipments</p>
+                        <p className="shp-empty-state__title">
+                          No Outbound Shipments
+                        </p>
                         <p className="shp-empty-state__text">
                           No shipments currently staged for outbound dispatch.
                         </p>
@@ -1893,11 +1965,26 @@ export default function Warehouse() {
                         <p className="shp-cell-title">
                           {s.receiverName || s.senderName || "Customer"}
                         </p>
-                        <span className="shp-cell-sub">{s.shipmentId || "—"}</span>
+                        <span className="shp-cell-sub">
+                          {s.shipmentId || "—"}
+                        </span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
-                          <MapPin size={13} style={{ color: "#e11d48", marginTop: "2px", flexShrink: 0 }} />
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "6px",
+                          }}
+                        >
+                          <MapPin
+                            size={13}
+                            style={{
+                              color: "#e11d48",
+                              marginTop: "2px",
+                              flexShrink: 0,
+                            }}
+                          />
                           <div style={{ minWidth: 0 }}>
                             <p className="shp-cell-title" style={{ margin: 0 }}>
                               {getShipmentDestination(s)}
@@ -1906,37 +1993,53 @@ export default function Warehouse() {
                               <span
                                 className="shp-cell-sub"
                                 title={`${s.receiverAddress || s.deliveryAddress}${
-                                  s.receiverpincode ? ` - ${s.receiverpincode}` : ""
+                                  s.receiverpincode
+                                    ? ` - ${s.receiverpincode}`
+                                    : ""
                                 }`}
                               >
                                 {s.receiverAddress || s.deliveryAddress}
-                                {s.receiverpincode ? ` - ${s.receiverpincode}` : ""}
+                                {s.receiverpincode
+                                  ? ` - ${s.receiverpincode}`
+                                  : ""}
                               </span>
                             )}
                           </div>
                         </div>
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <span className="shp-cell-title">{s.packageCount || 1} pkgs</span>
+                        <span className="shp-cell-title">
+                          {s.packageCount || 1} pkgs
+                        </span>
                       </td>
                       <td style={{ textAlign: "center" }}>
                         {renderStatusBadge(s.status)}
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <div className="shp-action-btns" style={{ justifyContent: "flex-end" }}>
+                        <div
+                          className="shp-action-btns"
+                          style={{ justifyContent: "flex-end" }}
+                        >
                           {s.status === "at_warehouse" ? (
                             <button
                               type="button"
                               onClick={() => executeDispatch(s._id)}
                               disabled={submittingDispatch}
                               className="shp-btn shp-btn--warning shp-btn--xs"
-                              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
                             >
                               <Truck size={12} />
                               <span>Dispatch</span>
                             </button>
                           ) : (
-                            <span className="shp-badge shp-badge--info" style={{ gap: "4px", fontSize: "11px" }}>
+                            <span
+                              className="shp-badge shp-badge--info"
+                              style={{ gap: "4px", fontSize: "11px" }}
+                            >
                               <Check size={12} />
                               <span>Dispatched</span>
                             </span>
@@ -1994,9 +2097,8 @@ export default function Warehouse() {
                   color: "hsla(0, 0%, 0%, 0.65)",
                 }}
               >
-                Real-time active inventory in{" "}
-                <strong>{activeWarehouse?.warName || "Facility"}</strong>{" "}
-                fetched from <code>/warehouse/:id/storage</code>.
+                Inventory in{" "}
+                <strong>{activeWarehouse?.warName || "Facility"}</strong>
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -2030,9 +2132,12 @@ export default function Warehouse() {
                   <tr>
                     <td colSpan={8}>
                       <div className="shp-empty-state">
-                        <p className="shp-empty-state__title">No Packages in Storage</p>
+                        <p className="shp-empty-state__title">
+                          No Packages in Storage
+                        </p>
                         <p className="shp-empty-state__text">
-                          No active packages are currently stored in this warehouse facility.
+                          No active packages are currently stored in this
+                          warehouse facility.
                         </p>
                       </div>
                     </td>
@@ -2056,7 +2161,9 @@ export default function Warehouse() {
                           <p className="shp-cell-title">
                             {s.receiverName || s.senderName || "Customer"}
                           </p>
-                          <span className="shp-cell-sub">{s.shipmentId || "—"}</span>
+                          <span className="shp-cell-sub">
+                            {s.shipmentId || "—"}
+                          </span>
                         </td>
                         <td>
                           <span className="shp-badge shp-badge--info font-mono">
@@ -2064,10 +2171,15 @@ export default function Warehouse() {
                           </span>
                         </td>
                         <td>
-                          <span className="shp-cell-title font-mono">{l.warlocRack || "Rack A-01"}</span>
+                          <span className="shp-cell-title font-mono">
+                            {l.warlocRack || "Rack A-01"}
+                          </span>
                         </td>
                         <td>
-                          <span className="shp-cell-title font-mono" style={{ fontWeight: 700 }}>
+                          <span
+                            className="shp-cell-title font-mono"
+                            style={{ fontWeight: 700 }}
+                          >
                             {l.warlocBin || "Bin A-01-01"}
                           </span>
                         </td>
@@ -2082,14 +2194,21 @@ export default function Warehouse() {
                           {renderStatusBadge(p.warstorStatus)}
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          <div className="shp-action-btns" style={{ justifyContent: "flex-end" }}>
+                          <div
+                            className="shp-action-btns"
+                            style={{ justifyContent: "flex-end" }}
+                          >
                             {p.warstorStatus === "store" && s._id && (
                               <button
                                 type="button"
                                 onClick={() => executeDispatch(s._id)}
                                 disabled={submittingDispatch}
                                 className="shp-btn shp-btn--warning shp-btn--xs"
-                                style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
                               >
                                 <Truck size={12} />
                                 <span>Dispatch</span>
@@ -2150,9 +2269,7 @@ export default function Warehouse() {
                 }}
               >
                 Historical records for{" "}
-                <strong>{activeWarehouse?.warName || "Facility"}</strong>{" "}
-                fetched from <code>/inbound-history</code> and{" "}
-                <code>/outbound-history</code>.
+                <strong>{activeWarehouse?.warName || "Facility"}</strong>.
               </p>
             </div>
 
@@ -2192,7 +2309,9 @@ export default function Warehouse() {
                     <tr>
                       <td colSpan={6}>
                         <div className="shp-empty-state">
-                          <p className="shp-empty-state__title">No Inbound History</p>
+                          <p className="shp-empty-state__title">
+                            No Inbound History
+                          </p>
                           <p className="shp-empty-state__text">
                             No inbound intake records found for this facility.
                           </p>
@@ -2219,7 +2338,9 @@ export default function Warehouse() {
                             <p className="shp-cell-title">
                               {s.receiverName || s.senderName || "Customer"}
                             </p>
-                            <span className="shp-cell-sub">{s.shipmentId || "—"}</span>
+                            <span className="shp-cell-sub">
+                              {s.shipmentId || "—"}
+                            </span>
                           </td>
                           <td>
                             <span className="shp-cell-title font-mono">
@@ -2229,17 +2350,23 @@ export default function Warehouse() {
                             </span>
                           </td>
                           <td>
-                            <span className="shp-cell-title">{u.name || "Operator"}</span>
+                            <span className="shp-cell-title">
+                              {u.name || "Operator"}
+                            </span>
                           </td>
                           <td>
                             <span className="shp-cell-sub">
                               {h.wartransactionDate
-                                ? new Date(h.wartransactionDate).toLocaleString()
+                                ? new Date(
+                                    h.wartransactionDate,
+                                  ).toLocaleString()
                                 : "N/A"}
                             </span>
                           </td>
                           <td style={{ textAlign: "center" }}>
-                            <span className="shp-badge shp-badge--success">Inbound</span>
+                            <span className="shp-badge shp-badge--success">
+                              Inbound
+                            </span>
                           </td>
                         </tr>
                       );
@@ -2266,9 +2393,12 @@ export default function Warehouse() {
                     <tr>
                       <td colSpan={6}>
                         <div className="shp-empty-state">
-                          <p className="shp-empty-state__title">No Outbound History</p>
+                          <p className="shp-empty-state__title">
+                            No Outbound History
+                          </p>
                           <p className="shp-empty-state__text">
-                            No outbound dispatch records found for this facility.
+                            No outbound dispatch records found for this
+                            facility.
                           </p>
                         </div>
                       </td>
@@ -2293,7 +2423,9 @@ export default function Warehouse() {
                             <p className="shp-cell-title">
                               {s.receiverName || s.senderName || "Customer"}
                             </p>
-                            <span className="shp-cell-sub">{s.shipmentId || "—"}</span>
+                            <span className="shp-cell-sub">
+                              {s.shipmentId || "—"}
+                            </span>
                           </td>
                           <td>
                             <span className="shp-cell-title font-mono">
@@ -2303,17 +2435,23 @@ export default function Warehouse() {
                             </span>
                           </td>
                           <td>
-                            <span className="shp-cell-title">{u.name || "Operator"}</span>
+                            <span className="shp-cell-title">
+                              {u.name || "Operator"}
+                            </span>
                           </td>
                           <td>
                             <span className="shp-cell-sub">
                               {h.wartransactionDate
-                                ? new Date(h.wartransactionDate).toLocaleString()
+                                ? new Date(
+                                    h.wartransactionDate,
+                                  ).toLocaleString()
                                 : "N/A"}
                             </span>
                           </td>
                           <td style={{ textAlign: "center" }}>
-                            <span className="shp-badge shp-badge--info">Outbound</span>
+                            <span className="shp-badge shp-badge--info">
+                              Outbound
+                            </span>
                           </td>
                         </tr>
                       );
@@ -2340,7 +2478,8 @@ export default function Warehouse() {
                     : "Create New Warehouse"}
                 </h3>
                 <p className="shp-modal__subtitle">
-                  Configure facility details, location, and operational capacity.
+                  Configure facility details, location, and operational
+                  capacity.
                 </p>
               </div>
               <button
@@ -2368,7 +2507,13 @@ export default function Warehouse() {
                     }
                   />
                   {warehouseFormErrors.name && (
-                    <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                    <p
+                      style={{
+                        color: "var(--danger)",
+                        fontSize: "11px",
+                        margin: "2px 0 0",
+                      }}
+                    >
                       {warehouseFormErrors.name}
                     </p>
                   )}
@@ -2389,7 +2534,13 @@ export default function Warehouse() {
                     style={{ resize: "none" }}
                   />
                   {warehouseFormErrors.address && (
-                    <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                    <p
+                      style={{
+                        color: "var(--danger)",
+                        fontSize: "11px",
+                        margin: "2px 0 0",
+                      }}
+                    >
                       {warehouseFormErrors.address}
                     </p>
                   )}
@@ -2410,7 +2561,13 @@ export default function Warehouse() {
                       }
                     />
                     {warehouseFormErrors.location && (
-                      <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                      <p
+                        style={{
+                          color: "var(--danger)",
+                          fontSize: "11px",
+                          margin: "2px 0 0",
+                        }}
+                      >
                         {warehouseFormErrors.location}
                       </p>
                     )}
@@ -2430,7 +2587,13 @@ export default function Warehouse() {
                       }
                     />
                     {warehouseFormErrors.totalCapacity && (
-                      <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                      <p
+                        style={{
+                          color: "var(--danger)",
+                          fontSize: "11px",
+                          margin: "2px 0 0",
+                        }}
+                      >
                         {warehouseFormErrors.totalCapacity}
                       </p>
                     )}
@@ -2497,7 +2660,8 @@ export default function Warehouse() {
                     : "Add Storage Location"}
                 </h3>
                 <p className="shp-modal__subtitle">
-                  Configure Zone, Rack, and Bin slot coordinates within the facility.
+                  Configure Zone, Rack, and Bin slot coordinates within the
+                  facility.
                 </p>
               </div>
               <button
@@ -2529,13 +2693,22 @@ export default function Warehouse() {
                     ))}
                   </select>
                   {locationFormErrors.warehouseId && (
-                    <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                    <p
+                      style={{
+                        color: "var(--danger)",
+                        fontSize: "11px",
+                        margin: "2px 0 0",
+                      }}
+                    >
                       {locationFormErrors.warehouseId}
                     </p>
                   )}
                 </div>
 
-                <div className="shp-form-row" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+                <div
+                  className="shp-form-row"
+                  style={{ gridTemplateColumns: "1fr 1fr 1fr" }}
+                >
                   <div className="shp-form-group">
                     <label>Zone *</label>
                     <input
@@ -2550,7 +2723,13 @@ export default function Warehouse() {
                       }
                     />
                     {locationFormErrors.warlocZone && (
-                      <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                      <p
+                        style={{
+                          color: "var(--danger)",
+                          fontSize: "11px",
+                          margin: "2px 0 0",
+                        }}
+                      >
                         {locationFormErrors.warlocZone}
                       </p>
                     )}
@@ -2570,7 +2749,13 @@ export default function Warehouse() {
                       }
                     />
                     {locationFormErrors.warlocRack && (
-                      <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                      <p
+                        style={{
+                          color: "var(--danger)",
+                          fontSize: "11px",
+                          margin: "2px 0 0",
+                        }}
+                      >
                         {locationFormErrors.warlocRack}
                       </p>
                     )}
@@ -2590,7 +2775,13 @@ export default function Warehouse() {
                       }
                     />
                     {locationFormErrors.warlocBin && (
-                      <p style={{ color: "var(--danger)", fontSize: "11px", margin: "2px 0 0" }}>
+                      <p
+                        style={{
+                          color: "var(--danger)",
+                          fontSize: "11px",
+                          margin: "2px 0 0",
+                        }}
+                      >
                         {locationFormErrors.warlocBin}
                       </p>
                     )}
@@ -2663,7 +2854,9 @@ export default function Warehouse() {
         <div className="shp-modal-overlay">
           <div className="shp-modal shp-modal--lg">
             <div className="shp-modal__header">
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
                 <span
                   style={{
                     fontFamily: "monospace",
@@ -2678,7 +2871,9 @@ export default function Warehouse() {
                   {viewingWarehouse.warehouseId || "WH"}
                 </span>
                 <div>
-                  <h3 className="shp-modal__title">{viewingWarehouse.warName}</h3>
+                  <h3 className="shp-modal__title">
+                    {viewingWarehouse.warName}
+                  </h3>
                   <p className="shp-modal__subtitle">
                     {viewingWarehouse.warCity} • {viewingWarehouse.warAddress}
                   </p>
@@ -2721,7 +2916,10 @@ export default function Warehouse() {
                     }}
                   >
                     {Number(
-                      String(viewingWarehouse.warCapacity ?? 0).replace(/[^0-9.-]+/g, "") || 0,
+                      String(viewingWarehouse.warCapacity ?? 0).replace(
+                        /[^0-9.-]+/g,
+                        "",
+                      ) || 0,
                     ).toLocaleString()}{" "}
                     pkgs
                   </p>
@@ -2805,7 +3003,8 @@ export default function Warehouse() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(180px, 1fr))",
                     gap: "10px",
                     maxHeight: "260px",
                     overflowY: "auto",
@@ -2971,7 +3170,9 @@ export default function Warehouse() {
                   borderBottom: "1px solid var(--border)",
                 }}
               >
-                <span style={{ color: "hsla(0, 0%, 0%, 0.6)" }}>Destination:</span>
+                <span style={{ color: "hsla(0, 0%, 0%, 0.6)" }}>
+                  Destination:
+                </span>
                 <span
                   style={{
                     fontWeight: 500,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Bell } from "lucide-react";
 import "../../styles/Dashboard.css";
 import DashboardOverview from "./Dashboardoverview";
 import DashboardCustomer from "./DashboardCustomer";
@@ -13,6 +13,12 @@ import DashboardTrip from "./DashboardTrip";
 import DashboardDelivery from "./DashboardDelivery";
 import DashboardPod from "./DashboardPod";
 import DashboardReport from "./DashboardReport";
+import DashboardInvoice from "./DashboardInvoice";
+import DashboardSetting from "./DashboardSetting";
+import DashboardNotification from "./DashboardNotification";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -86,7 +92,12 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
     delivery: "/deliveries",
     deliveries: "/deliveries",
     pod: "/pod",
+    invoices: "/invoices",
     reports: "/reports",
+    notifications: "/notifications",
+    notification: "/notifications",
+    settings: "/settings",
+    setting: "/settings",
   };
 
   return (
@@ -137,8 +148,80 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
 
 function Topbar({ title, alertCount, username, role, onMenuClick }) {
   const navigate = useNavigate();
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  const fetchNotifications = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    setLoadingNotifications(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Topbar fetch notifications error:", err);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const handleNotificationClick = async (n) => {
+    setShowNotifications(false);
+    const token = localStorage.getItem("token");
+    if (!n.read && n._id && token) {
+      try {
+        await fetch(`${API_BASE_URL}/notifications/${n._id}/read`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setNotifications((prev) =>
+          prev.map((item) => (item._id === n._id ? { ...item, read: true } : item))
+        );
+      } catch (err) {
+        console.error("Mark notification read error:", err);
+      }
+    }
+    navigate("/notifications");
+  };
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const formatRelativeTime = (isoString) => {
+    if (!isoString) return "";
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "";
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHrs = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHrs < 24) return `${diffHrs}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    navigate("/login");
+  };
+
   return (
-    <header className="dash-topbar">
+    <header className="dash-topbar relative">
       <div className="dash-topbar__left">
         <button
           type="button"
@@ -151,22 +234,96 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
         <h1 className="dash-topbar__title">{title || "Dashboard"}</h1>
       </div>
 
-      <div className="dash-topbar__actions">
+      <div className="dash-topbar__actions relative">
         {/* <input
           type="search"
           className="dash-topbar__search"
           placeholder="Search shipments, customers, trips…"
-        />
-        <button
-          type="button"
-          className="dash-topbar__icon-btn"
-          aria-label="Notifications"
-        >
-          <Icon name="bell" />
-          {alertCount > 0 && (
-            <span className="dash-topbar__badge">{alertCount}</span>
+        />*/}
+        <div className="relative shrink-0">
+          <button
+            onClick={() => {
+              const nextState = !showNotifications;
+              setShowNotifications(nextState);
+              if (nextState) {
+                fetchNotifications();
+              }
+            }}
+            className="relative p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+            aria-label="Notifications"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-orange-500 rounded-full ring-2 ring-white animate-pulse"></span>
+            )}
+          </button>
+
+          {showNotifications && (
+            <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h4 className="font-semibold text-sm text-slate-800">
+                  Notifications
+                </h4>
+                <span className="text-[11px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                  {unreadCount > 0 ? `${unreadCount} New` : "All read"}
+                </span>
+              </div>
+              <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                {loadingNotifications ? (
+                  <p className="py-4 text-center text-xs text-slate-400">
+                    Loading notifications...
+                  </p>
+                ) : notifications.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-slate-400">
+                    No notifications
+                  </p>
+                ) : (
+                  notifications.slice(0, 5).map((n) => (
+                    <div
+                      key={n._id || n.id}
+                      onClick={() => handleNotificationClick(n)}
+                      className={`py-2.5 px-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors relative ${
+                        !n.read ? "bg-blue-50/40" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <p
+                          className={`text-xs ${
+                            !n.read
+                              ? "font-bold text-slate-900"
+                              : "font-semibold text-slate-700"
+                          }`}
+                        >
+                          {n.type || n.title}
+                        </p>
+                        {!n.read && (
+                          <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
+                        {n.message || n.desc}
+                      </p>
+                      <span className="text-[10px] text-slate-400 mt-1 inline-block">
+                        {formatRelativeTime(n.createdAt || n.timestamp)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="pt-2 mt-1 border-t border-slate-100 text-center">
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    navigate("/notifications");
+                  }}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
+                >
+                  View All Notifications
+                </button>
+              </div>
+            </div>
           )}
-        </button> */}
+        </div>
         <button
           type="button"
           id="navbar-create-user-btn"
@@ -176,13 +333,47 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
           <UserPlus className="w-4 h-4" />
           <span className="hidden sm:inline">Create User</span>
         </button>
-        <div className="dash-topbar__profile">
+        <div
+          className="dash-topbar__profile cursor-pointer"
+          onClick={() => setShowUserMenu(!showUserMenu)}
+        >
           <div className="dash-topbar__avatar">{username?.[0]}</div>
           <span className="dash-topbar__username">{username}</span>
           {role && (
             <span className="dash-topbar__role">{role.replace(/_/g, " ")}</span>
           )}
         </div>
+
+        {showUserMenu && (
+          <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 text-xs text-slate-700">
+            <div className="px-3 py-2 border-b border-slate-100">
+              <p className="font-semibold text-slate-800 truncate">
+                {user?.email || username || "User"}
+              </p>
+              <p className="text-[11px] text-slate-500 capitalize">
+                Role: {role?.replace(/_/g, " ") || "User"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowUserMenu(false);
+                navigate("/settings");
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-slate-700"
+            >
+              Profile Settings
+            </button>
+            <div className="border-t border-slate-100 my-1"></div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 cursor-pointer flex items-center gap-2"
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -237,8 +428,17 @@ export default function Dashboardx({ initialTab = "dashboard" }) {
             <DashboardDelivery />
           )}
           {activeTab === "pod" && <DashboardPod />}
+          {(activeTab === "invoices" || activeTab === "invoice") && (
+            <DashboardInvoice />
+          )}
           {(activeTab === "reports" || activeTab === "report") && (
             <DashboardReport />
+          )}
+          {(activeTab === "notifications" || activeTab === "notification") && (
+            <DashboardNotification />
+          )}
+          {(activeTab === "settings" || activeTab === "setting") && (
+            <DashboardSetting />
           )}
           {activeTab !== "customers" &&
             activeTab !== "shipments" &&
@@ -252,8 +452,14 @@ export default function Dashboardx({ initialTab = "dashboard" }) {
             activeTab !== "delivery" &&
             activeTab !== "deliveries" &&
             activeTab !== "pod" &&
+            activeTab !== "invoices" &&
+            activeTab !== "invoice" &&
             activeTab !== "reports" &&
-            activeTab !== "report" && <DashboardOverview />}
+            activeTab !== "report" &&
+            activeTab !== "notifications" &&
+            activeTab !== "notification" &&
+            activeTab !== "settings" &&
+            activeTab !== "setting" && <DashboardOverview />}
         </main>
       </div>
     </div>

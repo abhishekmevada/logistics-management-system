@@ -321,6 +321,37 @@ export default function App() {
           />
 
           <Route
+            path="/invoices"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "Admin",
+                  "Logistics Manager",
+                ]}
+              >
+                <Dashboard initialTab="invoices" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invoice"
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "Admin",
+                  "Logistics Manager",
+                ]}
+              >
+                <Dashboard initialTab="invoices" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/reports"
             element={
               <ProtectedRoute
@@ -351,6 +382,40 @@ export default function App() {
                 ]}
               >
                 <Dashboard initialTab="reports" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute allowedRoles={ALL_ROLES}>
+                <Dashboard initialTab="notifications" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notification"
+            element={
+              <ProtectedRoute allowedRoles={ALL_ROLES}>
+                <Dashboard initialTab="notifications" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute allowedRoles={ALL_ROLES}>
+                <Dashboard initialTab="settings" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/setting"
+            element={
+              <ProtectedRoute allowedRoles={ALL_ROLES}>
+                <Dashboard initialTab="settings" />
               </ProtectedRoute>
             }
           />

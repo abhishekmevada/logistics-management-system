@@ -219,9 +219,90 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
   const [activeStep, setActiveStep] = useState(1);
   const [error, setError] = useState(null);
   const [createdShipment, setCreatedShipment] = useState(null);
+  const [documentFile, setDocumentFile] = useState(null);
+  const [documentError, setDocumentError] = useState("");
+  const [isDraggingDoc, setIsDraggingDoc] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const documentInputRef = useRef(null);
   const qrRef = useRef(null);
   const token = localStorage.getItem("token");
   const [customerList, setCustomerList] = useState([]);
+
+  const resetCreateForm = () => {
+    setActiveStep(1);
+    setError(null);
+    setCreatedShipment(null);
+    setDocumentFile(null);
+    setDocumentError("");
+    setIsDraggingDoc(false);
+    setIsSubmitting(false);
+    if (documentInputRef.current) {
+      documentInputRef.current.value = "";
+    }
+  };
+
+  const handleModalClose = () => {
+    resetCreateForm();
+    onClose();
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || isNaN(bytes)) return "0 KB";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const handleDocumentChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB limit
+    if (file.size > MAX_SIZE) {
+      setDocumentError("Document file size must not exceed 10 MB.");
+      return;
+    }
+
+    setDocumentError("");
+    setDocumentFile(file);
+  };
+
+  const handleRemoveDocument = (e) => {
+    if (e) e.stopPropagation();
+    setDocumentFile(null);
+    setDocumentError("");
+    if (documentInputRef.current) {
+      documentInputRef.current.value = "";
+    }
+  };
+
+  const handleDocDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingDoc(true);
+  };
+
+  const handleDocDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingDoc(false);
+  };
+
+  const handleDocDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingDoc(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setDocumentError("Document file size must not exceed 10 MB.");
+      return;
+    }
+    setDocumentError("");
+    setDocumentFile(file);
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -393,6 +474,8 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
 
     try {
       const res = await fetch(`${API_BASE_URL}/createshipment`, {
@@ -407,11 +490,51 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message);
+        setError(data.message || "Failed to create shipment");
+        setIsSubmitting(false);
         return;
       }
 
       const shipmentData = data.shipment || data;
+      const shipmentId =
+        shipmentData._id ||
+        shipmentData.id ||
+        shipmentData.shipmentId ||
+        shipmentData.trackingId;
+
+      // Upload document if user selected one
+      if (documentFile && shipmentId) {
+        try {
+          const docFormData = new FormData();
+          docFormData.append("document", documentFile);
+
+          const docRes = await fetch(
+            `${API_BASE_URL}/shipments/${shipmentId}/documents`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              body: docFormData,
+            },
+          );
+
+          if (docRes.ok) {
+            const docData = await docRes.json();
+            if (docData.document) {
+              shipmentData.documents = [
+                ...(shipmentData.documents || []),
+                docData.document,
+              ];
+            }
+          } else {
+            console.warn("Shipment created, but document upload returned non-200");
+          }
+        } catch (uploadErr) {
+          console.warn("Shipment created, but document upload failed:", uploadErr);
+        }
+      }
+
       const resolvedCust =
         shipmentData.customerId &&
         typeof shipmentData.customerId === "object" &&
@@ -442,8 +565,14 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
         onSubmit(finalShipment);
       }
       setCreatedShipment(finalShipment);
+      setDocumentFile(null);
+      if (documentInputRef.current) {
+        documentInputRef.current.value = "";
+      }
     } catch (err) {
       setError(err?.message || "something wrong");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -501,8 +630,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
   };
 
   const handleCloseAfterQR = () => {
-    setCreatedShipment(null);
-    onClose();
+    handleModalClose();
   };
 
   return (
@@ -521,7 +649,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
           <button
             type="button"
             className="shp-modal__close"
-            onClick={onClose}
+            onClick={handleModalClose}
             aria-label="Close"
           >
             <X size={18} />
@@ -725,7 +853,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                 className={`shp-stepper-tab ${activeStep === 3 ? "shp-stepper-tab--active" : ""}`}
                 onClick={() => setActiveStep(3)}
               >
-                3. Schedules
+                3. Schedules & Document
               </button>
             </div>
 
@@ -1204,7 +1332,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                     <h4 className="shp-form-card__title">Schedules</h4>
                     <div className="shp-form-row">
                       <div className="shp-form-group">
-                        <label>Scheduled Pickup Date & Time</label>
+                        <label>Scheduled Pickup Date & Time *</label>
                         <input
                           type="datetime-local"
                           name="pickupDate"
@@ -1214,7 +1342,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                         />
                       </div>
                       <div className="shp-form-group">
-                        <label>Expected Delivery Date & Time</label>
+                        <label>Expected Delivery Date & Time *</label>
                         <input
                           type="datetime-local"
                           name="expectedDeliveryDate"
@@ -1224,6 +1352,213 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Document Upload Section */}
+                  <div className="shp-form-card shp-form-group--full">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      <h4 className="shp-form-card__title" style={{ margin: 0 }}>
+                        Shipment Document
+                      </h4>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          color: "#64748b",
+                          backgroundColor: "#f1f5f9",
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        1 document allowed (Optional)
+                      </span>
+                    </div>
+
+                    {!documentFile ? (
+                      <div
+                        onDragOver={handleDocDragOver}
+                        onDragLeave={handleDocDragLeave}
+                        onDrop={handleDocDrop}
+                        onClick={() => documentInputRef.current?.click()}
+                        style={{
+                          border: isDraggingDoc
+                            ? "2px dashed #2563eb"
+                            : "2px dashed #cbd5e1",
+                          borderRadius: "10px",
+                          padding: "22px 16px",
+                          textAlign: "center",
+                          backgroundColor: isDraggingDoc ? "#eff6ff" : "#f8fafc",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        <input
+                          type="file"
+                          ref={documentInputRef}
+                          onChange={handleDocumentChange}
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt,.csv,.xls,.xlsx"
+                          style={{ display: "none" }}
+                        />
+                        <div
+                          style={{
+                            width: "44px",
+                            height: "44px",
+                            borderRadius: "50%",
+                            backgroundColor: "#eff6ff",
+                            color: "#2563eb",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto 10px",
+                          }}
+                        >
+                          <UploadCloud size={22} />
+                        </div>
+                        <p
+                          style={{
+                            margin: "0 0 4px",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "#1e293b",
+                          }}
+                        >
+                          Click to upload or drag & drop document
+                        </p>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: "12px",
+                            color: "#64748b",
+                          }}
+                        >
+                          Invoice, Bill of Lading, Manifest or Receipt (PDF, DOC, DOCX, PNG, JPG up to 10MB)
+                        </p>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "10px",
+                          padding: "12px 16px",
+                          backgroundColor: "#f8fafc",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "38px",
+                              height: "38px",
+                              borderRadius: "8px",
+                              backgroundColor: "#eff6ff",
+                              color: "#2563eb",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <FileText size={20} />
+                          </div>
+                          <div style={{ overflow: "hidden" }}>
+                            <p
+                              style={{
+                                margin: "0 0 2px",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                color: "#0f172a",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                              title={documentFile.name}
+                            >
+                              {documentFile.name}
+                            </p>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#16a34a",
+                                fontWeight: 500,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              <CheckCircle2 size={12} />
+                              {formatFileSize(documentFile.size)} • Ready to upload
+                            </span>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="shp-btn shp-btn--ghost shp-btn--xs"
+                            onClick={() => documentInputRef.current?.click()}
+                            title="Replace document"
+                          >
+                            Change
+                          </button>
+                          <button
+                            type="button"
+                            className="shp-btn shp-btn--ghost shp-btn--xs"
+                            onClick={handleRemoveDocument}
+                            style={{ color: "#ef4444" }}
+                            title="Remove document"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          <input
+                            type="file"
+                            ref={documentInputRef}
+                            onChange={handleDocumentChange}
+                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt,.csv,.xls,.xlsx"
+                            style={{ display: "none" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {documentError && (
+                      <p
+                        style={{
+                          margin: "8px 0 0",
+                          fontSize: "12px",
+                          color: "#ef4444",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <AlertTriangle size={14} />
+                        {documentError}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1235,6 +1570,7 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                     type="button"
                     className="shp-btn shp-btn--secondary"
                     onClick={() => setActiveStep((prev) => prev - 1)}
+                    disabled={isSubmitting}
                   >
                     Back
                   </button>
@@ -1243,7 +1579,8 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                   <button
                     type="button"
                     className="shp-btn shp-btn--ghost"
-                    onClick={onClose}
+                    onClick={handleModalClose}
+                    disabled={isSubmitting}
                   >
                     Cancel
                   </button>
@@ -1256,8 +1593,20 @@ function CreateShipmentModal({ isOpen, onClose, onSubmit }) {
                       Next Step
                     </button>
                   ) : (
-                    <button type="submit" className="shp-btn shp-btn--primary">
-                      Create Shipment
+                    <button
+                      type="submit"
+                      className="shp-btn shp-btn--primary"
+                      disabled={isSubmitting}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      {isSubmitting && (
+                        <Loader2 size={15} className="shp-spin" />
+                      )}
+                      {isSubmitting ? "Creating Shipment..." : "Create Shipment"}
                     </button>
                   )}
                 </div>
@@ -1882,7 +2231,51 @@ function ShipmentDetailsModalContent({
   const [shipmentHistory, setShipmentHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [timelineError, setTimelineError] = useState(null);
+  const [documents, setDocuments] = useState(
+    Array.isArray(shipment.documents) ? shipment.documents : [],
+  );
+  const [loadingDocs, setLoadingDocs] = useState(false);
   const detailQrRef = useRef(null);
+
+  const handleDownloadDoc = async (doc) => {
+    try {
+      const docId = doc._id || doc.id;
+      const shpId =
+        shipment._id ||
+        shipment.id ||
+        shipment.shipmentId ||
+        shipment.trackingId;
+      const token = localStorage.getItem("token");
+
+      const targetUrl =
+        doc.url ||
+        doc.documentUrl ||
+        `${API_BASE_URL}/shipments/${shpId}/documents/${docId}`;
+
+      const res = await fetch(targetUrl, {
+        headers: {
+          ...(token && !doc.url ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to download (HTTP ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        doc.originalName || doc.fileName || doc.name || "shipment-document";
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+    } catch (err) {
+      alert("Could not download document: " + (err.message || "Unknown error"));
+    }
+  };
 
   const trackingNo =
     shipment.trackingId || shipment.shipmentId || shipment.trackingNo || "N/A";
@@ -1999,7 +2392,36 @@ function ShipmentDetailsModalContent({
       }
     };
 
+    const fetchDocuments = async () => {
+      setLoadingDocs(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `${API_BASE_URL}/shipments/${shipmentId}/documents`,
+          {
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          },
+        );
+
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (Array.isArray(data.documents) && isMounted) {
+            setDocuments(data.documents);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch documents for shipment:", err);
+      } finally {
+        if (isMounted) {
+          setLoadingDocs(false);
+        }
+      }
+    };
+
     fetchShipmentTimeline();
+    fetchDocuments();
 
     return () => {
       isMounted = false;
@@ -2436,13 +2858,26 @@ function ShipmentDetailsModalContent({
               {/* Documents Card */}
               <div className="shp-card">
                 <h5 className="shp-card__title">Shipment Documents</h5>
-                {!shipment.documents || shipment.documents.length === 0 ? (
+                {loadingDocs ? (
+                  <p
+                    className="shp-text-muted"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      margin: 0,
+                    }}
+                  >
+                    <Loader2 size={13} className="shp-spin" /> Loading
+                    documents...
+                  </p>
+                ) : !documents || documents.length === 0 ? (
                   <p className="shp-text-muted">No documents uploaded yet.</p>
                 ) : (
                   <ul className="shp-doc-list">
-                    {shipment.documents.map((doc) => (
+                    {documents.map((doc, idx) => (
                       <li
-                        key={doc.id || doc._id || doc.name}
+                        key={doc.id || doc._id || doc.fileName || idx}
                         className="shp-doc-item"
                       >
                         <div className="shp-doc-item__info">
@@ -2450,22 +2885,47 @@ function ShipmentDetailsModalContent({
                             <FileText size={16} />
                           </span>
                           <div>
-                            <p className="shp-doc-item__name">{doc.name}</p>
+                            <p className="shp-doc-item__name">
+                              {doc.originalName || doc.name || doc.fileName || "Document"}
+                            </p>
                             <span className="shp-doc-item__meta">
-                              {doc.size} • Uploaded {formatDate(doc.uploadedAt)}
+                              {typeof doc.size === "number"
+                                ? `${(doc.size / 1024).toFixed(1)} KB`
+                                : doc.size || ""}{" "}
+                              • Uploaded{" "}
+                              {formatDate(doc.createdAt || doc.uploadedAt)}
                             </span>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          className="shp-btn shp-btn--ghost shp-btn--xs"
-                          onClick={() =>
-                            alert(`Downloading document ${doc.name}...`)
-                          }
-                        >
-                          <Download size={13} />
-                          Download
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          {(doc.url || doc.documentUrl) && (
+                            <a
+                              href={doc.url || doc.documentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shp-btn shp-btn--ghost shp-btn--xs"
+                              title="Open document in new tab"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                textDecoration: "none",
+                              }}
+                            >
+                              <Eye size={13} />
+                              View
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            className="shp-btn shp-btn--ghost shp-btn--xs"
+                            onClick={() => handleDownloadDoc(doc)}
+                            title="Download document"
+                          >
+                            <Download size={13} />
+                            Download
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>

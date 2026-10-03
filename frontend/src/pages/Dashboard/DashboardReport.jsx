@@ -1618,7 +1618,6 @@ export default function DashboardReport() {
                 <table className="rpt-table">
                   <thead>
                     <tr>
-                      <th>Transaction ID</th>
                       <th>Warehouse</th>
                       <th>Activity Type</th>
                       <th>Shipment / Tracking</th>
@@ -1630,7 +1629,6 @@ export default function DashboardReport() {
                   <tbody>
                     {filteredRows.map((row, idx) => (
                       <tr key={idx}>
-                        <td style={{ fontWeight: 600 }}>{row.txnId}</td>
                         <td>{row.warehouse}</td>
                         <td>
                           <span className={getBadgeClass(row.type, "inbound")}>

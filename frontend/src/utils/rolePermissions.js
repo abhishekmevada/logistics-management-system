@@ -1,11 +1,12 @@
 /**
  * Role-based access permissions
  *
- * Roles (must match data.user.role from API):
- *   admin | logistics_manager | dispatcher | warehouse_manager | driver
- *
- * Each role maps to an array of nav-item keys it can access.
- * Keys match the `key` property used in the sidebar buttons.
+ * Matrix based on user specification:
+ *   Admin: Full system access
+ *   Logistics Manager: Dashboard, Shipments, Vehicles, Drivers, Trips, Deliveries, Reports, Notifications, Settings (Profile)
+ *   Dispatcher: Dashboard, Shipments, Vehicles, Drivers, Trips, Deliveries, Notifications, Settings (Profile)
+ *   Warehouse Manager: Dashboard, Shipments, Warehouses, Deliveries, Notifications, Settings (Profile)
+ *   Driver: Dashboard, Shipments, Trips, Deliveries, POD, Notifications, Settings (Profile)
  */
 
 export const ROLES = {
@@ -34,79 +35,75 @@ const adminPermissions = {
 
 const logisticsManagerPermissions = {
   dashboard: true,
-  customers: "View only",
+  customers: false,
   shipments: true,
   vehicles: true,
   drivers: true,
-  warehouses: "View only",
+  warehouses: false,
   trips: true,
   delivery: true,
-  pod: true,
-  invoices: true,
+  pod: false,
+  invoices: false,
   reports: true,
   notifications: true,
-  settings: false,
+  settings: "Profile",
 };
 
 const dispatcherPermissions = {
   dashboard: true,
-  customers: "View / Select",
+  customers: false,
   shipments: true,
-  vehicles: "Assign only",
-  drivers: "Assign only",
+  vehicles: true,
+  drivers: true,
   warehouses: false,
   trips: true,
   delivery: true,
-  pod: "View only",
+  pod: false,
   invoices: false,
   reports: false,
   notifications: true,
-  settings: false,
+  settings: "Profile",
 };
 
 const warehouseManagerPermissions = {
   dashboard: true,
   customers: false,
-  shipments: "Status / Scan",
+  shipments: true,
   vehicles: false,
   drivers: false,
   warehouses: true,
   trips: false,
-  delivery: false,
+  delivery: true,
   pod: false,
-  invoices: false,
-  reports: "Warehouse activity",
-  notifications: true,
-  settings: false,
-};
-
-const driverPermissions = {
-  dashboard: "Trip view",
-  customers: false,
-  shipments: "Assigned only",
-  vehicles: false,
-  drivers: false,
-  warehouses: false,
-  trips: "Assigned trips",
-  delivery: "Assigned updates",
-  pod: "Submit / Create",
   invoices: false,
   reports: false,
   notifications: true,
-  settings: false,
+  settings: "Profile",
 };
 
-// Per-module access map
-// value: true = full access | string = limited access label | false / absent = no access
+const driverPermissions = {
+  dashboard: true,
+  customers: false,
+  shipments: true,
+  vehicles: false,
+  drivers: false,
+  warehouses: false,
+  trips: true,
+  delivery: true,
+  pod: true,
+  invoices: false,
+  reports: false,
+  notifications: true,
+  settings: "Profile",
+};
+
 export const ROLE_PERMISSIONS = {
-  // User DB schema role names (exact match)
   [ROLES.ADMIN]: adminPermissions,
   [ROLES.LOGISTICS_MANAGER]: logisticsManagerPermissions,
   [ROLES.DISPATCHER]: dispatcherPermissions,
   [ROLES.WAREHOUSE_MANAGER]: warehouseManagerPermissions,
   [ROLES.DRIVER]: driverPermissions,
 
-  // Lowercase / normalized aliases for backwards compatibility
   admin: adminPermissions,
   logistics_manager: logisticsManagerPermissions,
   dispatcher: dispatcherPermissions,
@@ -129,6 +126,9 @@ export function normalizeRole(role) {
   if (cleaned === "driver") {
     return "driver";
   }
+  if (cleaned === "super_admin" || cleaned === "admin") {
+    return "admin";
+  }
   return cleaned;
 }
 
@@ -145,7 +145,7 @@ export function canAccess(role, key) {
 
 /**
  * Returns the access label for a role+key combo, or null if no access.
- * e.g. accessLabel("driver", "shipments") → "Assigned only"
+ * e.g. accessLabel("logistics_manager", "settings") → "Profile"
  */
 export function accessLabel(role, key) {
   if (!role) return null;

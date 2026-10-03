@@ -1283,3 +1283,16 @@
   border-radius: var(--radius);
   padding: 18px 20px;
 }
+
+@keyframes shp-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shp-spin {
+  animation: shp-spin 1s linear infinite;
+}

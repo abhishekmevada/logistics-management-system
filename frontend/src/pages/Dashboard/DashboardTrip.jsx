@@ -51,9 +51,7 @@ const getStatusTone = (status) => {
 };
 
 const formatStatus = (status) =>
-  (status || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  (status || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 const formatDate = (isoString) => {
   if (!isoString) return "N/A";
@@ -88,6 +86,10 @@ function CreateTripModal({
   const [plannedDistanceKm, setPlannedDistanceKm] = useState(0);
   const [baseFare, setBaseFare] = useState(1500);
   const [calculatedCost, setCalculatedCost] = useState(0);
+  const [sourceLabel, setSourceLabel] = useState("");
+  const [isDistanceLoading, setIsDistanceLoading] = useState(false);
+  const [isManualDistance, setIsManualDistance] = useState(false);
+  const [isManualCost, setIsManualCost] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -100,6 +102,9 @@ function CreateTripModal({
         .slice(0, 16);
       setScheduledDeparture(depDefault);
       setScheduledArrival(arrDefault);
+      setIsManualDistance(false);
+      setIsManualCost(false);
+      setSourceLabel("");
     }
   }, [isOpen]);
 
@@ -129,25 +134,102 @@ function CreateTripModal({
     }
   };
 
+  // Live OpenStreetMap & OSRM API Distance Calculation with fallback
   useEffect(() => {
-    let estimatedKm = 0;
-    if (origin && destination) {
-      const baseDistance = Math.max(
-        150,
-        (origin.length + destination.length) * 25,
-      );
-      const validStops = stops.filter((s) => s.trim().length > 0);
-      estimatedKm = baseDistance + validStops.length * 60;
-    }
-    setPlannedDistanceKm(estimatedKm);
+    let active = true;
+    const cleanOrigin = origin.trim();
+    const cleanDest = destination.trim();
+    const validStops = stops.filter((s) => s.trim().length > 0);
 
+    if (!cleanOrigin || !cleanDest) {
+      if (!isManualDistance) {
+        setPlannedDistanceKm(0);
+      }
+      setSourceLabel("");
+      return;
+    }
+
+    const fetchRouteDistance = async () => {
+      setIsDistanceLoading(true);
+      let finalKm = 0;
+      let label = "⚡ Fallback Estimation";
+
+      try {
+        const geo1Res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanOrigin + ", India")}`,
+        );
+        const geo1Data = await geo1Res.json();
+        const geo2Res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanDest + ", India")}`,
+        );
+        const geo2Data = await geo2Res.json();
+
+        if (geo1Data.length > 0 && geo2Data.length > 0) {
+          const lat1 = geo1Data[0].lat,
+            lon1 = geo1Data[0].lon;
+          const lat2 = geo2Data[0].lat,
+            lon2 = geo2Data[0].lon;
+
+          const routeRes = await fetch(
+            `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`,
+          );
+          const routeData = await routeRes.json();
+
+          if (routeData.routes && routeData.routes.length > 0) {
+            const roadDistanceKm = Math.round(
+              routeData.routes[0].distance / 1000,
+            );
+            const stopAddon = validStops.length * 70;
+            finalKm = roadDistanceKm + stopAddon;
+            label = "🌐 Live OpenStreetMap API";
+          }
+        }
+      } catch (err) {
+        console.warn(
+          "Live API fetch skipped or network limit, using database",
+          err,
+        );
+      }
+
+      if (!finalKm) {
+        const baseDistance = Math.max(
+          150,
+          (cleanOrigin.length + cleanDest.length) * 25,
+        );
+        finalKm = baseDistance + validStops.length * 60;
+        label = "⚡ Fallback Estimation";
+      }
+
+      if (active) {
+        setIsDistanceLoading(false);
+        setSourceLabel(label);
+        if (!isManualDistance) {
+          setPlannedDistanceKm(finalKm);
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      fetchRouteDistance();
+    }, 500);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [origin, destination, stops, isManualDistance]);
+
+  // Cost calculation based on distance & vehicle rate (unless manually edited)
+  useEffect(() => {
+    if (isManualCost) return;
     let ratePerKm = 24;
     const selectedVeh = vehicles.find((v) => v._id === selectedVehicleId);
     if (selectedVeh && selectedVeh.ratePerKm) {
       ratePerKm = Number(selectedVeh.ratePerKm);
     }
-    setCalculatedCost(estimatedKm > 0 ? baseFare + estimatedKm * ratePerKm : 0);
-  }, [origin, destination, stops, selectedVehicleId, baseFare, vehicles]);
+    const distance = Number(plannedDistanceKm) || 0;
+    setCalculatedCost(distance > 0 ? baseFare + distance * ratePerKm : 0);
+  }, [plannedDistanceKm, selectedVehicleId, baseFare, vehicles, isManualCost]);
 
   if (!isOpen) return null;
 
@@ -259,79 +341,129 @@ function CreateTripModal({
               </div>
 
               {/* Intermediate Stops */}
-              <div style={{ marginTop: "12px" }}>
+              <div
+                style={{
+                  marginTop: "16px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "10px",
+                  padding: "14px 16px",
+                }}
+              >
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    marginBottom: "8px",
+                    marginBottom: "12px",
                   }}
                 >
-                  <label className="shp-label" style={{ margin: 0 }}>
-                    Intermediate Transit Stops
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAddStop}
-                    className="shp-btn shp-btn--ghost shp-btn--sm"
-                    style={{ fontSize: "11.5px", padding: "4px 8px" }}
-                  >
-                    + Add Transit Stop
-                  </button>
-                </div>
-
-                {stops.map((stop, idx) => (
                   <div
-                    key={idx}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "8px",
-                      marginBottom: "8px",
+                      gap: "6px",
                     }}
                   >
-                    <span
+                    <MapPin size={15} style={{ color: "#f59e0b" }} />
+                    <label
+                      className="shp-label"
+                      style={{ margin: 0, fontWeight: 700, color: "#1e293b" }}
+                    >
+                      Intermediate Transit Stops (
+                      {stops.filter((s) => s.trim().length > 0).length})
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddStop}
+                    className="shp-btn shp-btn--secondary shp-btn--sm"
+                    style={{
+                      fontSize: "11.5px",
+                      padding: "4px 10px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>Add Transit Stop</span>
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  {stops.map((stop, idx) => (
+                    <div
+                      key={idx}
                       style={{
-                        width: "22px",
-                        height: "22px",
-                        borderRadius: "50%",
-                        background: "#e2e8f0",
-                        display: "grid",
-                        placeItems: "center",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        color: "#475569",
-                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        background: "#ffffff",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
                       }}
                     >
-                      {idx + 1}
-                    </span>
-                    <input
-                      type="text"
-                      className="shp-input"
-                      value={stop}
-                      onChange={(e) => handleStopChange(idx, e.target.value)}
-                      placeholder={`Stop #${idx + 1} city/hub (e.g. Solapur Hub)`}
-                    />
-                    {stops.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveStop(idx)}
-                        className="shp-icon-btn shp-icon-btn--danger"
-                        title="Remove stop"
+                      <span
+                        style={{
+                          width: "24px",
+                          height: "24px",
+                          borderRadius: "50%",
+                          background: "#2563eb",
+                          color: "#ffffff",
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
                       >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                        {idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        className="shp-input"
+                        value={stop}
+                        onChange={(e) => handleStopChange(idx, e.target.value)}
+                        placeholder={`Stop #${idx + 1} city or transit hub (e.g. Solapur Hub)`}
+                        style={{
+                          border: "none",
+                          outline: "none",
+                          boxShadow: "none",
+                          background: "transparent",
+                          padding: "4px 0",
+                        }}
+                      />
+                      {stops.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStop(idx)}
+                          className="shp-icon-btn shp-icon-btn--danger"
+                          title="Remove transit stop"
+                          style={{ flexShrink: 0 }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
             {/* Section 2: Driver & Vehicle Allocation */}
             <div style={{ marginBottom: "20px" }}>
-              <h5 className="shp-section-title">2. Driver & Vehicle Allocation</h5>
+              <h5 className="shp-section-title">
+                2. Driver & Vehicle Allocation
+              </h5>
               <div className="shp-form-row">
                 <div className="shp-form-group">
                   <label className="shp-label">Assign Driver *</label>
@@ -410,7 +542,7 @@ function CreateTripModal({
                     3. Attach Shipments ({selectedShipmentIds.length} Selected)
                   </h5>
                   <span style={{ fontSize: "11.5px", color: "#64748b" }}>
-                    Select ready warehouse shipments to consolidate into this trip payload.
+                    Select created shipments to consolidate into this trip payload.
                   </span>
                 </div>
                 {availableShipments.length > 0 && (
@@ -432,17 +564,25 @@ function CreateTripModal({
                   <input
                     type="text"
                     className="shp-input"
-                    placeholder="Filter ready shipments by tracking ID, sender, receiver..."
+                    placeholder="Filter created shipments by tracking ID, sender, receiver..."
                     value={shipmentSearch}
                     onChange={(e) => setShipmentSearch(e.target.value)}
-                    style={{ fontSize: "12px", padding: "6px 10px" }}
+                    style={{
+                      fontSize: "12px",
+                      padding: "6px 10px",
+                      width: "100%",
+                    }}
                   />
                 </div>
               )}
 
               <div
                 className="shp-table-wrap shp-table-wrap--sm"
-                style={{ maxHeight: "200px", overflowY: "auto", border: "1px solid var(--border)" }}
+                style={{
+                  maxHeight: "200px",
+                  overflowY: "auto",
+                  border: "1px solid var(--border)",
+                }}
               >
                 {filteredAvailableShipments.length > 0 ? (
                   <table className="shp-table">
@@ -457,12 +597,19 @@ function CreateTripModal({
                     </thead>
                     <tbody>
                       {filteredAvailableShipments.map((shp) => {
-                        const isSelected = selectedShipmentIds.includes(shp._id);
+                        const isSelected = selectedShipmentIds.includes(
+                          shp._id,
+                        );
                         return (
                           <tr
                             key={shp._id}
                             onClick={() => handleToggleShipment(shp._id)}
-                            style={{ cursor: "pointer", background: isSelected ? "hsl(214, 100%, 97%)" : undefined }}
+                            style={{
+                              cursor: "pointer",
+                              background: isSelected
+                                ? "hsl(214, 100%, 97%)"
+                                : undefined,
+                            }}
                           >
                             <td>
                               <input
@@ -479,14 +626,17 @@ function CreateTripModal({
                             </td>
                             <td>
                               <span style={{ fontSize: "12px" }}>
-                                {shp.senderName || "—"} → {shp.receiverName || "—"}
+                                {shp.senderName || "—"} →{" "}
+                                {shp.receiverName || "—"}
                               </span>
                             </td>
                             <td>
                               {shp.totalWeight ? `${shp.totalWeight} kg` : "—"}
                             </td>
                             <td>
-                              <span className={`shp-badge shp-badge--${getStatusTone(shp.status)}`}>
+                              <span
+                                className={`shp-badge shp-badge--${getStatusTone(shp.status)}`}
+                              >
                                 {formatStatus(shp.status)}
                               </span>
                             </td>
@@ -496,8 +646,15 @@ function CreateTripModal({
                     </tbody>
                   </table>
                 ) : (
-                  <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8", fontSize: "12px" }}>
-                    No available pending shipments found to attach.
+                  <div
+                    style={{
+                      padding: "24px",
+                      textAlign: "center",
+                      color: "#94a3b8",
+                      fontSize: "12px",
+                    }}
+                  >
+                    No available created shipments found to attach.
                   </div>
                 )}
               </div>
@@ -505,10 +662,14 @@ function CreateTripModal({
 
             {/* Section 4: Schedule & Cost Summary */}
             <div style={{ marginBottom: "10px" }}>
-              <h5 className="shp-section-title">4. Timestamps & Metrics Estimation</h5>
+              <h5 className="shp-section-title">
+                4. Timestamps & Metrics Estimation
+              </h5>
               <div className="shp-form-row">
                 <div className="shp-form-group">
-                  <label className="shp-label">Planned Departure Date & Time *</label>
+                  <label className="shp-label">
+                    Planned Departure Date & Time *
+                  </label>
                   <input
                     type="datetime-local"
                     required
@@ -518,13 +679,113 @@ function CreateTripModal({
                   />
                 </div>
                 <div className="shp-form-group">
-                  <label className="shp-label">Planned Arrival Date & Time *</label>
+                  <label className="shp-label">
+                    Planned Arrival Date & Time *
+                  </label>
                   <input
                     type="datetime-local"
                     required
                     className="shp-input"
                     value={scheduledArrival}
                     onChange={(e) => setScheduledArrival(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Editable Distance & Cost Inputs */}
+              <div className="shp-form-row" style={{ marginTop: "12px" }}>
+                <div className="shp-form-group">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <label className="shp-label" style={{ margin: 0 }}>
+                      Estimated Distance (km) *
+                    </label>
+                    {isDistanceLoading ? (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "#2563eb",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <Loader2 size={12} className="animate-spin" /> Fetching
+                        route...
+                      </span>
+                    ) : (
+                      sourceLabel && (
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            color: "#475569",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {sourceLabel}
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    className="shp-input"
+                    value={plannedDistanceKm}
+                    onChange={(e) => {
+                      setIsManualDistance(true);
+                      setPlannedDistanceKm(
+                        e.target.value === "" ? "" : Number(e.target.value),
+                      );
+                    }}
+                    placeholder="Enter estimated distance"
+                  />
+                </div>
+
+                <div className="shp-form-group">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <label className="shp-label" style={{ margin: 0 }}>
+                      Calculated Manifest Cost (₹) *
+                    </label>
+                    {isManualCost && (
+                      <span
+                        style={{
+                          fontSize: "10.5px",
+                          color: "#64748b",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        (Manual cost override)
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    className="shp-input"
+                    value={calculatedCost}
+                    onChange={(e) => {
+                      setIsManualCost(true);
+                      setCalculatedCost(
+                        e.target.value === "" ? "" : Number(e.target.value),
+                      );
+                    }}
+                    placeholder="Enter manifest cost"
                   />
                 </div>
               </div>
@@ -545,29 +806,68 @@ function CreateTripModal({
                 }}
               >
                 <div>
-                  <span style={{ fontSize: "11px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: 700 }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#1e3a8a",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                    }}
+                  >
                     Estimated Distance
                   </span>
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "#1e293b" }}>
-                    {plannedDistanceKm} km
+                  <div
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 800,
+                      color: "#1e293b",
+                    }}
+                  >
+                    {plannedDistanceKm || 0} km
                   </div>
                 </div>
 
                 <div>
-                  <span style={{ fontSize: "11px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: 700 }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#1e3a8a",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                    }}
+                  >
                     Attached Shipments
                   </span>
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "#1e293b" }}>
+                  <div
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 800,
+                      color: "#1e293b",
+                    }}
+                  >
                     {selectedShipmentIds.length} Packages
                   </div>
                 </div>
 
                 <div style={{ textAlign: "right" }}>
-                  <span style={{ fontSize: "11px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: 700 }}>
-                    Calculated Manifest Cost
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#1e3a8a",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Total Manifest Cost
                   </span>
-                  <div style={{ fontSize: "20px", fontWeight: 800, color: "#2563eb" }}>
-                    ₹{calculatedCost.toLocaleString()}
+                  <div
+                    style={{
+                      fontSize: "20px",
+                      fontWeight: 800,
+                      color: "#2563eb",
+                    }}
+                  >
+                    ₹{Number(calculatedCost || 0).toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -661,7 +961,9 @@ function TripDetailsModal({
               <h3 className="shp-modal__title font-mono">
                 {trip.tripId || trip._id}
               </h3>
-              <span className={`shp-badge shp-badge--${getStatusTone(trip.status)}`}>
+              <span
+                className={`shp-badge shp-badge--${getStatusTone(trip.status)}`}
+              >
                 {formatStatus(trip.status)}
               </span>
             </div>
@@ -683,7 +985,9 @@ function TripDetailsModal({
         <div className="shp-modal__body" style={{ maxHeight: "65vh" }}>
           {/* Route Breakdown */}
           <div style={{ marginBottom: "20px" }}>
-            <h5 className="shp-section-title">Route Breakdown & Transit Points</h5>
+            <h5 className="shp-section-title">
+              Route Breakdown & Transit Points
+            </h5>
             <div
               style={{
                 background: "var(--surface)",
@@ -714,17 +1018,38 @@ function TripDetailsModal({
                 >
                   A
                 </div>
-                <strong style={{ fontSize: "12.5px", color: "#000000", display: "block" }}>
+                <strong
+                  style={{
+                    fontSize: "12.5px",
+                    color: "#000000",
+                    display: "block",
+                  }}
+                >
                   {trip.origin}
                 </strong>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Origin Hub</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>
+                  Origin Hub
+                </span>
               </div>
 
               {/* Stops */}
               {trip.stops &&
                 trip.stops.map((stop, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{ height: "2px", width: "40px", background: "#cbd5e1" }}></div>
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "2px",
+                        width: "40px",
+                        background: "#cbd5e1",
+                      }}
+                    ></div>
                     <div style={{ textAlign: "center", minWidth: "90px" }}>
                       <div
                         style={{
@@ -742,15 +1067,25 @@ function TripDetailsModal({
                       >
                         {stop.stopOrder || i + 1}
                       </div>
-                      <strong style={{ fontSize: "12px", color: "#334155", display: "block" }}>
+                      <strong
+                        style={{
+                          fontSize: "12px",
+                          color: "#334155",
+                          display: "block",
+                        }}
+                      >
                         {stop.location || stop}
                       </strong>
-                      <span style={{ fontSize: "10px", color: "#94a3b8" }}>Transit Stop</span>
+                      <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                        Transit Stop
+                      </span>
                     </div>
                   </div>
                 ))}
 
-              <div style={{ height: "2px", width: "40px", background: "#cbd5e1" }}></div>
+              <div
+                style={{ height: "2px", width: "40px", background: "#cbd5e1" }}
+              ></div>
 
               {/* Destination */}
               <div style={{ textAlign: "center", minWidth: "100px" }}>
@@ -770,10 +1105,18 @@ function TripDetailsModal({
                 >
                   B
                 </div>
-                <strong style={{ fontSize: "12.5px", color: "#000000", display: "block" }}>
+                <strong
+                  style={{
+                    fontSize: "12.5px",
+                    color: "#000000",
+                    display: "block",
+                  }}
+                >
                   {trip.destination}
                 </strong>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Destination Hub</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>
+                  Destination Hub
+                </span>
               </div>
             </div>
           </div>
@@ -789,16 +1132,34 @@ function TripDetailsModal({
                 padding: "14px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  marginBottom: "6px",
+                }}
+              >
                 <Phone size={14} className="text-gray-400" />
-                <span style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    color: "#64748b",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                  }}
+                >
                   Assigned Driver
                 </span>
               </div>
-              <strong style={{ fontSize: "14px", color: "#000000", display: "block" }}>
+              <strong
+                style={{ fontSize: "14px", color: "#000000", display: "block" }}
+              >
                 {driverName}
               </strong>
-              <span style={{ fontSize: "12px", color: "#64748b" }}>📞 {driverPhone}</span>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>
+                📞 {driverPhone}
+              </span>
             </div>
 
             <div
@@ -810,13 +1171,29 @@ function TripDetailsModal({
                 padding: "14px",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  marginBottom: "6px",
+                }}
+              >
                 <Truck size={14} className="text-gray-400" />
-                <span style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    color: "#64748b",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                  }}
+                >
                   Assigned Vehicle
                 </span>
               </div>
-              <strong style={{ fontSize: "14px", color: "#000000", display: "block" }}>
+              <strong
+                style={{ fontSize: "14px", color: "#000000", display: "block" }}
+              >
                 {vehicleReg}
               </strong>
               <span style={{ fontSize: "12px", color: "#64748b" }}>
@@ -833,7 +1210,11 @@ function TripDetailsModal({
             </h5>
             <div
               className="shp-table-wrap shp-table-wrap--sm"
-              style={{ maxHeight: "200px", overflowY: "auto", border: "1px solid var(--border)" }}
+              style={{
+                maxHeight: "200px",
+                overflowY: "auto",
+                border: "1px solid var(--border)",
+              }}
             >
               <table className="shp-table">
                 <thead>
@@ -863,17 +1244,22 @@ function TripDetailsModal({
                       return (
                         <tr key={idx}>
                           <td>
-                            <strong className="shp-tracking-link">{tracking}</strong>
+                            <strong className="shp-tracking-link">
+                              {tracking}
+                            </strong>
                           </td>
                           <td>
                             <span style={{ fontSize: "12px" }}>
-                              {sender ? sender : "—"} → {receiver ? receiver : "—"}
+                              {sender ? sender : "—"} →{" "}
+                              {receiver ? receiver : "—"}
                             </span>
                           </td>
                           <td>{weight}</td>
                           <td>
                             {status && (
-                              <span className={`shp-badge shp-badge--${getStatusTone(status)}`}>
+                              <span
+                                className={`shp-badge shp-badge--${getStatusTone(status)}`}
+                              >
                                 {formatStatus(status)}
                               </span>
                             )}
@@ -883,7 +1269,10 @@ function TripDetailsModal({
                     })
                   ) : (
                     <tr>
-                      <td colSpan="4" style={{ textAlign: "center", color: "#94a3b8" }}>
+                      <td
+                        colSpan="4"
+                        style={{ textAlign: "center", color: "#94a3b8" }}
+                      >
                         No attached shipments found.
                       </td>
                     </tr>
@@ -904,10 +1293,19 @@ function TripDetailsModal({
                 padding: "14px",
               }}
             >
-              <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "#64748b",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                }}
+              >
                 Timestamps Breakdown
               </span>
-              <div style={{ marginTop: "6px", fontSize: "12px", spaceY: "4px" }}>
+              <div
+                style={{ marginTop: "6px", fontSize: "12px", spaceY: "4px" }}
+              >
                 <div>
                   <span style={{ color: "#64748b" }}>Planned Dep: </span>
                   <strong>{formatDate(trip.plannedDeparture)}</strong>
@@ -918,13 +1316,21 @@ function TripDetailsModal({
                 </div>
                 <div>
                   <span style={{ color: "#64748b" }}>Actual Dep: </span>
-                  <strong style={{ color: trip.actualDeparture ? "#10b981" : "#64748b" }}>
+                  <strong
+                    style={{
+                      color: trip.actualDeparture ? "#10b981" : "#64748b",
+                    }}
+                  >
                     {formatDate(trip.actualDeparture)}
                   </strong>
                 </div>
                 <div>
                   <span style={{ color: "#64748b" }}>Actual Arr: </span>
-                  <strong style={{ color: trip.actualArrival ? "#10b981" : "#64748b" }}>
+                  <strong
+                    style={{
+                      color: trip.actualArrival ? "#10b981" : "#64748b",
+                    }}
+                  >
                     {formatDate(trip.actualArrival)}
                   </strong>
                 </div>
@@ -944,19 +1350,45 @@ function TripDetailsModal({
               }}
             >
               <div>
-                <span style={{ fontSize: "11px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: 700 }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#1e3a8a",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
                   Planned Distance
                 </span>
-                <div style={{ fontSize: "18px", fontWeight: 800, color: "#1e293b" }}>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 800,
+                    color: "#1e293b",
+                  }}
+                >
                   {trip.plannedDistance || 0} km
                 </div>
               </div>
 
               <div style={{ marginTop: "10px" }}>
-                <span style={{ fontSize: "11px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: 700 }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#1e3a8a",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
                   Manifest Total Cost
                 </span>
-                <div style={{ fontSize: "22px", fontWeight: 800, color: "#2563eb" }}>
+                <div
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 800,
+                    color: "#2563eb",
+                  }}
+                >
                   ₹{(trip.tripCost || 0).toLocaleString()}
                 </div>
               </div>
@@ -967,7 +1399,9 @@ function TripDetailsModal({
         {/* Footer with Lifecycle Transition Actions */}
         <div className="shp-modal__footer">
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>
+            <span
+              style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}
+            >
               Lifecycle Action:
             </span>
             {trip.status === "planned" && (
@@ -1020,7 +1454,11 @@ function TripDetailsModal({
               </button>
             )}
           </div>
-          <button type="button" className="shp-btn shp-btn--ghost" onClick={onClose}>
+          <button
+            type="button"
+            className="shp-btn shp-btn--ghost"
+            onClick={onClose}
+          >
             Close
           </button>
         </div>
@@ -1087,7 +1525,8 @@ export default function DashboardTrip() {
     const map = {};
     vehicles.forEach((v) => {
       map[v._id] = {
-        vregistrationnumber: v.vregistrationnumber || v.registrationNumber || "",
+        vregistrationnumber:
+          v.vregistrationnumber || v.registrationNumber || "",
         vmodel: v.vmodel || v.model || "",
         vtype: v.vtype || v.type || "",
         vcapacity: v.vcapacity || 0,
@@ -1096,7 +1535,17 @@ export default function DashboardTrip() {
     return map;
   }, [vehicles]);
 
-  // Available shipments for trip creation
+  const shipmentsMap = useMemo(() => {
+    const map = {};
+    shipments.forEach((s) => {
+      if (s._id) map[s._id] = s;
+      if (s.shipmentId) map[s.shipmentId] = s;
+      if (s.trackingId) map[s.trackingId] = s;
+    });
+    return map;
+  }, [shipments]);
+
+  // Available shipments for trip creation (only shipments with status 'created')
   const availableShipments = useMemo(() => {
     const activeAssignedIds = new Set();
     trips.forEach((t) => {
@@ -1110,7 +1559,8 @@ export default function DashboardTrip() {
 
     return shipments.filter((shp) => {
       if (activeAssignedIds.has(shp._id?.toString())) return false;
-      return !["delivered", "cancelled"].includes(shp.status);
+      const status = (shp.status || "").toLowerCase();
+      return status === "created";
     });
   }, [shipments, trips]);
 
@@ -1146,10 +1596,9 @@ export default function DashboardTrip() {
       }
 
       // Shipments
-      const shipmentsRes = await fetch(
-        `${API_BASE_URL}/shipments?limit=1000`,
-        { headers },
-      );
+      const shipmentsRes = await fetch(`${API_BASE_URL}/shipments?limit=1000`, {
+        headers,
+      });
       if (shipmentsRes.ok) {
         const data = await shipmentsRes.json();
         setShipments(data.shipments || []);
@@ -1177,7 +1626,16 @@ export default function DashboardTrip() {
     const active = dispatched + inTransit + arrived;
     const completed = trips.filter((t) => t.status === "completed").length;
     const cancelled = trips.filter((t) => t.status === "cancelled").length;
-    return { total, planned, dispatched, inTransit, arrived, active, completed, cancelled };
+    return {
+      total,
+      planned,
+      dispatched,
+      inTransit,
+      arrived,
+      active,
+      completed,
+      cancelled,
+    };
   }, [trips]);
 
   // Handlers
@@ -1216,7 +1674,8 @@ export default function DashboardTrip() {
 
       const data = await res.json();
       if (!res.ok) {
-        let msg = data.message || `Failed to transition status to ${targetStatus}`;
+        let msg =
+          data.message || `Failed to transition status to ${targetStatus}`;
         if (data.notReadyShipments && data.notReadyShipments.length > 0) {
           msg += ` (${data.notReadyShipments.length} shipment(s) not ready at warehouse)`;
         }
@@ -1244,7 +1703,8 @@ export default function DashboardTrip() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to record departure");
+      if (!res.ok)
+        throw new Error(data.message || "Failed to record departure");
 
       showToast(data.message || "Trip departed successfully!");
       fetchData();
@@ -1254,7 +1714,8 @@ export default function DashboardTrip() {
             ? {
                 ...prev,
                 status: "in_transit",
-                actualDeparture: data.actualDeparture || new Date().toISOString(),
+                actualDeparture:
+                  data.actualDeparture || new Date().toISOString(),
               }
             : null,
         );
@@ -1296,6 +1757,7 @@ export default function DashboardTrip() {
   const handleExportCSV = () => {
     const headers = [
       "Trip ID",
+      "Shipment ID (SHP)",
       "Origin",
       "Destination",
       "Stops",
@@ -1321,12 +1783,20 @@ export default function DashboardTrip() {
         t.vehicleId?.registrationNumber ||
         vehiclesMap[t.vehicleId]?.vregistrationnumber ||
         "Unassigned";
-      const stopsStr = (t.stops || [])
-        .map((s) => s.location || s)
+      const stopsStr = (t.stops || []).map((s) => s.location || s).join("; ");
+      const shpIdsStr = (t.shipmentIds || [])
+        .map((s) => {
+          if (typeof s === "object" && s !== null) {
+            return s.shipmentId || s.trackingId || s._id;
+          }
+          const found = shipmentsMap[s];
+          return found ? found.shipmentId || found.trackingId || found._id : s;
+        })
         .join("; ");
 
       return [
         t.tripId || t._id,
+        `"${shpIdsStr}"`,
         t.origin,
         t.destination,
         stopsStr,
@@ -1349,10 +1819,7 @@ export default function DashboardTrip() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute(
-      "download",
-      `trip_manifests_export_${Date.now()}.csv`,
-    );
+    link.setAttribute("download", `trip_manifests_export_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1365,14 +1832,19 @@ export default function DashboardTrip() {
       .filter((trip) => {
         // Tab Filter
         if (activeTab === "planned" && trip.status !== "planned") return false;
-        if (activeTab === "dispatched" && trip.status !== "dispatched") return false;
-        if (activeTab === "in_transit" && trip.status !== "in_transit") return false;
+        if (activeTab === "dispatched" && trip.status !== "dispatched")
+          return false;
+        if (activeTab === "in_transit" && trip.status !== "in_transit")
+          return false;
         if (activeTab === "arrived" && trip.status !== "arrived") return false;
-        if (activeTab === "completed" && trip.status !== "completed") return false;
-        if (activeTab === "cancelled" && trip.status !== "cancelled") return false;
+        if (activeTab === "completed" && trip.status !== "completed")
+          return false;
+        if (activeTab === "cancelled" && trip.status !== "cancelled")
+          return false;
 
         // Status Select Filter
-        if (statusFilter !== "All" && trip.status !== statusFilter) return false;
+        if (statusFilter !== "All" && trip.status !== statusFilter)
+          return false;
 
         // Search Query
         if (searchQuery.trim()) {
@@ -1393,12 +1865,26 @@ export default function DashboardTrip() {
           const origin = (trip.origin || "").toLowerCase();
           const destination = (trip.destination || "").toLowerCase();
 
+          const shipmentIdsStr = (trip.shipmentIds || [])
+            .map((s) => {
+              if (typeof s === "object" && s !== null) {
+                return s.shipmentId || s.trackingId || s._id || "";
+              }
+              const found = shipmentsMap[s];
+              return found
+                ? found.shipmentId || found.trackingId || found._id || ""
+                : s || "";
+            })
+            .join(" ")
+            .toLowerCase();
+
           return (
             tripCode.includes(q) ||
             driverName.includes(q) ||
             vehicleReg.includes(q) ||
             origin.includes(q) ||
-            destination.includes(q)
+            destination.includes(q) ||
+            shipmentIdsStr.includes(q)
           );
         }
 
@@ -1419,7 +1905,16 @@ export default function DashboardTrip() {
         }
         return 0;
       });
-  }, [trips, activeTab, statusFilter, searchQuery, sortBy, driversMap, vehiclesMap]);
+  }, [
+    trips,
+    activeTab,
+    statusFilter,
+    searchQuery,
+    sortBy,
+    driversMap,
+    vehiclesMap,
+    shipmentsMap,
+  ]);
 
   // Pagination Calculations
   const filterKey = `${activeTab}|${statusFilter}|${searchQuery}|${sortBy}|${pageSize}`;
@@ -1670,7 +2165,9 @@ export default function DashboardTrip() {
         {loading && (
           <div className="shp-empty-state">
             <Loader2 size={24} className="animate-spin text-blue-600 mb-2" />
-            <p className="shp-empty-state__title">Loading trips from server...</p>
+            <p className="shp-empty-state__title">
+              Loading trips from server...
+            </p>
           </div>
         )}
 
@@ -1708,6 +2205,7 @@ export default function DashboardTrip() {
               <thead>
                 <tr>
                   <th>Trip #</th>
+                  <th>Shipment ID (SHP)</th>
                   <th>Driver / Fleet</th>
                   <th>Origin → Destination</th>
                   <th>Consolidated Shipments</th>
@@ -1746,6 +2244,51 @@ export default function DashboardTrip() {
                         </span>
                       </td>
 
+                      {/* Shipment ID (SHP) */}
+                      <td>
+                        {(() => {
+                          const shpList = (trip.shipmentIds || []).map(
+                            (shp) => {
+                              if (typeof shp === "object" && shp !== null) {
+                                return (
+                                  shp.shipmentId || shp.trackingId || shp._id
+                                );
+                              }
+                              const found = shipmentsMap[shp];
+                              return found
+                                ? found.shipmentId ||
+                                    found.trackingId ||
+                                    found._id
+                                : shp;
+                            },
+                          );
+
+                          if (shpList.length === 0) {
+                            return <span style={{ color: "#94a3b8" }}>—</span>;
+                          }
+
+                          return (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "2px",
+                              }}
+                            >
+                              {shpList.map((id, idx) => (
+                                <span
+                                  key={idx}
+                                  className="shp-tracking-link font-mono"
+                                  style={{ fontSize: "12px" }}
+                                >
+                                  {id}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
+
                       {/* Driver / Fleet */}
                       <td>
                         <p className="shp-cell-title">{driverName}</p>
@@ -1759,7 +2302,9 @@ export default function DashboardTrip() {
                           <span className="shp-route-arrow">
                             <ArrowRight size={13} />
                           </span>
-                          <span className="shp-route-city">{trip.destination}</span>
+                          <span className="shp-route-city">
+                            {trip.destination}
+                          </span>
                         </div>
                         <span className="shp-cell-sub">
                           {trip.stops && trip.stops.length > 0
@@ -1789,10 +2334,15 @@ export default function DashboardTrip() {
                       {/* Schedule Window */}
                       <td>
                         <p className="shp-cell-title">
-                          {formatDate(trip.actualDeparture || trip.plannedDeparture)}
+                          {formatDate(
+                            trip.actualDeparture || trip.plannedDeparture,
+                          )}
                         </p>
                         <span className="shp-cell-sub">
-                          Arr: {formatDate(trip.actualArrival || trip.plannedArrival)}
+                          Arr:{" "}
+                          {formatDate(
+                            trip.actualArrival || trip.plannedArrival,
+                          )}
                         </span>
                       </td>
 
@@ -1813,9 +2363,15 @@ export default function DashboardTrip() {
                             <button
                               type="button"
                               className="shp-btn shp-btn--secondary shp-btn--sm"
-                              style={{ padding: "3px 8px", fontSize: "11px", height: "26px" }}
+                              style={{
+                                padding: "3px 8px",
+                                fontSize: "11px",
+                                height: "26px",
+                              }}
                               title="Dispatch Trip"
-                              onClick={() => handleTransitionStatus(trip, "dispatched")}
+                              onClick={() =>
+                                handleTransitionStatus(trip, "dispatched")
+                              }
                             >
                               <Navigation size={12} />
                               Dispatch
@@ -1826,7 +2382,11 @@ export default function DashboardTrip() {
                             <button
                               type="button"
                               className="shp-btn shp-btn--primary shp-btn--sm"
-                              style={{ padding: "3px 8px", fontSize: "11px", height: "26px" }}
+                              style={{
+                                padding: "3px 8px",
+                                fontSize: "11px",
+                                height: "26px",
+                              }}
                               title="Record Departure"
                               onClick={() => handleDepartTrip(trip)}
                             >
@@ -1839,7 +2399,11 @@ export default function DashboardTrip() {
                             <button
                               type="button"
                               className="shp-btn shp-btn--secondary shp-btn--sm"
-                              style={{ padding: "3px 8px", fontSize: "11px", height: "26px" }}
+                              style={{
+                                padding: "3px 8px",
+                                fontSize: "11px",
+                                height: "26px",
+                              }}
                               title="Record Arrival"
                               onClick={() => handleArriveTrip(trip)}
                             >
@@ -1852,9 +2416,15 @@ export default function DashboardTrip() {
                             <button
                               type="button"
                               className="shp-btn shp-btn--primary shp-btn--sm"
-                              style={{ padding: "3px 8px", fontSize: "11px", height: "26px" }}
+                              style={{
+                                padding: "3px 8px",
+                                fontSize: "11px",
+                                height: "26px",
+                              }}
                               title="Complete Trip"
-                              onClick={() => handleTransitionStatus(trip, "completed")}
+                              onClick={() =>
+                                handleTransitionStatus(trip, "completed")
+                              }
                             >
                               <CheckCircle size={12} />
                               Complete
@@ -1872,16 +2442,19 @@ export default function DashboardTrip() {
                           </button>
 
                           {/* Cancel */}
-                          {trip.status !== "completed" && trip.status !== "cancelled" && (
-                            <button
-                              type="button"
-                              className="shp-icon-btn shp-icon-btn--danger"
-                              title="Cancel Manifest"
-                              onClick={() => handleTransitionStatus(trip, "cancelled")}
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
+                          {trip.status !== "completed" &&
+                            trip.status !== "cancelled" && (
+                              <button
+                                type="button"
+                                className="shp-icon-btn shp-icon-btn--danger"
+                                title="Cancel Manifest"
+                                onClick={() =>
+                                  handleTransitionStatus(trip, "cancelled")
+                                }
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -1963,7 +2536,9 @@ export default function DashboardTrip() {
                         key={i}
                         type="button"
                         className={`shp-pagination-btn ${
-                          safeCurrentPage === p ? "shp-pagination-btn--active" : ""
+                          safeCurrentPage === p
+                            ? "shp-pagination-btn--active"
+                            : ""
                         }`}
                         onClick={() => setCurrentPage(p)}
                       >
@@ -1978,7 +2553,9 @@ export default function DashboardTrip() {
                   className="shp-pagination-btn"
                   title="Next Page"
                   disabled={safeCurrentPage === totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
                 >
                   <ChevronRight size={14} />
                 </button>

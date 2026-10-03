@@ -18,6 +18,7 @@ const {
   sendDrivertoReminder,
   sendShipmentStatusUpdate,
   sendShipmentAssignedEmail,
+  sendAccountCreatedEmail,
 } = require("./utils/mailer");
 const {
   User,
@@ -34,7 +35,19 @@ const {
   Trip,
   Delivery,
   POD,
+  Invoice,
+  CompanyInfo,
+  AuditLog,
+  Notification,
 } = require("./db/db");
+const uploadToCloudinary = require("./utils/uploadToCloudinary");
+const createAuditLog = require("./utils/auditLog");
+const {
+  calculateShipmentCharges,
+  generateInvoicePDF,
+  generateInvoiceHTML,
+  generateBillingExcelReport,
+} = require("./utils/billing");
 
 const app = express();
 
@@ -379,6 +392,13 @@ const processShipmentImport = async (req, res) => {
 
     await importRecord.save();
 
+    await createAuditLog({
+      userId: req.user?._id || req.user?.userId || importRecord.createdBy,
+      action: "IMPORT_SHIPMENTS",
+      resource: "Shipment",
+      resourceId: importRecord._id ? importRecord._id.toString() : batchId,
+    });
+
     if (fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -563,6 +583,9 @@ const authMiddleware = (req, res, next) => {
     const decoded = jsonwebtoken.verify(token, jwt);
 
     req.user = decoded;
+    if (req.user && !req.user._id && req.user.userId) {
+      req.user._id = req.user.userId;
+    }
 
     next();
   } catch (error) {
@@ -573,6 +596,276 @@ const authMiddleware = (req, res, next) => {
     });
   }
 };
+
+// Helper for automatic system notifications
+const createNotificationSystem = async ({
+  userId = null,
+  type,
+  message,
+  shipmentId = "",
+  referenceId = "",
+}) => {
+  try {
+    const notification = new Notification({
+      userId,
+      type,
+      message,
+      read: false,
+      createdAt: new Date(),
+      shipmentId,
+      referenceId,
+    });
+    await notification.save();
+    return notification;
+  } catch (err) {
+    console.error("Error creating notification:", err.message);
+    return null;
+  }
+};
+
+// ── IN-APP NOTIFICATIONS ENDPOINTS ──────────────────────────────────────────
+
+// GET /notifications - Retrieve notifications for dashboard
+app.get("/notifications", authMiddleware, async (req, res) => {
+  try {
+    let query = {};
+    if (req.user && req.user._id) {
+      query = {
+        $or: [{ userId: req.user._id }, { userId: null }],
+      };
+    }
+    const notifications = await Notification.find(query).sort({ createdAt: -1 });
+    res.json(notifications);
+  } catch (error) {
+    console.error("Get notifications error:", error);
+    res.status(500).json({ message: "Failed to fetch notifications" });
+  }
+});
+
+// PATCH /notifications/:id/read - Automatic mark as read when open notification
+app.patch("/notifications/:id/read", authMiddleware, async (req, res) => {
+  try {
+    const notification = await Notification.findByIdAndUpdate(
+      req.params.id,
+      { read: true },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+    res.json({ success: true, notification });
+  } catch (error) {
+    console.error("Mark notification read error:", error);
+    res.status(500).json({ message: "Failed to update notification status" });
+  }
+});
+
+// Helper to extract clean name and reference ID from populated resource documents
+const extractResourceDetails = (resourceType, doc, fallbackId) => {
+  if (!doc || typeof doc !== "object")
+    return { name: fallbackId || "—", id: fallbackId || "—" };
+
+  const type = String(resourceType || "").toLowerCase();
+  let name = "";
+  let id = doc._id ? String(doc._id) : fallbackId;
+
+  if (type === "shipment") {
+    name =
+      doc.trackingId ||
+      doc.shipmentId ||
+      (doc.senderName ? `${doc.senderName} → ${doc.receiverName || ""}` : "");
+    id = doc.shipmentId || doc.trackingId || id;
+  } else if (type === "driver") {
+    const dName = doc.userId?.name || doc.name;
+    name = dName || doc.phonenumber || "";
+    id = doc.driverId || id;
+  } else if (type === "vehicle" || type === "vechile") {
+    const reg = doc.vregistrationnumber || doc.registrationNumber;
+    const mod = doc.vmodel || doc.model;
+    name = reg ? (mod ? `${reg} (${mod})` : reg) : "";
+  } else if (type === "warehouse") {
+    name =
+      doc.warhouseName ||
+      doc.warehouseName ||
+      doc.warhouseCode ||
+      doc.location ||
+      "";
+  } else if (type === "trip") {
+    name =
+      doc.tripId ||
+      (doc.origin && doc.destination
+        ? `${doc.origin} → ${doc.destination}`
+        : "");
+    id = doc.tripId || id;
+  } else if (type === "delivery") {
+    name = doc.deliveryId || doc.recipientName || "";
+    id = doc.deliveryId || id;
+  } else if (type === "pod") {
+    name = doc.podNumber || doc.receiverName || "";
+    id = doc.podNumber || id;
+  } else if (type === "invoice") {
+    name = doc.invoiceNumber || "";
+    id = doc.invoiceNumber || id;
+  } else if (type === "user") {
+    name = doc.name || doc.email || "";
+  } else if (type === "customer") {
+    name = doc.companyName || doc.customerName || doc.name || "";
+  }
+
+  if (!name) name = id || fallbackId || "—";
+  return { name, id: id || fallbackId || "—" };
+};
+
+// GET Audit Logs endpoint
+app.get("/audit-logs", authMiddleware, async (req, res) => {
+  try {
+    const { action, resource, userId, search, page = 1, limit = 200 } = req.query;
+    const query = {};
+
+    if (action && action !== "All") {
+      query.action = action;
+    }
+    if (resource && resource !== "All") {
+      query.resource = resource;
+    }
+    if (userId && userId !== "All") {
+      query.userId = userId;
+    }
+
+    const limitNum = Math.min(Number(limit) || 200, 1000);
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [rawLogs, total] = await Promise.all([
+      AuditLog.find(query)
+        .populate("userId", "name email role")
+        .populate("resourceId")
+        .sort({ createdAt: -1, timestamp: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      AuditLog.countDocuments(query),
+    ]);
+
+    let logs = await Promise.all(
+      rawLogs.map(async (log) => {
+        let resourceName = "—";
+        let resourceRefId = String(
+          log.resourceId?._id || log.resourceId || "—",
+        );
+
+        if (log.resourceId && typeof log.resourceId === "object") {
+          const details = extractResourceDetails(
+            log.resource,
+            log.resourceId,
+            resourceRefId,
+          );
+          resourceName = details.name;
+          resourceRefId = details.id;
+        } else if (
+          log.resourceId &&
+          mongosse.Types.ObjectId.isValid(String(log.resourceId))
+        ) {
+          const strId = String(log.resourceId);
+          const type = String(log.resource || "").toLowerCase();
+          let doc = null;
+          try {
+            if (type === "shipment")
+              doc = await Shipment.findById(strId).lean();
+            else if (type === "driver")
+              doc = await Driver.findById(strId)
+                .populate("userId", "name email")
+                .lean();
+            else if (type === "vehicle" || type === "vechile")
+              doc = await Vechile.findById(strId).lean();
+            else if (type === "warehouse")
+              doc = await Warehouse.findById(strId).lean();
+            else if (type === "trip") doc = await Trip.findById(strId).lean();
+            else if (type === "delivery")
+              doc = await Delivery.findById(strId).lean();
+            else if (type === "pod") doc = await POD.findById(strId).lean();
+            else if (type === "invoice")
+              doc = await Invoice.findById(strId).lean();
+            else if (type === "user") doc = await User.findById(strId).lean();
+          } catch (e) {}
+
+          if (doc) {
+            const details = extractResourceDetails(log.resource, doc, strId);
+            resourceName = details.name;
+            resourceRefId = details.id;
+          } else {
+            resourceName = strId;
+          }
+        } else {
+          resourceName = String(log.resourceId || "—");
+        }
+
+        return {
+          _id: log._id,
+          action: log.action,
+          resource: log.resource,
+          resourceId: resourceRefId,
+          resourceName: resourceName,
+          timestamp: log.timestamp || log.createdAt,
+          createdAt: log.createdAt,
+          user: log.userId
+            ? {
+                _id: log.userId._id,
+                name: log.userId.name || "System User",
+                email: log.userId.email || "",
+                role: log.userId.role || "User",
+              }
+            : {
+                _id: null,
+                name: "System / Admin",
+                email: "system@routeflow.io",
+                role: "System",
+              },
+        };
+      }),
+    );
+
+    if (search && search.trim()) {
+      const q = search.toLowerCase().trim();
+      logs = logs.filter((l) => {
+        const act = (l.action || "").toLowerCase();
+        const resName = (l.resource || "").toLowerCase();
+        const resId = (l.resourceId || "").toLowerCase();
+        const resDetail = (l.resourceName || "").toLowerCase();
+        const userName = (l.user?.name || "").toLowerCase();
+        const userEmail = (l.user?.email || "").toLowerCase();
+        return (
+          act.includes(q) ||
+          resName.includes(q) ||
+          resId.includes(q) ||
+          resDetail.includes(q) ||
+          userName.includes(q) ||
+          userEmail.includes(q)
+        );
+      });
+    }
+
+    return res.json({
+      success: true,
+      logs,
+      total: total || logs.length,
+      page: pageNum,
+      totalPages: Math.ceil((total || logs.length) / limitNum) || 1,
+    });
+  } catch (err) {
+    console.error("Error fetching audit logs:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch audit logs",
+      error: err.message,
+    });
+  }
+});
+
+app.get("/audit-log", (req, res, next) => {
+  req.url = "/audit-logs";
+  app.handle(req, res, next);
+});
 
 //driver id generate
 async function generateDriverId() {
@@ -694,45 +987,54 @@ app.post("/signup", async (req, res) => {
     // Save User
     await newUser.save();
 
-    //driver
-
+    // Driver role profile creation
     if (matchedRole === "Driver") {
-      const driverId = await generateDriverId();
+      try {
+        const driverId = await generateDriverId();
 
-      const newDriver = new Driver({
-        userId: newUser._id,
-        driverId,
-      });
+        const newDriver = new Driver({
+          userId: newUser._id,
+          driverId,
+        });
 
-      await newDriver.save();
+        await newDriver.save();
 
-      return res.status(201).json({ message: "Driver Signup Done" });
+        await createAuditLog({
+          userId: req.user?._id || req.user?.userId || newUser._id,
+          action: "CREATE_DRIVER",
+          resource: "Driver",
+          resourceId: newDriver._id.toString(),
+        });
+      } catch (driverErr) {
+        // Rollback user if driver creation fails
+        await User.findByIdAndDelete(newUser._id).catch(() => {});
+        throw driverErr;
+      }
     }
 
-    // ==========================================
-    // CUSTOMER
-    // ==========================================
+    // Send account creation email to the user
+    try {
+      await sendAccountCreatedEmail(
+        cleanEmail,
+        cleanName,
+        password,
+        matchedRole,
+      );
+      console.log(`Account creation email sent successfully to ${cleanEmail}`);
+    } catch (emailErr) {
+      console.error("Failed to send signup email:", emailErr.message);
+    }
 
-    // if (cleanRole === "customer") {
-    //   // Generate unique customer ID
-    //   const customerId = await generateCustomerId();
+    await createAuditLog({
+      userId: req.user?._id || req.user?.userId || newUser._id,
+      action: "CREATE_USER",
+      resource: "User",
+      resourceId: newUser._id.toString(),
+    });
 
-    //   // Create Customer
-    //   const newCustomer = new Customer({
-    //     userId: newUser._id,
-    //     customerId,
-    //     phonenumber,
-    //     address,
-    //   });
-
-    //   // Save Customer
-    //   await newCustomer.save();
-
-    //   return res.status(201).json({
-    //     message: "Customer signup successful",
-    //     customerId,
-    //   });
-    // }
+    if (matchedRole === "Driver") {
+      return res.status(201).json({ message: "Driver Signup Done" });
+    }
 
     return res.status(201).json({
       message: "User signup successful",
@@ -1211,6 +1513,13 @@ app.post("/customers", authMiddleware, async (req, res) => {
 
     await newCustomer.save();
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "CREATE_CUSTOMER",
+      resource: "Customer",
+      resourceId: newCustomer._id.toString(),
+    });
+
     return res.status(201).json({
       message: "Customer created successfully",
       customer: newCustomer,
@@ -1645,10 +1954,24 @@ app.put("/customers/:id", authMiddleware, async (req, res) => {
 
     await customer.save();
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_CUSTOMER",
+      resource: "Customer",
+      resourceId: customer._id.toString(),
+    });
+
     if (customer.userId) {
       await User.findByIdAndUpdate(customer.userId, {
         name: cleanName,
         email: cleanEmail,
+      });
+
+      await createAuditLog({
+        userId: req.user._id,
+        action: "UPDATE_USER",
+        resource: "User",
+        resourceId: customer.userId.toString(),
       });
     }
 
@@ -1701,12 +2024,36 @@ app.patch("/customers/:id/status", authMiddleware, async (req, res) => {
     customer.status = targetStatus;
     await customer.save();
 
+    if (targetStatus === "inactive") {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "DEACTIVATE_CUSTOMER",
+        resource: "Customer",
+        resourceId: customer._id.toString(),
+      });
+    } else {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "UPDATE_CUSTOMER",
+        resource: "Customer",
+        resourceId: customer._id.toString(),
+      });
+    }
+
     if (customer.userId) {
       await User.findByIdAndUpdate(
         customer.userId,
         { status: targetStatus },
         { new: true },
       );
+
+      await createAuditLog({
+        userId: req.user._id,
+        action:
+          targetStatus === "inactive" ? "DEACTIVATE_USER" : "ACTIVATE_USER",
+        resource: "User",
+        resourceId: customer.userId.toString(),
+      });
     }
 
     return res.status(200).json({
@@ -1728,6 +2075,332 @@ app.patch("/customers/:id/status", authMiddleware, async (req, res) => {
     return res.status(500).json({
       message: "Internal server error",
     });
+  }
+});
+
+// ── COMPANY INFO ENDPOINTS ──
+
+// GET Company Info
+app.get("/company-info", async (req, res) => {
+  try {
+    let company = await CompanyInfo.findOne();
+    if (!company) {
+      company = new CompanyInfo({
+        name: "LogiTrack Express & Freight Solutions Pvt. Ltd.",
+        tagline: "Integrated Logistics, Supply Chain & Fleet Management",
+        cin: "U63090MH2016PTC284912",
+        gstin: "27AABCL8931M1ZQ",
+        pan: "AABCL8931M",
+        hsnSacCode: "996511 (Road Freight Transport Services)",
+        headOffice:
+          "LogiTrack Corporate Towers, 6th Floor, Sector 18, MIDC Industrial Area, Vashi, Navi Mumbai, Maharashtra - 400705",
+        phone: "+91 22 6890 4000 / 1800 209 8899",
+        email: "billing@logitrack-logistics.com",
+        web: "www.logitrack-logistics.com",
+        bankDetails: {
+          bankName: "HDFC Bank Ltd",
+          accountName: "LogiTrack Express & Freight Solutions Pvt Ltd",
+          accountNumber: "50200084920194",
+          ifscCode: "HDFC0000128",
+          branch: "Vashi Sector 17 Branch, Navi Mumbai",
+        },
+      });
+      await company.save();
+    }
+    return res.status(200).json({ company });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// UPDATE Company Info
+app.put("/company-info", authMiddleware, async (req, res) => {
+  try {
+    const updateData = req.body;
+    let company = await CompanyInfo.findOne();
+    if (!company) {
+      company = new CompanyInfo(updateData);
+    } else {
+      if (updateData.name) company.name = String(updateData.name).trim();
+      if (updateData.tagline)
+        company.tagline = String(updateData.tagline).trim();
+      if (updateData.cin) company.cin = String(updateData.cin).trim();
+      if (updateData.gstin) company.gstin = String(updateData.gstin).trim();
+      if (updateData.pan) company.pan = String(updateData.pan).trim();
+      if (updateData.hsnSacCode)
+        company.hsnSacCode = String(updateData.hsnSacCode).trim();
+      if (updateData.headOffice)
+        company.headOffice = String(updateData.headOffice).trim();
+      if (updateData.phone) company.phone = String(updateData.phone).trim();
+      if (updateData.email) company.email = String(updateData.email).trim();
+      if (updateData.web) company.web = String(updateData.web).trim();
+      if (updateData.bankDetails) {
+        company.bankDetails = {
+          ...company.bankDetails,
+          ...updateData.bankDetails,
+        };
+      }
+    }
+    await company.save();
+    return res
+      .status(200)
+      .json({ message: "Company Info updated successfully", company });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// ── PROFILE & USER MANAGEMENT ENDPOINTS ──
+
+// GET Current Logged-in User Profile
+app.get("/user/profile", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.userId;
+    const user = await User.findById(userId).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    return res.status(200).json({ user });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// UPDATE Current User Profile
+app.put("/user/profile", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.userId;
+    const {
+      firstName,
+      lastName,
+      name,
+      email,
+      phone,
+      primaryHub,
+      timezone,
+      twoFactorEnabled,
+      password,
+    } = req.body;
+    const updateFields = {};
+    if (name) updateFields.name = String(name).trim();
+    else if (firstName || lastName) {
+      updateFields.name = `${firstName || ""} ${lastName || ""}`.trim();
+    }
+    if (firstName) updateFields.firstName = String(firstName).trim();
+    if (lastName) updateFields.lastName = String(lastName).trim();
+    if (email) updateFields.email = String(email).trim().toLowerCase();
+    if (phone) updateFields.phone = String(phone).trim();
+    if (primaryHub) updateFields.primaryHub = String(primaryHub).trim();
+    if (timezone) updateFields.timezone = String(timezone).trim();
+    if (typeof twoFactorEnabled === "boolean")
+      updateFields.twoFactorEnabled = twoFactorEnabled;
+    if (password && String(password).trim().length > 0) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateFields.password = hashedPassword;
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateFields },
+      { new: true, runValidators: true },
+    ).select("-password");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res
+      .status(200)
+      .json({ message: "Profile updated successfully", user: updatedUser });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// GET All Users
+app.get("/users", authMiddleware, async (req, res) => {
+  try {
+    const users = await User.find({}).select("-password");
+    return res.status(200).json({ users });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// CREATE New User
+app.post("/users", authMiddleware, async (req, res) => {
+  try {
+    const { name, email, password, role, status, hub } = req.body;
+    if (!name || !email || !password || !role) {
+      return res
+        .status(400)
+        .json({ message: "Name, email, password, and role are required" });
+    }
+
+    const existingUser = await User.findOne({
+      email: String(email).toLowerCase().trim(),
+    });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ message: "User with this email already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      name: String(name).trim(),
+      email: String(email).toLowerCase().trim(),
+      password: hashedPassword,
+      role: String(role).trim(),
+      status: status ? String(status).toLowerCase().trim() : "active",
+      hub: hub ? String(hub).trim() : "",
+    });
+
+    await newUser.save();
+    const userObj = newUser.toObject();
+    delete userObj.password;
+
+    return res
+      .status(201)
+      .json({ message: "User created successfully", user: userObj });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// DELETE User
+app.delete("/users/:id", authMiddleware, async (req, res) => {
+  try {
+    const deletedUser = await User.findByIdAndDelete(req.params.id);
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    return res
+      .status(200)
+      .json({ message: "User deleted successfully", id: req.params.id });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// ── USER MANAGEMENT ENDPOINTS (UPDATE_USER, ACTIVATE_USER, DEACTIVATE_USER) ──
+app.put("/users/:id", authMiddleware, async (req, res) => {
+  try {
+    const { name, email, role } = req.body;
+    const updateFields = {};
+    if (name) updateFields.name = String(name).trim();
+    if (email) updateFields.email = String(email).trim().toLowerCase();
+    if (role) updateFields.role = String(role).trim();
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_USER",
+      resource: "User",
+      resourceId: updatedUser._id.toString(),
+    });
+
+    return res.status(200).json({
+      message: "User updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/users/:id/status", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const { status } = req.body || {};
+    let targetStatus = status
+      ? String(status).toLowerCase().trim()
+      : user.status === "active"
+        ? "inactive"
+        : "active";
+
+    if (targetStatus !== "active" && targetStatus !== "inactive") {
+      return res
+        .status(400)
+        .json({ message: "Status must be active or inactive" });
+    }
+
+    user.status = targetStatus;
+    await user.save();
+
+    const action =
+      targetStatus === "active" ? "ACTIVATE_USER" : "DEACTIVATE_USER";
+
+    await createAuditLog({
+      userId: req.user._id,
+      action,
+      resource: "User",
+      resourceId: user._id.toString(),
+    });
+
+    return res.status(200).json({
+      message: `User ${targetStatus === "active" ? "activated" : "deactivated"} successfully`,
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/users/:id/activate", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { status: "active" },
+      { new: true },
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ACTIVATE_USER",
+      resource: "User",
+      resourceId: user._id.toString(),
+    });
+
+    return res.status(200).json({ message: "User activated", user });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/users/:id/deactivate", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { status: "inactive" },
+      { new: true },
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "DEACTIVATE_USER",
+      resource: "User",
+      resourceId: user._id.toString(),
+    });
+
+    return res.status(200).json({ message: "User deactivated", user });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 });
 
@@ -2396,6 +3069,46 @@ app.patch("/shipments/:id/status", authMiddleware, async (req, res) => {
       trackingNumber,
     );
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_SHIPMENT_STATUS",
+      resource: "Shipment",
+      resourceId: shipment._id.toString(),
+    });
+
+    let notifType = "Shipment Status Updated";
+    if (shipment.status === "picked_up") notifType = "Pickup Completed";
+    else if (shipment.status === "dispatched") notifType = "Shipment Dispatched";
+    else if (shipment.status === "out_for_delivery") notifType = "Out for Delivery";
+    else if (shipment.status === "delivered") notifType = "Delivered";
+    else if (shipment.status === "failed_delivery") notifType = "Failed Delivery";
+
+    const formattedStatusText = shipment.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+    await createNotificationSystem({
+      userId: req.user?._id || null,
+      type: notifType,
+      message: `Shipment ${shipment.trackingId || shipment.shipmentId} status updated to ${formattedStatusText}.`,
+      shipmentId: shipment.shipmentId,
+      referenceId: shipment.trackingId,
+    });
+
+    if (shipment.status === "delivered") {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "DELIVERY_COMPLETED",
+        resource: "Delivery",
+        resourceId: shipment._id.toString(),
+      });
+    } else if (shipment.status === "failed_delivery") {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "DELIVERY_FAILED",
+        resource: "Delivery",
+        resourceId: shipment._id.toString(),
+      });
+    }
+
     return res.status(200).json({
       message: "Shipment status updated successfully",
       shipment,
@@ -2659,6 +3372,22 @@ app.post("/createshipment", authMiddleware, async (req, res) => {
     });
 
     await newShipment.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "CREATE_SHIPMENT",
+      resource: "Shipment",
+      resourceId: newShipment._id.toString(),
+    });
+
+    await createNotificationSystem({
+      userId: req.user?._id || null,
+      type: "Shipment Created",
+      message: `Shipment ${newShipment.trackingId || newShipment.shipmentId} created for ${customer?.name || senderName || "Customer"}.`,
+      shipmentId: newShipment.shipmentId,
+      referenceId: newShipment.trackingId,
+    });
+
     await newShipment.populate("customerId");
 
     const shipmentObj = newShipment.toObject
@@ -2796,7 +3525,21 @@ const shipmentDocumentSchema = new mongosse.Schema(
     },
     filePath: {
       type: String,
+      required: false,
+    },
+    url: {
+      type: String,
       required: true,
+    },
+    documentUrl: {
+      type: String,
+      default: function () {
+        return this.url;
+      },
+    },
+    publicId: {
+      type: String,
+      default: "",
     },
     mimeType: {
       type: String,
@@ -2966,30 +3709,59 @@ app.post(
         });
       }
 
+      // 1. Upload to Cloudinary
+      const result = await uploadToCloudinary(
+        req.file.path || req.file.buffer,
+        req.file.originalname,
+      );
+
+      const documentUrl = result.secure_url || result.url;
+
+      // 2. Save document record in MongoDB
       const document = new ShipmentDocument({
         shipmentId: shipment._id,
         originalName: req.file.originalname,
-        fileName: req.file.filename,
-        filePath: req.file.path,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
+        fileName: req.file.filename || path.basename(documentUrl),
+        filePath: req.file.path || documentUrl,
+        url: documentUrl,
+        documentUrl: documentUrl,
+        publicId: result.public_id || "",
+        mimeType:
+          req.file.mimetype || result.format || "application/octet-stream",
+        size: req.file.size || result.bytes || 0,
       });
 
       await document.save();
 
+      // 3. Remove local temporary file after successful Cloudinary upload
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkErr) {
+          console.warn("Failed to delete temp file:", unlinkErr.message);
+        }
+      }
+
       return res.status(201).json({
-        message: "Shipment document uploaded successfully",
+        message: "Shipment document uploaded to Cloudinary successfully",
         document,
       });
     } catch (error) {
       console.error("UPLOAD SHIPMENT DOCUMENT ERROR:", error);
 
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkErr) {
+          console.warn(
+            "Failed to delete temp file on error:",
+            unlinkErr.message,
+          );
+        }
       }
 
       return res.status(500).json({
-        message: "Internal server error",
+        message: error.message || "Internal server error",
       });
     }
   },
@@ -3083,15 +3855,21 @@ app.get(
         });
       }
 
-      const filePath = path.resolve(document.filePath);
-
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({
-          message: "Document file not found",
-        });
+      // If document has Cloudinary URL, redirect to Cloudinary CDN
+      if (document.url) {
+        return res.redirect(document.url);
       }
 
-      return res.download(filePath, document.originalName);
+      if (document.filePath) {
+        const filePath = path.resolve(document.filePath);
+        if (fs.existsSync(filePath)) {
+          return res.download(filePath, document.originalName);
+        }
+      }
+
+      return res.status(404).json({
+        message: "Document file not found",
+      });
     } catch (error) {
       console.error("DOWNLOAD SHIPMENT DOCUMENT ERROR:", error);
 
@@ -3150,6 +3928,28 @@ app.patch("/shipments/:id/assign-driver", authMiddleware, async (req, res) => {
 
     await shipment.save();
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_SHIPMENT",
+      resource: "Shipment",
+      resourceId: shipment._id.toString(),
+    });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_DRIVER",
+      resource: "Driver",
+      resourceId: driver._id.toString(),
+    });
+
+    await createNotificationSystem({
+      userId: req.user?._id || null,
+      type: "Driver Assigned",
+      message: `Driver ${driver.name || "assigned"} assigned to Shipment ${shipment.trackingId || shipment.shipmentId}.`,
+      shipmentId: shipment.shipmentId,
+      referenceId: shipment.trackingId,
+    });
+
     const updatedShipment = await Shipment.findById(shipment._id)
       .populate("customerId")
       .populate("driverId", "name email role status");
@@ -3192,6 +3992,20 @@ app.patch("/shipments/:id/assign-vehicle", authMiddleware, async (req, res) => {
 
     await shipment.save();
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_SHIPMENT",
+      resource: "Shipment",
+      resourceId: shipment._id.toString(),
+    });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_VEHICLE",
+      resource: "Vehicle",
+      resourceId: String(vehicleId).trim(),
+    });
+
     res.status(200).json({
       message: "Vehicle assigned successfully",
       shipment,
@@ -3229,6 +4043,20 @@ app.patch("/shipments/:id/assign-trip", authMiddleware, async (req, res) => {
     shipment.tripId = String(tripId).trim();
 
     await shipment.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_SHIPMENT",
+      resource: "Shipment",
+      resourceId: shipment._id.toString(),
+    });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_TRIP",
+      resource: "Trip",
+      resourceId: String(tripId).trim(),
+    });
 
     res.status(200).json({
       message: "Trip assigned successfully",
@@ -3460,7 +4288,16 @@ app.patch("/setup-driverprofile", authMiddleware, async (req, res) => {
     existDriver.license.licensenumber = String(licensenumber).trim();
     existDriver.license.expiredate = new Date(expiredate);
 
+    const isNewDriver = !existDriver._id || existDriver.isNew;
+
     await existDriver.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: isNewDriver ? "CREATE_DRIVER" : "UPDATE_DRIVER",
+      resource: "Driver",
+      resourceId: existDriver._id.toString(),
+    });
 
     res.status(200).json({
       message: "Profile Complete",
@@ -3985,6 +4822,15 @@ app.put("/drivers/:id", authMiddleware, async (req, res) => {
       new: true,
     });
 
+    if (driver) {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "UPDATE_DRIVER",
+        resource: "Driver",
+        resourceId: driver._id.toString(),
+      });
+    }
+
     res.json({ message: "Driver updated", driver });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -4001,6 +4847,14 @@ app.patch("/drivers/:id/status", authMiddleware, async (req, res) => {
     driver.status = driver.status === "active" ? "inactive" : "active";
 
     await driver.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action:
+        driver.status === "active" ? "ACTIVATE_DRIVER" : "DEACTIVATE_DRIVER",
+      resource: "Driver",
+      resourceId: driver._id.toString(),
+    });
 
     res.json({ message: "Driver status updated", driver });
   } catch (err) {
@@ -4035,6 +4889,22 @@ app.patch("/shipments/:id/assign-driver", authMiddleware, async (req, res) => {
       { driverId },
       { new: true },
     );
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_SHIPMENT",
+      resource: "Shipment",
+      resourceId: shipment ? shipment._id.toString() : req.params.id,
+    });
+
+    if (driverId) {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "ASSIGN_DRIVER",
+        resource: "Driver",
+        resourceId: driverId.toString(),
+      });
+    }
 
     res.json({ message: "Driver assigned", shipment });
   } catch (err) {
@@ -4349,6 +5219,13 @@ app.post("/vechile", authMiddleware, async (req, res) => {
 
     await newVechile.save();
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "CREATE_VEHICLE",
+      resource: "Vehicle",
+      resourceId: newVechile._id.toString(),
+    });
+
     res.status(201).json({ message: "Vechile Created", vehicle: newVechile });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -4415,6 +5292,22 @@ app.put("/vechile/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Vehicle not found" });
     }
 
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_VEHICLE",
+      resource: "Vehicle",
+      resourceId: updatedVehicle._id.toString(),
+    });
+
+    if (req.body.driver !== undefined && req.body.driver !== "") {
+      await createAuditLog({
+        userId: req.user._id,
+        action: "ASSIGN_VEHICLE",
+        resource: "Vehicle",
+        resourceId: updatedVehicle._id.toString(),
+      });
+    }
+
     res.status(200).json({
       message: "Vehicle updated successfully",
       vehicle: updatedVehicle,
@@ -4458,6 +5351,13 @@ app.put("/vechile/:id/documents", authMiddleware, async (req, res) => {
     });
 
     await vechile.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_VEHICLE",
+      resource: "Vehicle",
+      resourceId: vechile._id.toString(),
+    });
 
     res
       .status(200)
@@ -4508,6 +5408,14 @@ app.post("/vechile-maintenance", authMiddleware, async (req, res) => {
       nextServiceDate: nextServiceDate ? new Date(nextServiceDate) : undefined,
     });
     await newLog.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "VEHICLE_MAINTENANCE",
+      resource: "Vehicle",
+      resourceId: String(targetVehicleId),
+    });
+
     res.status(200).json({ message: "Log Saved", log: newLog });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -4647,6 +5555,14 @@ app.post("/warehouse-create", authMiddleware, async (req, res) => {
       warStatus,
     });
     await newWarehouse.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "CREATE_WAREHOUSE",
+      resource: "Warehouse",
+      resourceId: newWarehouse._id.toString(),
+    });
+
     res.status(200).json({ message: "Warehouse Created" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -4685,6 +5601,14 @@ app.patch("/warehouse-update/:id", authMiddleware, async (req, res) => {
     findwarhouse.warStatus = warStatus;
 
     await findwarhouse.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_WAREHOUSE",
+      resource: "Warehouse",
+      resourceId: findwarhouse._id.toString(),
+    });
+
     res.status(200).json({ message: "Warehouse Detail Updated" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -4704,6 +5628,13 @@ app.patch("/warehouse-update-status/:id", authMiddleware, async (req, res) => {
 
     const updateStatus = await Warehouse.findByIdAndUpdate(warid, {
       warStatus,
+    });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_WAREHOUSE",
+      resource: "Warehouse",
+      resourceId: warid.toString(),
     });
 
     res.status(200).json({ message: "Status Updated" });
@@ -5123,6 +6054,13 @@ app.post("/warehouse/inbound", authMiddleware, async (req, res) => {
 
     await newWarehouseTransaction.save();
 
+    await createAuditLog({
+      userId: req.user._id || findUser._id,
+      action: "WAREHOUSE_INBOUND",
+      resource: "Warehouse",
+      resourceId: warehouseId.toString(),
+    });
+
     res.status(200).json({
       message: "Shipment Stored in Warehouse Successfully",
     });
@@ -5279,6 +6217,13 @@ app.patch("/warehouse/outbound", authMiddleware, async (req, res) => {
     });
 
     await newWarehouseTransaction.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "WAREHOUSE_OUTBOUND",
+      resource: "Warehouse",
+      resourceId: warehouseStorage.warehouseId.toString(),
+    });
 
     res.status(200).json({
       message: "Shipment Out of Warehouse",
@@ -5475,6 +6420,20 @@ app.post("/trip", authMiddleware, async (req, res) => {
       plannedDistance: plannedDistance || 0,
       tripCost: tripCost || 0,
       status: "planned",
+    });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "CREATE_TRIP",
+      resource: "Trip",
+      resourceId: trip._id.toString(),
+    });
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "ASSIGN_TRIP",
+      resource: "Trip",
+      resourceId: trip._id.toString(),
     });
 
     // ── Update driver availability to "assigned" ──────────────────────────
@@ -5785,6 +6744,15 @@ app.patch("/trip-update/:id", authMiddleware, async (req, res) => {
       { new: true, runValidators: true },
     );
 
+    if (updatedTrip) {
+      await createAuditLog({
+        userId: req.user._id,
+        action: updateFields.status ? "UPDATE_TRIP_STATUS" : "ASSIGN_TRIP",
+        resource: "Trip",
+        resourceId: updatedTrip._id.toString(),
+      });
+    }
+
     res
       .status(200)
       .json({ message: "Trip updated successfully", trip: updatedTrip });
@@ -5854,21 +6822,12 @@ app.patch("/trips/:id/status", authMiddleware, async (req, res) => {
       trip.status = "dispatched";
       await trip.save();
 
-      // Change all shipments belonging to the trip: at_warehouse -> dispatched
-      // await Shipment.updateMany(
-      //   { _id: { $in: trip.shipmentIds } },
-      //   { $set: { status: "dispatched" } },
-      // );
-
-      // Create shipment timeline/event for each shipment
-      // const updatedBy = req.user?.userId || req.user?._id || null;
-      // const historyRecords = trip.shipmentIds.map((shipmentId) => ({
-      //   shipmentId,
-      //   status: "dispatched",
-      //   notes: "Shipment dispatched from warehouse",
-      //   updatedBy,
-      // }));
-      // await ShipmentStatusHistory.insertMany(historyRecords);
+      await createAuditLog({
+        userId: req.user._id,
+        action: "UPDATE_TRIP_STATUS",
+        resource: "Trip",
+        resourceId: trip._id.toString(),
+      });
 
       return res.status(200).json({
         message: `Trip ${trip.tripId} status updated to dispatched`,
@@ -5894,6 +6853,13 @@ app.patch("/trips/:id/status", authMiddleware, async (req, res) => {
 
     trip.status = status;
     await trip.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_TRIP_STATUS",
+      resource: "Trip",
+      resourceId: trip._id.toString(),
+    });
 
     // Release vehicle and driver when trip is completed or cancelled
     if (status === "completed" || status === "cancelled") {
@@ -5948,6 +6914,13 @@ app.patch("/trips/:id/depart", authMiddleware, async (req, res) => {
     trip.status = "in_transit";
     trip.actualDeparture = departureTime;
     await trip.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_TRIP_STATUS",
+      resource: "Trip",
+      resourceId: trip._id.toString(),
+    });
 
     // Update all shipments belonging to this trip: dispatched -> in_transit
     if (trip.shipmentIds && trip.shipmentIds.length > 0) {
@@ -6007,6 +6980,13 @@ app.patch("/trips/:id/arrive", authMiddleware, async (req, res) => {
     trip.status = "arrived";
     trip.actualArrival = arrivalTime;
     await trip.save();
+
+    await createAuditLog({
+      userId: req.user._id,
+      action: "UPDATE_TRIP_STATUS",
+      resource: "Trip",
+      resourceId: trip._id.toString(),
+    });
 
     return res.status(200).json({
       message: `Trip ${trip.tripId} marked as arrived`,
@@ -6068,6 +7048,13 @@ app.patch(
 
       await findDelivery.save();
 
+      await createAuditLog({
+        userId: req.user._id,
+        action: "DELIVERY_FAILED",
+        resource: "Delivery",
+        resourceId: findDelivery._id.toString(),
+      });
+
       res.status(200).json({
         message: "Reason & Note are Submited",
         delivery: findDelivery,
@@ -6107,6 +7094,13 @@ app.patch(
       }
 
       await findDeliveryId.save();
+
+      await createAuditLog({
+        userId: req.user._id,
+        action: "DELIVERY_REATTEMPT_SCHEDULED",
+        resource: "Delivery",
+        resourceId: findDeliveryId._id.toString(),
+      });
 
       if (findDeliveryId.shipmentId && (driverName || driverId)) {
         const updateShipment = {};
@@ -6532,6 +7526,27 @@ app.post("/pod-submit/:shipmentId", authMiddleware, async (req, res) => {
         setDefaultsOnInsert: true,
       },
     );
+
+    await createAuditLog({
+      userId: req.user._id || submittedBy,
+      action: "CREATE_POD",
+      resource: "POD",
+      resourceId: savedPod._id.toString(),
+    });
+
+    await createAuditLog({
+      userId: req.user._id || submittedBy,
+      action: "DELIVERY_COMPLETED",
+      resource: "Delivery",
+      resourceId: findShipment._id.toString(),
+    });
+
+    await createAuditLog({
+      userId: req.user._id || submittedBy,
+      action: "UPDATE_SHIPMENT_STATUS",
+      resource: "Shipment",
+      resourceId: findShipment._id.toString(),
+    });
 
     return res.status(200).json({
       success: true,
@@ -7187,7 +8202,9 @@ app.get("/report", authMiddleware, async (req, res) => {
       "All",
       ...new Set([
         ...getCustomerDetail.map((c) => c.name).filter(Boolean),
-        ...getShipmentDetail.map((s) => s.customerId?.name || s.senderName).filter(Boolean),
+        ...getShipmentDetail
+          .map((s) => s.customerId?.name || s.senderName)
+          .filter(Boolean),
       ]),
     ];
 
@@ -7195,7 +8212,9 @@ app.get("/report", authMiddleware, async (req, res) => {
       "All",
       ...new Set([
         ...getDriverDetail.map((d) => d.userId?.name).filter(Boolean),
-        ...getShipmentDetail.map((s) => s.driverName?.userId?.name).filter(Boolean),
+        ...getShipmentDetail
+          .map((s) => s.driverName?.userId?.name)
+          .filter(Boolean),
       ]),
     ];
 
@@ -7203,7 +8222,9 @@ app.get("/report", authMiddleware, async (req, res) => {
       "All",
       ...new Set([
         ...getvehicleDetail.map((v) => v.vregistrationnumber).filter(Boolean),
-        ...getShipmentDetail.map((s) => s.vehicleNo?.vregistrationnumber).filter(Boolean),
+        ...getShipmentDetail
+          .map((s) => s.vehicleNo?.vregistrationnumber)
+          .filter(Boolean),
       ]),
     ];
 
@@ -7211,7 +8232,9 @@ app.get("/report", authMiddleware, async (req, res) => {
       "All",
       ...new Set([
         ...getWarehouseDetail.map((w) => w.warName).filter(Boolean),
-        ...getWarehouseTxnDetail.map((tx) => tx.warehouseId?.warName).filter(Boolean),
+        ...getWarehouseTxnDetail
+          .map((tx) => tx.warehouseId?.warName)
+          .filter(Boolean),
       ]),
     ];
 
@@ -7224,9 +8247,13 @@ app.get("/report", authMiddleware, async (req, res) => {
 
     // ── 1. Shipment Report Data ───────────────────────────────────────────
     const shipmentData = getShipmentDetail.map((s) => {
-      const assignedTrip = s.tripNo || getTripDetail.find(
-        (t) => t.shipmentIds && t.shipmentIds.some((id) => id.toString() === s._id.toString())
-      );
+      const assignedTrip =
+        s.tripNo ||
+        getTripDetail.find(
+          (t) =>
+            t.shipmentIds &&
+            t.shipmentIds.some((id) => id.toString() === s._id.toString()),
+        );
       const originStr = s.senderCity
         ? s.senderState
           ? `${s.senderCity}, ${s.senderState}`
@@ -7292,14 +8319,15 @@ app.get("/report", authMiddleware, async (req, res) => {
     // ── 2. Delivery Report Data ───────────────────────────────────────────
     const deliveryData = getDeliveryDetail.map((d) => {
       const s = d.shipmentId || {};
-      const fullAddress = [
-        s.receiverAddress,
-        s.receiverCity,
-        s.receiverState,
-        s.receiverpincode ? `- ${s.receiverpincode}` : null,
-      ]
-        .filter(Boolean)
-        .join(", ") || "N/A";
+      const fullAddress =
+        [
+          s.receiverAddress,
+          s.receiverCity,
+          s.receiverState,
+          s.receiverpincode ? `- ${s.receiverpincode}` : null,
+        ]
+          .filter(Boolean)
+          .join(", ") || "N/A";
 
       const driverName =
         s.driverName?.userId?.name ||
@@ -7353,27 +8381,27 @@ app.get("/report", authMiddleware, async (req, res) => {
         (s) =>
           s.customerId?._id?.toString() === c._id?.toString() ||
           s.customerId?.toString() === c._id?.toString() ||
-          s.senderName === c.name
+          s.senderName === c.name,
       );
       const totalBookings = custShipments.length;
       const inTransit = custShipments.filter((s) =>
         ["in_transit", "dispatched", "out_for_delivery"].includes(
-          s.status?.toLowerCase()
-        )
+          s.status?.toLowerCase(),
+        ),
       ).length;
       const delivered = custShipments.filter(
-        (s) => s.status?.toLowerCase() === "delivered"
+        (s) => s.status?.toLowerCase() === "delivered",
       ).length;
       const failed = custShipments.filter(
-        (s) => s.status?.toLowerCase() === "failed_delivery"
+        (s) => s.status?.toLowerCase() === "failed_delivery",
       ).length;
       const totalWeight = custShipments.reduce(
         (sum, s) => sum + (s.totalWeight || 0),
-        0
+        0,
       );
       const totalPkgs = custShipments.reduce(
         (sum, s) => sum + (s.packageCount || 0),
-        0
+        0,
       );
       let lastDate = "N/A";
       if (custShipments.length > 0) {
@@ -7403,11 +8431,11 @@ app.get("/report", authMiddleware, async (req, res) => {
       const driverShipments = getShipmentDetail.filter(
         (s) =>
           s.driverName?._id?.toString() === d._id?.toString() ||
-          s.driverName?.toString() === d._id?.toString()
+          s.driverName?.toString() === d._id?.toString(),
       );
       const assigned = driverShipments.length;
       const completed = driverShipments.filter(
-        (s) => s.status?.toLowerCase() === "delivered"
+        (s) => s.status?.toLowerCase() === "delivered",
       ).length;
       const delayed = driverShipments.filter((s) => {
         if (
@@ -7451,21 +8479,21 @@ app.get("/report", authMiddleware, async (req, res) => {
       const vehTrips = getTripDetail.filter(
         (t) =>
           t.vehicleId?._id?.toString() === v._id?.toString() ||
-          t.vehicleId?.toString() === v._id?.toString()
+          t.vehicleId?.toString() === v._id?.toString(),
       );
       const tripsCount = vehTrips.length;
       const totalDistance = vehTrips.reduce(
         (sum, t) => sum + (t.plannedDistance || 0),
-        0
+        0,
       );
       const vehFuels = getVehicleFuelDetail.filter(
         (f) =>
           f.vehicleId?._id?.toString() === v._id?.toString() ||
-          f.vehicleId?.toString() === v._id?.toString()
+          f.vehicleId?.toString() === v._id?.toString(),
       );
       const totalFuelCost = vehFuels.reduce(
         (sum, f) => sum + (f.fuelCost || 0),
-        0
+        0,
       );
 
       // Resolve driver from vehicle, trips, or shipments
@@ -7482,7 +8510,7 @@ app.get("/report", authMiddleware, async (req, res) => {
             (s) =>
               (s.vehicleNo?._id?.toString() === v._id?.toString() ||
                 s.vehicleNo?.vregistrationnumber === v.vregistrationnumber) &&
-              s.driverName?.userId?.name
+              s.driverName?.userId?.name,
           );
           if (shpWithDriver) {
             driverName = shpWithDriver.driverName.userId.name;
@@ -7548,13 +8576,11 @@ app.get("/report", authMiddleware, async (req, res) => {
       time: st.storeAt
         ? new Date(st.storeAt).toISOString().replace("T", " ").substring(0, 16)
         : "",
-      date: st.storeAt
-        ? new Date(st.storeAt).toISOString().split("T")[0]
-        : "",
+      date: st.storeAt ? new Date(st.storeAt).toISOString().split("T")[0] : "",
     }));
 
     const warehouseData = [...txnRows, ...storageRows].sort((a, b) =>
-      (b.time || "").localeCompare(a.time || "")
+      (b.time || "").localeCompare(a.time || ""),
     );
 
     // ── 7. Trip Report Data ───────────────────────────────────────────────
@@ -7570,14 +8596,26 @@ app.get("/report", authMiddleware, async (req, res) => {
         : "",
       packages: t.shipmentIds ? t.shipmentIds.length : 0,
       departure: t.actualDeparture
-        ? new Date(t.actualDeparture).toISOString().replace("T", " ").substring(0, 16)
+        ? new Date(t.actualDeparture)
+            .toISOString()
+            .replace("T", " ")
+            .substring(0, 16)
         : t.plannedDeparture
-          ? new Date(t.plannedDeparture).toISOString().replace("T", " ").substring(0, 16)
+          ? new Date(t.plannedDeparture)
+              .toISOString()
+              .replace("T", " ")
+              .substring(0, 16)
           : "N/A",
       arrival: t.actualArrival
-        ? new Date(t.actualArrival).toISOString().replace("T", " ").substring(0, 16)
+        ? new Date(t.actualArrival)
+            .toISOString()
+            .replace("T", " ")
+            .substring(0, 16)
         : t.plannedArrival
-          ? new Date(t.plannedArrival).toISOString().replace("T", " ").substring(0, 16)
+          ? new Date(t.plannedArrival)
+              .toISOString()
+              .replace("T", " ")
+              .substring(0, 16)
           : "Pending",
       status: mapTripStatus(t.status),
       date: t.plannedDeparture
@@ -7634,8 +8672,7 @@ app.get("/report", authMiddleware, async (req, res) => {
         d.status === "failed" ||
         d.status === "reattempt_scheduled" ||
         Boolean(d.reason);
-      const isShipmentFailed =
-        d.shipmentId?.status === "failed_delivery";
+      const isShipmentFailed = d.shipmentId?.status === "failed_delivery";
       if (isFailed || isShipmentFailed) {
         const s = d.shipmentId || {};
         const driverName =
@@ -7646,16 +8683,13 @@ app.get("/report", authMiddleware, async (req, res) => {
           s.driverName?.phonenumber || s.driverName?.userId?.phonenumber || "";
 
         failedDeliveryData.push({
-          id: s.shipmentId || ("DEL-" + d._id.toString().slice(-6).toUpperCase()),
+          id: s.shipmentId || "DEL-" + d._id.toString().slice(-6).toUpperCase(),
           tracking: s.trackingId || "N/A",
           customer: s.customerId?.name || s.senderName || "N/A",
           recipient: s.receiverName || "",
           driver: driverName,
           driverPhone,
-          reason:
-            d.reason ||
-            d.notes ||
-            "Customer Unavailable / Door Closed",
+          reason: d.reason || d.notes || "Customer Unavailable / Door Closed",
           attempts: d.attemptNumber || 1,
           reattemptDate: d.reattemptDate
             ? new Date(d.reattemptDate).toISOString().split("T")[0]
@@ -7718,7 +8752,7 @@ app.get("/report", authMiddleware, async (req, res) => {
         return d.getFullYear() === 2026 && d.getMonth() === mIdx;
       });
       const mDelivered = mShipments.filter(
-        (s) => s.status?.toLowerCase() === "delivered"
+        (s) => s.status?.toLowerCase() === "delivered",
       );
       const mInbound = getWarehouseTxnDetail.filter((t) => {
         const d = new Date(t.wartransactionDate || t.createdAt);
@@ -7773,14 +8807,17 @@ app.get("/report", authMiddleware, async (req, res) => {
     });
 
     const yShipments = getShipmentDetail.filter(
-      (s) => new Date(s.pickupDate || s.createdAt).getFullYear() === 2026
+      (s) => new Date(s.pickupDate || s.createdAt).getFullYear() === 2026,
     );
     const yDelivered = yShipments.filter(
-      (s) => s.status?.toLowerCase() === "delivered"
+      (s) => s.status?.toLowerCase() === "delivered",
     );
     const totalYearFuelCost =
       getVehicleFuelDetail.reduce((sum, f) => sum + (f.fuelCost || 0), 0) +
-      getVehicleMaintenanceDetail.reduce((sum, m) => sum + (m.serviceCost || 0), 0);
+      getVehicleMaintenanceDetail.reduce(
+        (sum, m) => sum + (m.serviceCost || 0),
+        0,
+      );
 
     summaryData.push({
       period: "Year 2026",
@@ -7791,10 +8828,10 @@ app.get("/report", authMiddleware, async (req, res) => {
       onTime: yDelivered.length,
       fuelCost: `₹${totalYearFuelCost.toLocaleString()}`,
       inbound: getWarehouseTxnDetail.filter(
-        (t) => t.wartransactionType === "inbound"
+        (t) => t.wartransactionType === "inbound",
       ).length,
       outbound: getWarehouseTxnDetail.filter(
-        (t) => t.wartransactionType === "outbound"
+        (t) => t.wartransactionType === "outbound",
       ).length,
       efficiency:
         yShipments.length > 0
@@ -7825,6 +8862,1286 @@ app.get("/report", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Report fetch error:", error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14. INVOICE & BILLING RECORDS MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function generateInvoiceNumber() {
+  let invoiceNumber;
+  let exists = true;
+  let attempts = 0;
+
+  while (exists && attempts < 10) {
+    attempts++;
+    invoiceNumber = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
+    const existing = await Invoice.findOne({ invoiceNumber });
+    exists = !!existing;
+  }
+
+  return invoiceNumber;
+}
+
+async function syncOverdueInvoices(filter = {}) {
+  try {
+    const now = new Date();
+    await Invoice.updateMany(
+      {
+        ...filter,
+        dueDate: { $lt: now },
+        paymentStatus: { $in: ["pending", "partially_paid"] },
+      },
+      { $set: { paymentStatus: "overdue" } },
+    );
+  } catch (err) {
+    console.warn("Could not sync overdue invoices:", err.message);
+  }
+}
+
+// 1. Calculate Shipment Charges Endpoint
+app.post("/billing/calculate-charges", authMiddleware, async (req, res) => {
+  try {
+    const {
+      shipmentId,
+      packageCount,
+      totalWeight,
+      length,
+      width,
+      height,
+      priority,
+      distanceKm,
+      additionalCharges,
+      additionalItems,
+      items,
+      taxRate,
+    } = req.body;
+
+    let calcData = {
+      packageCount,
+      totalWeight,
+      dimensions: { length, width, height },
+      priority,
+      distanceKm,
+      additionalCharges,
+      additionalItems,
+      items,
+      taxRate,
+    };
+
+    let shipmentDoc = null;
+
+    if (shipmentId) {
+      if (mongoose.Types.ObjectId.isValid(shipmentId)) {
+        shipmentDoc = await Shipment.findById(shipmentId);
+      }
+      if (!shipmentDoc) {
+        shipmentDoc = await Shipment.findOne({
+          $or: [{ shipmentId }, { trackingId: shipmentId }],
+        });
+      }
+
+      if (shipmentDoc) {
+        let tripDoc = null;
+        if (shipmentDoc.tripNo) {
+          if (mongoose.Types.ObjectId.isValid(shipmentDoc.tripNo)) {
+            tripDoc = await Trip.findById(shipmentDoc.tripNo);
+          } else {
+            tripDoc = await Trip.findOne({ tripId: shipmentDoc.tripNo });
+          }
+        }
+        if (!tripDoc && shipmentDoc._id) {
+          tripDoc = await Trip.findOne({ shipmentIds: shipmentDoc._id });
+        }
+
+        const resolvedDistanceKm =
+          distanceKm !== undefined && distanceKm !== null && distanceKm !== ""
+            ? Number(distanceKm)
+            : tripDoc?.plannedDistance || 0;
+
+        calcData = {
+          packageCount: packageCount || shipmentDoc.packageCount || 1,
+          totalWeight: totalWeight || shipmentDoc.totalWeight || 0,
+          dimensions: {
+            length: length || shipmentDoc.dimensions?.length || 0,
+            width: width || shipmentDoc.dimensions?.width || 0,
+            height: height || shipmentDoc.dimensions?.height || 0,
+          },
+          priority: priority || shipmentDoc.priority || "Standard",
+          distanceKm: resolvedDistanceKm,
+          additionalCharges,
+          additionalItems,
+          items,
+          taxRate,
+        };
+      }
+    }
+
+    const calculation = calculateShipmentCharges(calcData);
+
+    return res.status(200).json({
+      message: "Shipment charges calculated successfully",
+      shipment: shipmentDoc
+        ? {
+            shipmentId: shipmentDoc.shipmentId,
+            trackingId: shipmentDoc.trackingId,
+            sender: `${shipmentDoc.senderName} (${shipmentDoc.senderCity})`,
+            receiver: `${shipmentDoc.receiverName} (${shipmentDoc.receiverCity})`,
+          }
+        : null,
+      calculation,
+    });
+  } catch (error) {
+    console.error("CALCULATE CHARGES ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 2. Create Shipment/Service Invoices
+const handleCreateInvoice = async (req, res) => {
+  try {
+    const {
+      invoiceType = "shipment",
+      shipmentId,
+      customerId,
+      customerName,
+      contactPerson,
+      customerEmail,
+      customerPhone,
+      customerAddress,
+      customerGstin,
+      dueDate,
+      taxRate = 18,
+      notes = "",
+      termsAndConditions,
+      items,
+      baseCharges,
+      additionalCharges = 0,
+      paidAmount = 0,
+      paymentMethod = "",
+      transactionRef = "",
+      distanceKm,
+      origin,
+      destination,
+      vehicleNo,
+      weight,
+      invoiceDate,
+      bankDetails,
+    } = req.body;
+
+    // Strict field validations - reject if any required user input from DashboardInvoice.jsx is missing
+    if (!customerName || !String(customerName).trim()) {
+      return res.status(400).json({ message: "Customer name is required" });
+    }
+    if (!customerEmail || !String(customerEmail).trim()) {
+      return res
+        .status(400)
+        .json({ message: "Customer email address is required" });
+    }
+    if (!customerPhone || !String(customerPhone).trim()) {
+      return res
+        .status(400)
+        .json({ message: "Customer phone number is required" });
+    }
+    if (!customerAddress || !String(customerAddress).trim()) {
+      return res
+        .status(400)
+        .json({ message: "Customer billing address is required" });
+    }
+
+    const resolvedInvoiceType = ["shipment", "service"].includes(invoiceType)
+      ? invoiceType
+      : "shipment";
+
+    if (resolvedInvoiceType === "shipment" || shipmentId) {
+      if (!shipmentId || !String(shipmentId).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Shipment AWB reference is required" });
+      }
+      if (!origin || !String(origin).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Origin city / hub is required" });
+      }
+      if (!destination || !String(destination).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Destination city / hub is required" });
+      }
+      if (!vehicleNo || !String(vehicleNo).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Assigned vehicle number is required" });
+      }
+      if (!weight || !String(weight).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Cargo weight / volume is required" });
+      }
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "At least one charge line item is required" });
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.description || !String(it.description).trim()) {
+        return res
+          .status(400)
+          .json({ message: `Description is required for line item #${i + 1}` });
+      }
+    }
+
+    if (!dueDate) {
+      return res.status(400).json({ message: "Invoice due date is required" });
+    }
+
+    let customerDoc = null;
+    let shipmentDoc = null;
+
+    // Resolve shipment if provided
+    if (shipmentId) {
+      if (mongoose.Types.ObjectId.isValid(shipmentId)) {
+        shipmentDoc = await Shipment.findById(shipmentId);
+      }
+      if (!shipmentDoc) {
+        shipmentDoc = await Shipment.findOne({
+          $or: [{ shipmentId }, { trackingId: shipmentId }],
+        });
+      }
+    }
+
+    // Resolve customer
+    const targetCustId = customerId || customerName || shipmentDoc?.customerId;
+
+    if (targetCustId) {
+      if (mongoose.Types.ObjectId.isValid(targetCustId)) {
+        customerDoc = await Customer.findById(targetCustId);
+      }
+      if (!customerDoc) {
+        const cleanTarget = String(targetCustId).trim();
+        const escaped = cleanTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        customerDoc = await Customer.findOne({
+          $or: [
+            { name: new RegExp(`^${escaped}$`, "i") },
+            { customerId: cleanTarget },
+            ...(!isNaN(cleanTarget)
+              ? [{ customerId: Number(cleanTarget) }]
+              : []),
+          ],
+        });
+      }
+    }
+
+    if (!customerDoc && (customerName || targetCustId)) {
+      const custName = String(customerName || targetCustId).trim();
+      if (custName) {
+        const lastCust = await Customer.findOne().sort({ customerId: -1 });
+        const nextCustId = (lastCust?.customerId || 1000) + 1;
+        customerDoc = await Customer.create({
+          customerId: nextCustId,
+          name: custName,
+          contactPerson: String(contactPerson || custName).trim(),
+          email: String(customerEmail).trim(),
+          phonenumber:
+            Number(String(customerPhone).replace(/\D/g, "")) || 9876543210,
+          address: String(customerAddress).trim(),
+          gstin: String(customerGstin || "").trim(),
+        });
+      }
+    }
+
+    if (!customerDoc) {
+      return res
+        .status(400)
+        .json({ message: "Customer information is invalid or missing" });
+    }
+
+    if (customerGstin && String(customerGstin).trim()) {
+      customerDoc.gstin = String(customerGstin).trim();
+      await customerDoc.save();
+    }
+
+    // Normalize payment method enum
+    const normalizePaymentMethod = (pm) => {
+      if (!pm) return "";
+      const lower = String(pm).toLowerCase();
+      if (lower.includes("upi")) return "upi";
+      if (lower.includes("card")) return "card";
+      if (
+        lower.includes("bank") ||
+        lower.includes("neft") ||
+        lower.includes("rtgs") ||
+        lower.includes("transfer")
+      )
+        return "bank_transfer";
+      if (lower.includes("cheque") || lower.includes("check")) return "cheque";
+      if (lower.includes("cash")) return "cash";
+      if (lower.includes("credit")) return "credit";
+      return "other";
+    };
+
+    const safePaymentMethod = normalizePaymentMethod(paymentMethod);
+
+    // Calculate or compile charges
+    let finalItems = [];
+    let finalBase = 0;
+    let finalWeightCharges = 0;
+    let finalPriorityCharges = 0;
+    let finalFuelSurcharge = 0;
+    let finalHandlingCharges = 0;
+    let finalAdditionalCharges = Number(additionalCharges) || 0;
+    let finalSubtotal = 0;
+    let finalTaxRate = Number(taxRate) >= 0 ? Number(taxRate) : 18;
+    let finalTaxAmount = 0;
+    let finalTotal = 0;
+
+    if (resolvedInvoiceType === "shipment" && shipmentDoc) {
+      let tripDoc = null;
+      if (shipmentDoc.tripNo) {
+        if (mongoose.Types.ObjectId.isValid(shipmentDoc.tripNo)) {
+          tripDoc = await Trip.findById(shipmentDoc.tripNo);
+        } else {
+          tripDoc = await Trip.findOne({ tripId: shipmentDoc.tripNo });
+        }
+      }
+      if (!tripDoc && shipmentDoc._id) {
+        tripDoc = await Trip.findOne({ shipmentIds: shipmentDoc._id });
+      }
+
+      const resolvedDistanceKm =
+        distanceKm !== undefined && distanceKm !== null && distanceKm !== ""
+          ? Number(distanceKm)
+          : tripDoc?.plannedDistance || 0;
+
+      const calc = calculateShipmentCharges({
+        packageCount: shipmentDoc.packageCount,
+        totalWeight: shipmentDoc.totalWeight,
+        dimensions: shipmentDoc.dimensions,
+        priority: shipmentDoc.priority,
+        distanceKm: resolvedDistanceKm,
+        additionalCharges: finalAdditionalCharges,
+        additionalItems:
+          items && Array.isArray(items)
+            ? items.filter((it) => it.isCustom)
+            : undefined,
+        items: items && Array.isArray(items) ? items : undefined,
+        taxRate: finalTaxRate,
+      });
+
+      finalBase = Number(baseCharges) || calc.baseCharges;
+      finalWeightCharges = calc.weightCharges;
+      finalPriorityCharges = calc.priorityCharges;
+      finalFuelSurcharge = calc.fuelSurcharge;
+      finalHandlingCharges = calc.handlingCharges;
+      finalAdditionalCharges = calc.additionalCharges;
+      finalSubtotal = calc.subtotal;
+      finalTaxAmount = calc.taxAmount;
+      finalTotal = calc.totalAmount;
+      finalItems = items && items.length > 0 ? items : calc.breakdownItems;
+    } else {
+      // Service / Custom invoice
+      if (items && Array.isArray(items) && items.length > 0) {
+        finalItems = items.map((it) => {
+          const qty = Math.max(1, Number(it.quantity) || 1);
+          const price = Math.max(0, Number(it.unitPrice ?? it.rate) || 0);
+          const amt = Number(it.amount) || qty * price;
+          const tp = Number.isFinite(Number(it.taxPercent))
+            ? Number(it.taxPercent)
+            : 18;
+          const ta = Number.isFinite(Number(it.taxAmount))
+            ? Number(it.taxAmount)
+            : Math.round(amt * (tp / 100) * 100) / 100;
+          const tot = Number.isFinite(Number(it.totalAmount))
+            ? Number(it.totalAmount)
+            : Math.round((amt + ta) * 100) / 100;
+          return {
+            description: String(it.description || "Service Item").trim(),
+            quantity: qty,
+            unit: it.unit || "Service",
+            unitPrice: price,
+            amount: amt,
+            taxPercent: tp,
+            taxAmount: ta,
+            totalAmount: tot,
+          };
+        });
+        finalSubtotal = finalItems.reduce((acc, curr) => acc + curr.amount, 0);
+      } else {
+        const base = Math.max(0, Number(baseCharges) || 0);
+        finalSubtotal = base + finalAdditionalCharges;
+        finalItems = [
+          {
+            description: notes || "General Logistics Service",
+            quantity: 1,
+            unit: "Service",
+            unitPrice: finalSubtotal,
+            amount: finalSubtotal,
+          },
+        ];
+      }
+
+      const taxable = finalSubtotal;
+      finalTaxAmount =
+        finalItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) ||
+        Math.round(taxable * (finalTaxRate / 100) * 100) / 100;
+      finalTotal = Math.round((taxable + finalTaxAmount) * 100) / 100;
+    }
+
+    // Payment & balance calculations
+    const numPaid = Math.max(0, Number(paidAmount) || 0);
+    const balanceAmount = Math.max(
+      0,
+      Math.round((finalTotal - numPaid) * 100) / 100,
+    );
+
+    let paymentStatus = "pending";
+    let paidAt = null;
+
+    if (numPaid >= finalTotal && finalTotal > 0) {
+      paymentStatus = "paid";
+      paidAt = new Date();
+    } else if (numPaid > 0) {
+      paymentStatus = "partially_paid";
+    }
+
+    const paymentHistory = [];
+    if (numPaid > 0) {
+      paymentHistory.push({
+        amount: numPaid,
+        paymentMethod: safePaymentMethod || "cash",
+        transactionRef: transactionRef || "",
+        paidAt: new Date(),
+        notes: "Initial payment recorded at invoice creation",
+        recordedBy: req.user?.userId || null,
+      });
+    }
+
+    const invoiceNumber = await generateInvoiceNumber();
+
+    const newInvoice = new Invoice({
+      invoiceNumber,
+      invoiceType: resolvedInvoiceType,
+      shipmentId: shipmentDoc ? shipmentDoc._id : null,
+      shipmentRef: String(shipmentId || "").trim(),
+      shipmentDetails: {
+        origin: String(origin || "").trim(),
+        destination: String(destination || "").trim(),
+        vehicleNo: String(vehicleNo || "").trim(),
+        weight: String(weight || "").trim(),
+      },
+      customerId: customerDoc._id,
+      customerGstin: String(customerGstin || customerDoc.gstin || "").trim(),
+      bankDetails: {
+        accountName: String(bankDetails?.accountName || "").trim(),
+        accountNumber: String(bankDetails?.accountNumber || "").trim(),
+        bankAndBranch: String(bankDetails?.bankAndBranch || "").trim(),
+        ifscCode: String(bankDetails?.ifscCode || "").trim(),
+      },
+      items: finalItems,
+      baseCharges: finalBase,
+      weightCharges: finalWeightCharges,
+      priorityCharges: finalPriorityCharges,
+      fuelSurcharge: finalFuelSurcharge,
+      handlingCharges: finalHandlingCharges,
+      additionalCharges: finalAdditionalCharges,
+      subtotal: finalSubtotal,
+      taxRate: finalTaxRate,
+      taxAmount: finalTaxAmount,
+      totalAmount: finalTotal,
+      paidAmount: numPaid,
+      balanceAmount,
+      paymentStatus,
+      paymentMethod: safePaymentMethod,
+      paymentHistory,
+      issueDate: invoiceDate ? new Date(invoiceDate) : new Date(),
+      dueDate: new Date(dueDate),
+      paidAt,
+      notes: String(notes || "").trim(),
+      termsAndConditions:
+        termsAndConditions ||
+        "Payment is due within 15 days of invoice date. Late payments may incur a 2% monthly fee.",
+    });
+
+    await newInvoice.save();
+    await newInvoice.populate("customerId");
+    await newInvoice.populate("shipmentId");
+
+    await createAuditLog({
+      userId: req.user?._id || req.user?.userId || newInvoice.createdBy,
+      action: "CREATE_INVOICE",
+      resource: "Invoice",
+      resourceId: newInvoice._id
+        ? newInvoice._id.toString()
+        : newInvoice.invoiceNumber,
+    });
+
+    return res.status(201).json({
+      message: "Invoice created successfully",
+      invoice: newInvoice,
+    });
+  } catch (error) {
+    console.error("CREATE INVOICE ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+app.post("/invoices", authMiddleware, handleCreateInvoice);
+app.post("/invoice", authMiddleware, handleCreateInvoice);
+
+// 3. List Invoices with Search, Filter, Pagination & Auto-Overdue Status
+app.get("/invoices", authMiddleware, async (req, res) => {
+  try {
+    let {
+      page = 1,
+      limit = 10,
+      search = "",
+      status,
+      customerId,
+      shipmentId,
+      dateFrom,
+      dateTo,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.query;
+
+    page = Math.max(parseInt(page) || 1, 1);
+    limit = Math.min(Math.max(parseInt(limit) || 10, 1), 1000);
+    const skip = (page - 1) * limit;
+
+    // Synchronize any overdue records
+    await syncOverdueInvoices();
+
+    const filter = {};
+
+    if (status) {
+      const statuses = status
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      if (statuses.length === 1) {
+        filter.paymentStatus = statuses[0];
+      } else if (statuses.length > 1) {
+        filter.paymentStatus = { $in: statuses };
+      }
+    }
+
+    if (customerId) {
+      if (mongosse.Types.ObjectId.isValid(customerId)) {
+        filter.customerId = customerId;
+      } else {
+        const foundCust = await Customer.findOne({
+          $or: [
+            { customerId },
+            ...(!isNaN(customerId) ? [{ customerId: Number(customerId) }] : []),
+          ],
+        });
+        if (foundCust) {
+          filter.customerId = foundCust._id;
+        } else {
+          return res.status(200).json({
+            message: "Invoices fetched successfully",
+            pagination: {
+              currentPage: page,
+              totalPages: 0,
+              totalInvoices: 0,
+              limit,
+            },
+            summary: {
+              totalAmount: 0,
+              totalPaid: 0,
+              totalBalance: 0,
+              overdueCount: 0,
+            },
+            invoices: [],
+          });
+        }
+      }
+    }
+
+    if (shipmentId && mongosse.Types.ObjectId.isValid(shipmentId)) {
+      filter.shipmentId = shipmentId;
+    }
+
+    if (dateFrom || dateTo) {
+      filter.issueDate = {};
+      if (dateFrom) filter.issueDate.$gte = new Date(dateFrom);
+      if (dateTo) filter.issueDate.$lte = new Date(dateTo);
+    }
+
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), "i");
+      const matchedCustomers = await Customer.find({
+        $or: [
+          { name: searchRegex },
+          { email: searchRegex },
+          { customerId: searchRegex },
+        ],
+      }).select("_id");
+      const custIds = matchedCustomers.map((c) => c._id);
+
+      const matchedShipments = await Shipment.find({
+        $or: [{ shipmentId: searchRegex }, { trackingId: searchRegex }],
+      }).select("_id");
+      const shpIds = matchedShipments.map((s) => s._id);
+
+      filter.$or = [
+        { invoiceNumber: searchRegex },
+        { customerId: { $in: custIds } },
+        { shipmentId: { $in: shpIds } },
+      ];
+    }
+
+    const sortObj = {};
+    sortObj[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+    const [totalInvoices, invoices, summaryAgg] = await Promise.all([
+      Invoice.countDocuments(filter),
+      Invoice.find(filter)
+        .populate("customerId")
+        .populate({
+          path: "shipmentId",
+          populate: { path: "vehicleNo" },
+        })
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limit),
+      Invoice.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: "$totalAmount" },
+            totalPaid: { $sum: "$paidAmount" },
+            totalBalance: { $sum: "$balanceAmount" },
+            overdueCount: {
+              $sum: { $cond: [{ $eq: ["$paymentStatus", "overdue"] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const summary = summaryAgg[0] || {
+      totalAmount: 0,
+      totalPaid: 0,
+      totalBalance: 0,
+      overdueCount: 0,
+    };
+
+    return res.status(200).json({
+      message: "Invoices fetched successfully",
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalInvoices / limit),
+        totalInvoices,
+        limit,
+      },
+      summary: {
+        totalAmount: Math.round(summary.totalAmount * 100) / 100,
+        totalPaid: Math.round(summary.totalPaid * 100) / 100,
+        totalBalance: Math.round(summary.totalBalance * 100) / 100,
+        overdueCount: summary.overdueCount,
+      },
+      invoices,
+    });
+  } catch (error) {
+    console.error("GET INVOICES ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 4. Get Single Invoice by ID or InvoiceNumber
+app.get("/invoices/:id", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let invoice = null;
+
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      invoice = await Invoice.findById(id);
+    }
+    if (!invoice) {
+      invoice = await Invoice.findOne({ invoiceNumber: id });
+    }
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    // Auto-check overdue
+    if (
+      ["pending", "partially_paid"].includes(invoice.paymentStatus) &&
+      invoice.dueDate &&
+      new Date(invoice.dueDate) < new Date()
+    ) {
+      invoice.paymentStatus = "overdue";
+      await invoice.save();
+    }
+
+    await invoice.populate("customerId");
+    await invoice.populate("shipmentId");
+    await invoice.populate("paymentHistory.recordedBy", "name email");
+
+    return res.status(200).json({
+      message: "Invoice details fetched successfully",
+      invoice,
+    });
+  } catch (error) {
+    console.error("GET INVOICE BY ID ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 5. Record Payment & Maintain Paid, Pending, and Overdue Status
+app.post("/invoices/:id/payments", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      amount,
+      paymentMethod = "cash",
+      transactionRef = "",
+      notes = "",
+    } = req.body;
+
+    const numAmount = parseFloat(amount);
+    if (!numAmount || numAmount <= 0) {
+      return res.status(400).json({
+        message: "Payment amount must be greater than 0",
+      });
+    }
+
+    let invoice = null;
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      invoice = await Invoice.findById(id);
+    }
+    if (!invoice) {
+      invoice = await Invoice.findOne({ invoiceNumber: id });
+    }
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    if (invoice.paymentStatus === "cancelled") {
+      return res.status(400).json({
+        message: "Cannot record payment on a cancelled invoice",
+      });
+    }
+
+    if (invoice.paymentStatus === "paid" && invoice.balanceAmount <= 0) {
+      return res.status(400).json({
+        message: "Invoice is already fully paid",
+      });
+    }
+
+    if (numAmount > invoice.balanceAmount) {
+      return res.status(400).json({
+        message: `Payment amount (${numAmount}) exceeds outstanding balance (${invoice.balanceAmount})`,
+      });
+    }
+
+    const newPaidAmount =
+      Math.round((invoice.paidAmount + numAmount) * 100) / 100;
+    const newBalance = Math.max(
+      0,
+      Math.round((invoice.totalAmount - newPaidAmount) * 100) / 100,
+    );
+
+    const paymentRecord = {
+      amount: numAmount,
+      paymentMethod,
+      transactionRef: String(transactionRef).trim(),
+      paidAt: new Date(),
+      notes: String(notes).trim(),
+      recordedBy: req.user?.userId || null,
+    };
+
+    invoice.paymentHistory.push(paymentRecord);
+    invoice.paidAmount = newPaidAmount;
+    invoice.balanceAmount = newBalance;
+    invoice.paymentMethod = paymentMethod || invoice.paymentMethod;
+
+    if (newBalance === 0) {
+      invoice.paymentStatus = "paid";
+      invoice.paidAt = new Date();
+    } else {
+      invoice.paymentStatus = "partially_paid";
+    }
+
+    await invoice.save();
+    await invoice.populate("customerId");
+    await invoice.populate("shipmentId");
+
+    await createAuditLog({
+      userId: req.user?._id || req.user?.userId || invoice.createdBy,
+      action: "RECORD_INVOICE_PAYMENT",
+      resource: "Invoice",
+      resourceId: invoice._id ? invoice._id.toString() : invoice.invoiceNumber,
+    });
+
+    return res.status(200).json({
+      message: "Payment recorded successfully",
+      payment: paymentRecord,
+      invoice,
+    });
+  } catch (error) {
+    console.error("RECORD PAYMENT ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 6. Update Invoice Status Manually
+app.patch("/invoices/:id/status", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      status,
+      paidAmount,
+      balanceAmount,
+      paymentMethod,
+      transactionRef,
+      notes,
+    } = req.body;
+
+    const allowed = [
+      "pending",
+      "partially_paid",
+      "paid",
+      "overdue",
+      "cancelled",
+    ];
+    if (!status || !allowed.includes(status.toLowerCase())) {
+      return res.status(400).json({
+        message: `Status must be one of: ${allowed.join(", ")}`,
+      });
+    }
+
+    const normStatus = status.toLowerCase();
+
+    let invoice = null;
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      invoice = await Invoice.findById(id);
+    }
+    if (!invoice) {
+      invoice = await Invoice.findOne({ invoiceNumber: id });
+    }
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    const safePaymentMethod = [
+      "cash",
+      "card",
+      "bank_transfer",
+      "upi",
+      "credit",
+      "cheque",
+      "other",
+    ].includes(String(paymentMethod || "").toLowerCase())
+      ? String(paymentMethod).toLowerCase()
+      : "cash";
+
+    invoice.paymentStatus = normStatus;
+    if (paymentMethod) {
+      invoice.paymentMethod = safePaymentMethod;
+    }
+
+    if (paidAmount !== undefined && !isNaN(Number(paidAmount))) {
+      const p = Math.max(0, Number(paidAmount));
+      invoice.paidAmount = p;
+      if (balanceAmount !== undefined && !isNaN(Number(balanceAmount))) {
+        invoice.balanceAmount = Math.max(0, Number(balanceAmount));
+      } else {
+        invoice.balanceAmount = Math.max(
+          0,
+          Math.round((invoice.totalAmount - p) * 100) / 100,
+        );
+      }
+    } else if (normStatus === "paid") {
+      invoice.paidAmount = invoice.totalAmount;
+      invoice.balanceAmount = 0;
+    } else if (normStatus === "pending") {
+      invoice.paidAmount = 0;
+      invoice.balanceAmount = invoice.totalAmount;
+    }
+
+    if (normStatus === "paid") {
+      invoice.paidAt = invoice.paidAt || new Date();
+    } else if (
+      ["pending", "partially_paid"].includes(normStatus) &&
+      invoice.dueDate &&
+      new Date(invoice.dueDate) < new Date()
+    ) {
+      invoice.dueDate = new Date(Date.now() + 15 * 86400000);
+    }
+
+    if (notes) {
+      invoice.notes = invoice.notes ? `${invoice.notes}; ${notes}` : notes;
+    }
+
+    // Append to paymentHistory schema array
+    if (invoice.paidAmount > 0 || transactionRef || paymentMethod) {
+      invoice.paymentHistory.push({
+        amount: invoice.paidAmount || 0,
+        paymentMethod: safePaymentMethod,
+        transactionRef: String(transactionRef || "").trim(),
+        paidAt: new Date(),
+        notes: String(notes || `Status updated to ${normStatus}`).trim(),
+        recordedBy: req.user?.userId || null,
+      });
+    }
+
+    await invoice.save();
+    await invoice.populate("customerId");
+    await invoice.populate("shipmentId");
+
+    await createAuditLog({
+      userId: req.user?._id || req.user?.userId || invoice.createdBy,
+      action: "UPDATE_INVOICE_STATUS",
+      resource: "Invoice",
+      resourceId: invoice._id ? invoice._id.toString() : invoice.invoiceNumber,
+    });
+
+    return res.status(200).json({
+      message: `Invoice status updated to ${normStatus}`,
+      invoice,
+    });
+  } catch (error) {
+    console.error("UPDATE INVOICE STATUS ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 7. Customer Billing History & Portfolio
+app.get("/customers/:id/billing-history", authMiddleware, async (req, res) => {
+  try {
+    const custId = req.params.id;
+    let customer = null;
+
+    if (mongosse.Types.ObjectId.isValid(custId)) {
+      customer = await Customer.findById(custId);
+    }
+    if (!customer) {
+      customer = await Customer.findOne({
+        $or: [
+          { customerId: custId },
+          ...(!isNaN(custId) ? [{ customerId: Number(custId) }] : []),
+        ],
+      });
+    }
+
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    // Auto-sync overdue invoices for this customer
+    await syncOverdueInvoices({ customerId: customer._id });
+
+    const invoices = await Invoice.find({ customerId: customer._id })
+      .populate("shipmentId")
+      .sort({ createdAt: -1 });
+
+    let totalInvoiced = 0;
+    let totalPaid = 0;
+    let outstandingBalance = 0;
+    let paidCount = 0;
+    let pendingCount = 0;
+    let partiallyPaidCount = 0;
+    let overdueCount = 0;
+    let cancelledCount = 0;
+    const allPayments = [];
+
+    invoices.forEach((inv) => {
+      totalInvoiced += inv.totalAmount || 0;
+      totalPaid += inv.paidAmount || 0;
+      outstandingBalance += inv.balanceAmount || 0;
+
+      if (inv.paymentStatus === "paid") paidCount++;
+      else if (inv.paymentStatus === "pending") pendingCount++;
+      else if (inv.paymentStatus === "partially_paid") partiallyPaidCount++;
+      else if (inv.paymentStatus === "overdue") overdueCount++;
+      else if (inv.paymentStatus === "cancelled") cancelledCount++;
+
+      if (inv.paymentHistory && inv.paymentHistory.length > 0) {
+        inv.paymentHistory.forEach((p) => {
+          allPayments.push({
+            invoiceNumber: inv.invoiceNumber,
+            invoiceId: inv._id,
+            amount: p.amount,
+            paymentMethod: p.paymentMethod,
+            transactionRef: p.transactionRef,
+            paidAt: p.paidAt,
+            notes: p.notes,
+          });
+        });
+      }
+    });
+
+    allPayments.sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt));
+
+    return res.status(200).json({
+      message: "Customer billing history fetched successfully",
+      customer: {
+        _id: customer._id,
+        customerId: customer.customerId,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phonenumber,
+        address: customer.address,
+      },
+      metrics: {
+        totalInvoices: invoices.length,
+        totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+        totalPaid: Math.round(totalPaid * 100) / 100,
+        outstandingBalance: Math.round(outstandingBalance * 100) / 100,
+        statusBreakdown: {
+          paid: paidCount,
+          pending: pendingCount,
+          partially_paid: partiallyPaidCount,
+          overdue: overdueCount,
+          cancelled: cancelledCount,
+        },
+      },
+      invoices,
+      allPayments,
+    });
+  } catch (error) {
+    console.error("CUSTOMER BILLING HISTORY ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 8. Generate Downloadable Invoice Documents (PDF or HTML)
+app.get("/invoices/:id/download", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const format = (req.query.format || "pdf").toLowerCase();
+
+    let invoice = null;
+    if (mongosse.Types.ObjectId.isValid(id)) {
+      invoice = await Invoice.findById(id);
+    }
+    if (!invoice) {
+      invoice = await Invoice.findOne({ invoiceNumber: id });
+    }
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    await invoice.populate("customerId");
+    await invoice.populate("shipmentId");
+
+    const customerObj = invoice.customerId?.toObject
+      ? invoice.customerId.toObject()
+      : invoice.customerId || {};
+    const shipmentObj = invoice.shipmentId?.toObject
+      ? invoice.shipmentId.toObject()
+      : invoice.shipmentId || {};
+
+    if (format === "html") {
+      const htmlContent = generateInvoiceHTML(
+        invoice,
+        customerObj,
+        shipmentObj,
+      );
+      res.setHeader("Content-Type", "text/html");
+      return res.status(200).send(htmlContent);
+    }
+
+    // Default: PDF format
+    const pdfBuffer = await generateInvoicePDF(
+      invoice,
+      customerObj,
+      shipmentObj,
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="Invoice-${invoice.invoiceNumber}.pdf"`,
+    );
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    return res.status(200).end(pdfBuffer);
+  } catch (error) {
+    console.error("DOWNLOAD INVOICE ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 9. Billing Reports & Analytics
+app.get("/billing/reports", authMiddleware, async (req, res) => {
+  try {
+    const { startDate, endDate, status, customerId } = req.query;
+
+    await syncOverdueInvoices();
+
+    const filter = {};
+
+    if (startDate || endDate) {
+      filter.issueDate = {};
+      if (startDate) filter.issueDate.$gte = new Date(startDate);
+      if (endDate) filter.issueDate.$lte = new Date(endDate);
+    }
+
+    if (status) {
+      filter.paymentStatus = status.toLowerCase();
+    }
+
+    if (customerId && mongosse.Types.ObjectId.isValid(customerId)) {
+      filter.customerId = customerId;
+    }
+
+    const invoices = await Invoice.find(filter)
+      .populate("customerId", "customerId name email")
+      .populate("shipmentId", "shipmentId trackingId")
+      .sort({ issueDate: -1 });
+
+    let totalBilled = 0;
+    let totalPaid = 0;
+    let totalOutstanding = 0;
+    let totalOverdue = 0;
+
+    const statusCounts = {
+      paid: 0,
+      pending: 0,
+      partially_paid: 0,
+      overdue: 0,
+      cancelled: 0,
+    };
+
+    const paymentMethods = {};
+
+    invoices.forEach((inv) => {
+      totalBilled += inv.totalAmount || 0;
+      totalPaid += inv.paidAmount || 0;
+      totalOutstanding += inv.balanceAmount || 0;
+
+      if (inv.paymentStatus === "overdue") {
+        totalOverdue += inv.balanceAmount || 0;
+      }
+
+      if (statusCounts[inv.paymentStatus] !== undefined) {
+        statusCounts[inv.paymentStatus]++;
+      }
+
+      if (inv.paymentMethod) {
+        paymentMethods[inv.paymentMethod] =
+          (paymentMethods[inv.paymentMethod] || 0) + 1;
+      }
+    });
+
+    const summary = {
+      totalInvoices: invoices.length,
+      totalBilled: Math.round(totalBilled * 100) / 100,
+      totalPaid: Math.round(totalPaid * 100) / 100,
+      totalOutstanding: Math.round(totalOutstanding * 100) / 100,
+      totalOverdue: Math.round(totalOverdue * 100) / 100,
+      paidCount: statusCounts.paid,
+      pendingCount: statusCounts.pending,
+      partiallyPaidCount: statusCounts.partially_paid,
+      overdueCount: statusCounts.overdue,
+      cancelledCount: statusCounts.cancelled,
+      paymentMethods,
+    };
+
+    return res.status(200).json({
+      message: "Billing report generated successfully",
+      summary,
+      invoices,
+    });
+  } catch (error) {
+    console.error("BILLING REPORT ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// 10. Billing Report Export to Excel (.xlsx)
+app.get("/billing/reports/export", authMiddleware, async (req, res) => {
+  try {
+    const { startDate, endDate, status, customerId } = req.query;
+
+    await syncOverdueInvoices();
+
+    const filter = {};
+
+    if (startDate || endDate) {
+      filter.issueDate = {};
+      if (startDate) filter.issueDate.$gte = new Date(startDate);
+      if (endDate) filter.issueDate.$lte = new Date(endDate);
+    }
+
+    if (status) {
+      filter.paymentStatus = status.toLowerCase();
+    }
+
+    if (customerId && mongosse.Types.ObjectId.isValid(customerId)) {
+      filter.customerId = customerId;
+    }
+
+    const invoices = await Invoice.find(filter)
+      .populate("customerId")
+      .populate("shipmentId")
+      .sort({ issueDate: -1 });
+
+    let totalBilled = 0;
+    let totalPaid = 0;
+    let totalOutstanding = 0;
+    let totalOverdue = 0;
+    const statusCounts = {
+      paid: 0,
+      pending: 0,
+      partially_paid: 0,
+      overdue: 0,
+      cancelled: 0,
+    };
+
+    invoices.forEach((inv) => {
+      totalBilled += inv.totalAmount || 0;
+      totalPaid += inv.paidAmount || 0;
+      totalOutstanding += inv.balanceAmount || 0;
+      if (inv.paymentStatus === "overdue")
+        totalOverdue += inv.balanceAmount || 0;
+      if (statusCounts[inv.paymentStatus] !== undefined)
+        statusCounts[inv.paymentStatus]++;
+    });
+
+    const summary = {
+      totalInvoices: invoices.length,
+      totalBilled: Math.round(totalBilled * 100) / 100,
+      totalPaid: Math.round(totalPaid * 100) / 100,
+      totalOutstanding: Math.round(totalOutstanding * 100) / 100,
+      totalOverdue: Math.round(totalOverdue * 100) / 100,
+      paidCount: statusCounts.paid,
+      pendingCount: statusCounts.pending,
+      partiallyPaidCount: statusCounts.partially_paid,
+      overdueCount: statusCounts.overdue,
+      cancelledCount: statusCounts.cancelled,
+    };
+
+    const excelBuffer = generateBillingExcelReport(summary, invoices);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="Billing-Report-${Date.now()}.xlsx"`,
+    );
+    res.setHeader("Content-Length", excelBuffer.length);
+
+    return res.status(200).end(excelBuffer);
+  } catch (error) {
+    console.error("EXPORT BILLING REPORT ERROR:", error);
+    return res.status(500).json({ message: error.message });
   }
 });
 
