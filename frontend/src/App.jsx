@@ -19,6 +19,7 @@ import Driverdashboard from "./pages/Driver Dashboard/Driverdashboard";
 import WarehouseScan from "./pages/WarehouseScan/WarehouseScan";
 import { ROLES } from "./utils/rolePermissions";
 import AdminRegistration from "./pages/AdminResgistration/AdminRegistration";
+import ScrollToTop from "./pages/LandingPage/Scrolltop";
 
 // All valid roles matching User db schema
 const ALL_ROLES = [
