@@ -901,7 +901,7 @@ export default function Landingpage() {
               Track Your Shipment
             </a>
             <img
-              src="../../../public/deliveryimg.png"
+              src="/deliveryimg.png"
               alt="Logistic Management System"
               className="shipmentSectionContainercImg"
             />
