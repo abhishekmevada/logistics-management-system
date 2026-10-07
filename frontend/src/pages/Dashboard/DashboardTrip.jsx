@@ -542,7 +542,8 @@ function CreateTripModal({
                     3. Attach Shipments ({selectedShipmentIds.length} Selected)
                   </h5>
                   <span style={{ fontSize: "11.5px", color: "#64748b" }}>
-                    Select created shipments to consolidate into this trip payload.
+                    Select created shipments to consolidate into this trip
+                    payload.
                   </span>
                 </div>
                 {availableShipments.length > 0 && (
@@ -579,9 +580,10 @@ function CreateTripModal({
               <div
                 className="shp-table-wrap shp-table-wrap--sm"
                 style={{
-                  maxHeight: "200px",
+                  maxHeight: "240px",
                   overflowY: "auto",
                   border: "1px solid var(--border)",
+                  borderRadius: "6px",
                 }}
               >
                 {filteredAvailableShipments.length > 0 ? (
@@ -1595,8 +1597,8 @@ export default function DashboardTrip() {
         setVehicles(Array.isArray(data) ? data : []);
       }
 
-      // Shipments
-      const shipmentsRes = await fetch(`${API_BASE_URL}/shipments?limit=1000`, {
+      // Shipments (fetch all shipments with status 'created' for trip attachment)
+      const shipmentsRes = await fetch(`${API_BASE_URL}/shipments?status=created`, {
         headers,
       });
       if (shipmentsRes.ok) {

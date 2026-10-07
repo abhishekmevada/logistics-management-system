@@ -342,15 +342,21 @@ export default function DashboardNotification() {
           </div>
         </div>
 
-        <button
-          onClick={fetchNotifications}
-          className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0"
-        >
-          <RefreshCw
-            className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
-          />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          <button
+            type="button"
+            onClick={fetchNotifications}
+            disabled={loading}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-900 text-xs font-semibold rounded-xl border border-slate-200 hover:border-slate-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed select-none"
+            title="Refresh notifications"
+          >
+            <RefreshCw
+              size={14}
+              className={`text-slate-500 transition-colors ${loading ? "animate-spin text-blue-600" : ""}`}
+            />
+            <span>{loading ? "Refreshing..." : "Refresh"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter & Search Bar */}
@@ -427,13 +433,16 @@ export default function DashboardNotification() {
             </p>
           </div>
         ) : fetchError ? (
-          <div className="w-full bg-rose-50 border border-rose-200 rounded-2xl p-5 text-center text-xs text-rose-700">
-            Failed to load notifications: {fetchError}{" "}
+          <div className="w-full bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center text-xs text-rose-700 flex flex-col sm:flex-row items-center justify-center gap-2">
+            <span>Failed to load notifications: {fetchError}</span>
             <button
+              type="button"
               onClick={fetchNotifications}
-              className="underline font-semibold ml-1 cursor-pointer"
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-rose-100 text-rose-800 font-semibold rounded-lg border border-rose-200 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Retry
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+              <span>Retry</span>
             </button>
           </div>
         ) : filteredNotifications.length === 0 ? (

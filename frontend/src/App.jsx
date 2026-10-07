@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppProvider } from "./context/AppContext";
 import Login from "./pages/Login/Login";
-import Register from "./pages/Register/Register";
 import ForgotPassword from "./pages/ForgotPassword/ForgotPassword";
 import VerifyOTP from "./pages/VerifyOTP/VerifyOTP";
 import ResetPassword from "./pages/ResetPassword/ResetPassword";
@@ -19,6 +18,7 @@ import LandingContact from "./pages/LandingPage/LandingContact";
 import Driverdashboard from "./pages/Driver Dashboard/Driverdashboard";
 import WarehouseScan from "./pages/WarehouseScan/WarehouseScan";
 import { ROLES } from "./utils/rolePermissions";
+import AdminRegistration from "./pages/AdminResgistration/AdminRegistration";
 
 // All valid roles matching User db schema
 const ALL_ROLES = [
@@ -45,7 +45,6 @@ export default function App() {
           <Route path="/platform" element={<LandingPlatform />} />
           <Route path="/contact" element={<LandingContact />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/verify-otp" element={<VerifyOTP />} />
           <Route path="/reset-password" element={<ResetPassword />} />
@@ -58,6 +57,7 @@ export default function App() {
             path="/warehouse-scan/:trackingId"
             element={<WarehouseScan />}
           />
+          <Route path="/admin-registration" element={<AdminRegistration />} />
 
           {/* Protected: all authenticated roles */}
           <Route
@@ -226,7 +226,11 @@ export default function App() {
             path="/warehouse"
             element={
               <ProtectedRoute
-                allowedRoles={["admin", "logistics_manager", "warehouse_manager"]}
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "warehouse_manager",
+                ]}
               >
                 <Dashboard initialTab="warehouses" />
               </ProtectedRoute>
@@ -236,7 +240,11 @@ export default function App() {
             path="/warehouses"
             element={
               <ProtectedRoute
-                allowedRoles={["admin", "logistics_manager", "warehouse_manager"]}
+                allowedRoles={[
+                  "admin",
+                  "logistics_manager",
+                  "warehouse_manager",
+                ]}
               >
                 <Dashboard initialTab="warehouses" />
               </ProtectedRoute>
@@ -399,6 +407,23 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={ALL_ROLES}>
                 <Dashboard initialTab="notifications" />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/queries"
+            element={
+              <ProtectedRoute allowedRoles={ALL_ROLES}>
+                <Dashboard initialTab="queries" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/query"
+            element={
+              <ProtectedRoute allowedRoles={ALL_ROLES}>
+                <Dashboard initialTab="queries" />
               </ProtectedRoute>
             }
           />

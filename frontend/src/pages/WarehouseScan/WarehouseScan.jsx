@@ -457,9 +457,16 @@ export default function WarehouseScan() {
         ──────────────────────────────────────────────────────────────── */}
         <div className="wh-header">
           <div className="wh-logo-group">
-            <span className="wh-logo-brand">LOGO</span>
-            <span className="wh-logo-divider">|</span>
-            <span className="wh-logo-title">Shipment Verifying</span>
+            <img
+              src="/Athenura.png"
+              alt="Athenura"
+              className="wh-logo-img"
+            />
+            <span className="wh-logo-divider" aria-hidden="true" />
+            <div className="wh-logo-title-group">
+              <span className="wh-logo-title">Shipment Verification</span>
+              <span className="wh-logo-badge">Warehouse</span>
+            </div>
           </div>
 
           <div className="wh-header-actions">

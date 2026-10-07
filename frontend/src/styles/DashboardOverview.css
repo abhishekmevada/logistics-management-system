@@ -23,6 +23,35 @@
   color: var(--text-muted);
 }
 
+.ov-report-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-report-select {
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-family: var(--primary-text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, #ffffff);
+  color: var(--color, #0f172a);
+  cursor: pointer;
+  outline: none;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.ov-report-select:hover {
+  border-color: var(--primary-color, hsl(214, 100%, 60%));
+}
+
+.ov-report-select:focus {
+  border-color: var(--primary-color, hsl(214, 100%, 60%));
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
 .ov-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));

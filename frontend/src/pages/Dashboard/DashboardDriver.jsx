@@ -395,17 +395,10 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm flex-1 sm:flex-initial justify-center"
             onClick={() => setIsEditing(!isEditing)}
           >
             <Edit2 size={14} /> {isEditing ? "Cancel" : "Edit Contact Details"}
@@ -415,7 +408,7 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
               <button
                 type="button"
                 onClick={() => onToggleStatus(driver)}
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm flex-1 sm:flex-initial justify-center"
                 style={{
                   color: "var(--danger, #dc2626)",
                   borderColor: "var(--danger, #dc2626)",
@@ -428,7 +421,7 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
               <button
                 type="button"
                 onClick={() => onToggleStatus(driver)}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm flex-1 sm:flex-initial justify-center"
               >
                 <UserPlus size={14} />
                 <span>Activate</span>
@@ -448,13 +441,7 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
             border: "1px solid var(--border)",
           }}
         >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "0.85rem",
-            }}
-          >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="form-group">
               <label className="form-label">Phone Number</label>
               <input
@@ -497,21 +484,16 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
             />
           </div>
           <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "0.5rem",
-              marginTop: "1rem",
-            }}
+            className="flex flex-col-reverse sm:flex-row justify-end gap-2 mt-4"
           >
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm w-full sm:w-auto"
               onClick={() => setIsEditing(false)}
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary btn-sm">
+            <button type="submit" className="btn btn-primary btn-sm w-full sm:w-auto">
               Save Changes
             </button>
           </div>
@@ -520,11 +502,7 @@ function DriverProfileCard({ driver, onUpdateDriverContact, onToggleStatus }) {
 
       {/* Requirement Points 1 & 2 (Matching Image 1) */}
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "1.25rem",
-        }}
+        className="grid grid-cols-1 md:grid-cols-2 gap-4"
       >
         {/* Contact Details */}
         <div
@@ -674,87 +652,60 @@ function DocumentExpiryTracker({ driver, onSendReminder, sendingReminderDoc }) {
   const docs = driver.documentsList || [];
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table className="drv-doc-table">
-        <thead>
-          <tr>
-            <th>DOCUMENT NAME</th>
-            <th>DOCUMENT NUMBER</th>
-            <th>EXPIRY DATE</th>
-            <th>STATUS</th>
-            <th>COUNTDOWN</th>
-            <th style={{ textAlign: "right" }}>ACTION</th>
-          </tr>
-        </thead>
-        <tbody>
-          {docs.length === 0 ? (
-            <tr>
-              <td
-                colSpan={6}
-                style={{
-                  textAlign: "center",
-                  padding: "2.5rem 1rem",
-                  color: "var(--text-muted, #64748b)",
-                }}
-              >
-                <FileText
-                  size={26}
-                  style={{
-                    opacity: 0.4,
-                    display: "block",
-                    margin: "0 auto 8px",
-                  }}
-                />
-                <p
-                  style={{
-                    margin: "0 0 4px",
-                    fontWeight: 600,
-                    color: "#334155",
-                  }}
-                >
-                  No documents found
-                </p>
-                <span style={{ fontSize: "12px" }}>
-                  No compliance or license documents uploaded for this driver.
-                </span>
-              </td>
-            </tr>
-          ) : (
-            docs.map((doc) => {
+    <div className="drv-doc-tracker-wrapper">
+      {docs.length === 0 ? (
+        <div className="drv-doc-empty">
+          <FileText
+            size={28}
+            className="drv-doc-empty__icon"
+          />
+          <p className="drv-doc-empty__title">No documents found</p>
+          <span className="drv-doc-empty__desc">
+            No compliance or license documents uploaded for this driver.
+          </span>
+        </div>
+      ) : (
+        <>
+          {/* Mobile Card View (visible on < 640px) */}
+          <div className="drv-doc-cards-mobile">
+            {docs.map((doc) => {
               const isExpiring = doc.status === "Expiring Soon";
               const isExpired = doc.status === "Expired";
               const isValid = doc.status === "Valid";
 
               return (
-                <tr key={doc.id || doc.name}>
-                  <td>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <FileText
-                        size={16}
-                        color={
+                <div
+                  key={doc.id || doc.name}
+                  className={`drv-doc-card-item ${
+                    isExpired
+                      ? "drv-doc-card-item--expired"
+                      : isExpiring
+                        ? "drv-doc-card-item--expiring"
+                        : "drv-doc-card-item--valid"
+                  }`}
+                >
+                  <div className="drv-doc-card-item__head">
+                    <div className="drv-doc-card-item__title-box">
+                      <div
+                        className={`drv-doc-card-item__icon ${
                           isExpired
-                            ? "#ef4444"
+                            ? "bg-rose-50 text-rose-500 border border-rose-200"
                             : isExpiring
-                              ? "#f59e0b"
-                              : "#2563eb"
-                        }
-                      />
-                      <strong style={{ color: "#1e293b" }}>{doc.name}</strong>
+                              ? "bg-amber-50 text-amber-500 border border-amber-200"
+                              : "bg-blue-50 text-blue-600 border border-blue-200"
+                        }`}
+                      >
+                        <FileText size={16} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <strong className="drv-doc-card-item__name">
+                          {doc.name}
+                        </strong>
+                        <span className="drv-doc-card-item__number font-mono">
+                          {doc.number || "—"}
+                        </span>
+                      </div>
                     </div>
-                  </td>
-                  <td style={{ fontFamily: "monospace", color: "#475569" }}>
-                    {doc.number || "—"}
-                  </td>
-                  <td style={{ color: "#334155", fontWeight: 500 }}>
-                    {doc.expiryDate || "—"}
-                  </td>
-                  <td>
                     <span
                       className={`badge ${
                         isValid
@@ -766,30 +717,38 @@ function DocumentExpiryTracker({ driver, onSendReminder, sendingReminderDoc }) {
                     >
                       {doc.status}
                     </span>
-                  </td>
-                  <td>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        fontWeight: 600,
-                        color: isExpired
-                          ? "#dc2626"
-                          : isExpiring
-                            ? "#d97706"
-                            : "#16a34a",
-                      }}
-                    >
-                      <Clock size={13} />
-                      {doc.countdown}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: "right" }}>
+                  </div>
+
+                  <div className="drv-doc-card-item__details">
+                    <div className="drv-doc-card-item__row">
+                      <span className="drv-doc-card-item__label">Expiry Date:</span>
+                      <strong className="drv-doc-card-item__value">
+                        {doc.expiryDate || "—"}
+                      </strong>
+                    </div>
+                    <div className="drv-doc-card-item__row">
+                      <span className="drv-doc-card-item__label">Countdown:</span>
+                      <span
+                        className="drv-doc-card-item__countdown"
+                        style={{
+                          color: isExpired
+                            ? "#dc2626"
+                            : isExpiring
+                              ? "#d97706"
+                              : "#16a34a",
+                        }}
+                      >
+                        <Clock size={13} />
+                        <span>{doc.countdown}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="drv-doc-card-item__action">
                     {doc.action === "Remind Driver" ? (
                       <button
                         type="button"
-                        className="btn-remind"
+                        className="btn-remind w-full justify-center"
                         disabled={sendingReminderDoc === doc.name}
                         onClick={() => onSendReminder(doc.name, driver)}
                         style={{
@@ -798,15 +757,12 @@ function DocumentExpiryTracker({ driver, onSendReminder, sendingReminderDoc }) {
                             sendingReminderDoc === doc.name
                               ? "not-allowed"
                               : "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
                         }}
                       >
                         {sendingReminderDoc === doc.name ? (
                           <>
                             <RefreshCw size={13} className="animate-spin" />
-                            <span>Sending...</span>
+                            <span>Sending Reminder...</span>
                           </>
                         ) : (
                           <>
@@ -816,23 +772,150 @@ function DocumentExpiryTracker({ driver, onSendReminder, sendingReminderDoc }) {
                         )}
                       </button>
                     ) : (
-                      <span
-                        style={{
-                          color: "#16a34a",
-                          fontWeight: 700,
-                          fontSize: "12px",
-                        }}
-                      >
-                        Compliant
-                      </span>
+                      <div className="drv-doc-card-item__compliant">
+                        <CheckCircle2 size={14} />
+                        <span>Compliant</span>
+                      </div>
                     )}
-                  </td>
-                </tr>
+                  </div>
+                </div>
               );
-            })
-          )}
-        </tbody>
-      </table>
+            })}
+          </div>
+
+          {/* Desktop/Tablet Table View (visible on >= 640px) */}
+          <div className="drv-doc-table-desktop">
+            <table className="drv-doc-table">
+              <thead>
+                <tr>
+                  <th>DOCUMENT NAME</th>
+                  <th>DOCUMENT NUMBER</th>
+                  <th>EXPIRY DATE</th>
+                  <th>STATUS</th>
+                  <th>COUNTDOWN</th>
+                  <th style={{ textAlign: "right" }}>ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {docs.map((doc) => {
+                  const isExpiring = doc.status === "Expiring Soon";
+                  const isExpired = doc.status === "Expired";
+                  const isValid = doc.status === "Valid";
+
+                  return (
+                    <tr key={doc.id || doc.name}>
+                      <td>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                          }}
+                        >
+                          <FileText
+                            size={16}
+                            color={
+                              isExpired
+                                ? "#ef4444"
+                                : isExpiring
+                                  ? "#f59e0b"
+                                  : "#2563eb"
+                            }
+                          />
+                          <strong style={{ color: "#1e293b" }}>{doc.name}</strong>
+                        </div>
+                      </td>
+                      <td style={{ fontFamily: "monospace", color: "#475569" }}>
+                        {doc.number || "—"}
+                      </td>
+                      <td style={{ color: "#334155", fontWeight: 500 }}>
+                        {doc.expiryDate || "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            isValid
+                              ? "badge-valid"
+                              : isExpiring
+                                ? "badge-expiring"
+                                : "badge-expired"
+                          }`}
+                        >
+                          {doc.status}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 600,
+                            color: isExpired
+                              ? "#dc2626"
+                              : isExpiring
+                                ? "#d97706"
+                                : "#16a34a",
+                          }}
+                        >
+                          <Clock size={13} />
+                          {doc.countdown}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {doc.action === "Remind Driver" ? (
+                          <button
+                            type="button"
+                            className="btn-remind"
+                            disabled={sendingReminderDoc === doc.name}
+                            onClick={() => onSendReminder(doc.name, driver)}
+                            style={{
+                              opacity: sendingReminderDoc === doc.name ? 0.7 : 1,
+                              cursor:
+                                sendingReminderDoc === doc.name
+                                  ? "not-allowed"
+                                  : "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            {sendingReminderDoc === doc.name ? (
+                              <>
+                                <RefreshCw size={13} className="animate-spin" />
+                                <span>Sending...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Bell size={13} />
+                                <span>Remind Driver</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span
+                            style={{
+                              color: "#16a34a",
+                              fontWeight: 700,
+                              fontSize: "12px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>Compliant</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2215,7 +2298,7 @@ export default function DashboardDriver() {
 
         {/* Card 2: Tabs Container & Content (Matching Image 2 exact structure) */}
         <div className="card">
-          <div className="tabs-container">
+          <div className="tabs-container no-scrollbar">
             <button
               className={`tab-btn ${detailActiveTab === "documents" ? "active" : ""}`}
               onClick={() => setDetailActiveTab("documents")}

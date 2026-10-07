@@ -34,6 +34,9 @@ import {
   ToggleLeft,
   ToggleRight,
   Loader2,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import "../../styles/WarehouseManagement.css";
 import "../../styles/ShipmentManagement.css";
@@ -86,6 +89,26 @@ export default function Warehouse() {
   const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState("All");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("All");
   const [selectedZoneFilter, setSelectedZoneFilter] = useState("All");
+
+  // Inbound & Outbound Pagination States
+  const [inboundPage, setInboundPage] = useState(1);
+  const [inboundPageSize, setInboundPageSize] = useState(10);
+  const [outboundPage, setOutboundPage] = useState(1);
+  const [outboundPageSize, setOutboundPageSize] = useState(10);
+
+  // Helper for pagination page numbers
+  const getPageNumbers = (current, total) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, "...", total];
+    }
+    if (current >= total - 3) {
+      return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, "...", current - 1, current, current + 1, "...", total];
+  };
 
   // Toast feedback notification (same as DashboardShipment.jsx)
   const [toastMessage, setToastMessage] = useState(null);
@@ -1012,6 +1035,33 @@ export default function Warehouse() {
     });
   }, [outboundShipments, searchQuery, selectedStatusFilter]);
 
+  // Reset page to 1 when filters or tabs change
+  useEffect(() => {
+    setInboundPage(1);
+  }, [searchQuery, selectedStatusFilter]);
+
+  useEffect(() => {
+    setOutboundPage(1);
+  }, [searchQuery, selectedStatusFilter]);
+
+  // Inbound Pagination Calculations
+  const totalInboundPages = Math.ceil(filteredInbound.length / inboundPageSize) || 1;
+  const safeInboundPage = Math.min(Math.max(1, inboundPage), totalInboundPages);
+  const inboundStartIndex = (safeInboundPage - 1) * inboundPageSize;
+  const inboundEndIndex = Math.min(inboundStartIndex + inboundPageSize, filteredInbound.length);
+  const paginatedInbound = useMemo(() => {
+    return filteredInbound.slice(inboundStartIndex, inboundStartIndex + inboundPageSize);
+  }, [filteredInbound, inboundStartIndex, inboundPageSize]);
+
+  // Outbound Pagination Calculations
+  const totalOutboundPages = Math.ceil(filteredOutbound.length / outboundPageSize) || 1;
+  const safeOutboundPage = Math.min(Math.max(1, outboundPage), totalOutboundPages);
+  const outboundStartIndex = (safeOutboundPage - 1) * outboundPageSize;
+  const outboundEndIndex = Math.min(outboundStartIndex + outboundPageSize, filteredOutbound.length);
+  const paginatedOutbound = useMemo(() => {
+    return filteredOutbound.slice(outboundStartIndex, outboundStartIndex + outboundPageSize);
+  }, [filteredOutbound, outboundStartIndex, outboundPageSize]);
+
   const filteredStorage = useMemo(() => {
     return storageItems.filter((p) => {
       const s = p.shipmentId || {};
@@ -1776,7 +1826,7 @@ export default function Warehouse() {
                     </td>
                   </tr>
                 ) : (
-                  filteredInbound.map((s) => (
+                  paginatedInbound.map((s) => (
                     <tr key={s._id} className="shp-table__row">
                       <td>
                         <button
@@ -1877,6 +1927,123 @@ export default function Warehouse() {
               </tbody>
             </table>
           </div>
+
+          <div className="shp-table-footer">
+            <div className="shp-pagination-info">
+              {filteredInbound.length === 0 ? (
+                <span>No inbound shipments</span>
+              ) : (
+                <span>
+                  Showing <strong>{inboundStartIndex + 1}</strong>–
+                  <strong>{inboundEndIndex}</strong> of{" "}
+                  <strong>{filteredInbound.length}</strong> inbound shipments
+                </span>
+              )}
+            </div>
+
+            {filteredInbound.length > 0 && (
+              <div className="shp-pagination-controls">
+                <div className="shp-pagination-size">
+                  <label htmlFor="inbound-page-size-select">Rows per page:</label>
+                  <select
+                    id="inbound-page-size-select"
+                    className="shp-pagination-select"
+                    value={inboundPageSize}
+                    onChange={(e) => {
+                      setInboundPageSize(Number(e.target.value));
+                      setInboundPage(1);
+                    }}
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+
+                <div className="shp-pagination-nav">
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="First Page"
+                    disabled={safeInboundPage === 1}
+                    onClick={() => setInboundPage(1)}
+                  >
+                    <ChevronsLeft size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="Previous Page"
+                    disabled={safeInboundPage === 1}
+                    onClick={() => setInboundPage((p) => Math.max(p - 1, 1))}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}
+                  >
+                    <ChevronLeft size={14} />
+                    <span>Prev</span>
+                  </button>
+
+                  <div className="shp-pagination-pages">
+                    {getPageNumbers(safeInboundPage, totalInboundPages).map(
+                      (pageNum, idx) =>
+                        pageNum === "..." ? (
+                          <span
+                            key={`inbound-ellipsis-${idx}`}
+                            className="shp-pagination-ellipsis"
+                          >
+                            …
+                          </span>
+                        ) : (
+                          <button
+                            key={`inbound-page-${pageNum}`}
+                            type="button"
+                            className={`shp-pagination-btn ${
+                              safeInboundPage === pageNum
+                                ? "shp-pagination-btn--active"
+                                : ""
+                            }`}
+                            onClick={() => setInboundPage(pageNum)}
+                          >
+                            {pageNum}
+                          </button>
+                        ),
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="Next Page"
+                    disabled={safeInboundPage === totalInboundPages}
+                    onClick={() =>
+                      setInboundPage((p) => Math.min(p + 1, totalInboundPages))
+                    }
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="Last Page"
+                    disabled={safeInboundPage === totalInboundPages}
+                    onClick={() => setInboundPage(totalInboundPages)}
+                  >
+                    <ChevronsRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1950,7 +2117,7 @@ export default function Warehouse() {
                     </td>
                   </tr>
                 ) : (
-                  filteredOutbound.map((s) => (
+                  paginatedOutbound.map((s) => (
                     <tr key={s._id} className="shp-table__row">
                       <td>
                         <button
@@ -2059,6 +2226,123 @@ export default function Warehouse() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="shp-table-footer">
+            <div className="shp-pagination-info">
+              {filteredOutbound.length === 0 ? (
+                <span>No outbound shipments</span>
+              ) : (
+                <span>
+                  Showing <strong>{outboundStartIndex + 1}</strong>–
+                  <strong>{outboundEndIndex}</strong> of{" "}
+                  <strong>{filteredOutbound.length}</strong> outbound shipments
+                </span>
+              )}
+            </div>
+
+            {filteredOutbound.length > 0 && (
+              <div className="shp-pagination-controls">
+                <div className="shp-pagination-size">
+                  <label htmlFor="outbound-page-size-select">Rows per page:</label>
+                  <select
+                    id="outbound-page-size-select"
+                    className="shp-pagination-select"
+                    value={outboundPageSize}
+                    onChange={(e) => {
+                      setOutboundPageSize(Number(e.target.value));
+                      setOutboundPage(1);
+                    }}
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+
+                <div className="shp-pagination-nav">
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="First Page"
+                    disabled={safeOutboundPage === 1}
+                    onClick={() => setOutboundPage(1)}
+                  >
+                    <ChevronsLeft size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="Previous Page"
+                    disabled={safeOutboundPage === 1}
+                    onClick={() => setOutboundPage((p) => Math.max(p - 1, 1))}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}
+                  >
+                    <ChevronLeft size={14} />
+                    <span>Prev</span>
+                  </button>
+
+                  <div className="shp-pagination-pages">
+                    {getPageNumbers(safeOutboundPage, totalOutboundPages).map(
+                      (pageNum, idx) =>
+                        pageNum === "..." ? (
+                          <span
+                            key={`outbound-ellipsis-${idx}`}
+                            className="shp-pagination-ellipsis"
+                          >
+                            …
+                          </span>
+                        ) : (
+                          <button
+                            key={`outbound-page-${pageNum}`}
+                            type="button"
+                            className={`shp-pagination-btn ${
+                              safeOutboundPage === pageNum
+                                ? "shp-pagination-btn--active"
+                                : ""
+                            }`}
+                            onClick={() => setOutboundPage(pageNum)}
+                          >
+                            {pageNum}
+                          </button>
+                        ),
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="Next Page"
+                    disabled={safeOutboundPage === totalOutboundPages}
+                    onClick={() =>
+                      setOutboundPage((p) => Math.min(p + 1, totalOutboundPages))
+                    }
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "2px",
+                    }}
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="shp-pagination-btn"
+                    title="Last Page"
+                    disabled={safeOutboundPage === totalOutboundPages}
+                    onClick={() => setOutboundPage(totalOutboundPages)}
+                  >
+                    <ChevronsRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

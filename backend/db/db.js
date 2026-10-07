@@ -35,30 +35,28 @@ const connectDb = async () => {
 
 connectDb();
 
-const userSchema = mongosse.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: {
-    type: String,
-    required: true,
-    default: "Admin",
+const userSchema = mongosse.Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    role: {
+      type: String,
+      required: true,
+      default: "Admin",
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: ["active", "inactive"],
+      default: "active",
+    },
+    resetOtpHash: { type: String, default: null },
+    resetOtpExpiresAt: { type: Date, default: null },
+    resetOtpVerified: { type: Boolean, default: false },
   },
-  status: {
-    type: String,
-    required: true,
-    enum: ["active", "inactive"],
-    default: "active",
-  },
-  phone: { type: String, default: "" },
-  primaryHub: { type: String, default: "" },
-  timezone: { type: String, default: "" },
-  twoFactorEnabled: { type: Boolean, default: false },
-  hub: { type: String, default: "" },
-  resetOtpHash: { type: String, default: null },
-  resetOtpExpiresAt: { type: Date, default: null },
-  resetOtpVerified: { type: Boolean, default: false },
-}, { strict: false });
+  { strict: false },
+);
 
 const User = mongosse.model("user", userSchema);
 
@@ -994,25 +992,44 @@ const invoiceSchema = new mongosse.Schema(
 
 const Invoice = mongosse.model("invoice", invoiceSchema);
 
-const companyInfoSchema = mongosse.Schema({
-  name: { type: String, default: "LogiTrack Express & Freight Solutions Pvt. Ltd." },
-  tagline: { type: String, default: "Integrated Logistics, Supply Chain & Fleet Management" },
-  cin: { type: String, default: "U63090MH2016PTC284912" },
-  gstin: { type: String, default: "27AABCL8931M1ZQ" },
-  pan: { type: String, default: "AABCL8931M" },
-  hsnSacCode: { type: String, default: "996511 (Road Freight Transport Services)" },
-  headOffice: { type: String, default: "LogiTrack Corporate Towers, 6th Floor, Sector 18, MIDC Industrial Area, Vashi, Navi Mumbai, Maharashtra - 400705" },
-  phone: { type: String, default: "+91 22 6890 4000 / 1800 209 8899" },
-  email: { type: String, default: "billing@logitrack-logistics.com" },
-  web: { type: String, default: "www.logitrack-logistics.com" },
-  bankDetails: {
-    bankName: { type: String, default: "HDFC Bank Ltd" },
-    accountName: { type: String, default: "LogiTrack Express & Freight Solutions Pvt Ltd" },
-    accountNumber: { type: String, default: "50200084920194" },
-    ifscCode: { type: String, default: "HDFC0000128" },
-    branch: { type: String, default: "Vashi Sector 17 Branch, Navi Mumbai" },
+const companyInfoSchema = mongosse.Schema(
+  {
+    name: {
+      type: String,
+      default: "LogiTrack Express & Freight Solutions Pvt. Ltd.",
+    },
+    tagline: {
+      type: String,
+      default: "Integrated Logistics, Supply Chain & Fleet Management",
+    },
+    cin: { type: String, default: "U63090MH2016PTC284912" },
+    gstin: { type: String, default: "27AABCL8931M1ZQ" },
+    pan: { type: String, default: "AABCL8931M" },
+    hsnSacCode: {
+      type: String,
+      default: "996511 (Road Freight Transport Services)",
+    },
+    headOffice: {
+      type: String,
+      default:
+        "LogiTrack Corporate Towers, 6th Floor, Sector 18, MIDC Industrial Area, Vashi, Navi Mumbai, Maharashtra - 400705",
+    },
+    phone: { type: String, default: "+91 22 6890 4000 / 1800 209 8899" },
+    email: { type: String, default: "billing@logitrack-logistics.com" },
+    web: { type: String, default: "www.logitrack-logistics.com" },
+    bankDetails: {
+      bankName: { type: String, default: "HDFC Bank Ltd" },
+      accountName: {
+        type: String,
+        default: "LogiTrack Express & Freight Solutions Pvt Ltd",
+      },
+      accountNumber: { type: String, default: "50200084920194" },
+      ifscCode: { type: String, default: "HDFC0000128" },
+      branch: { type: String, default: "Vashi Sector 17 Branch, Navi Mumbai" },
+    },
   },
-}, { strict: false });
+  { strict: false },
+);
 
 const CompanyInfo = mongosse.model("companyinfo", companyInfoSchema);
 
@@ -1053,10 +1070,19 @@ const notificationSchema = mongosse.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const Notification = mongosse.model("notification", notificationSchema);
+
+const querySchema = mongosse.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true },
+  message: { type: String, required: true },
+  datetime: { type: Date, default: Date.now },
+});
+
+const Query = mongosse.model("query", querySchema);
 
 module.exports = {
   User,
@@ -1077,4 +1103,5 @@ module.exports = {
   Invoice,
   CompanyInfo,
   Notification,
+  Query,
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Activity,
   AlertCircle,
@@ -40,7 +40,6 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
-  Trash2,
   TrendingUp,
   Truck,
   Upload,
@@ -332,7 +331,6 @@ function VehicleTable({
   endIndex = 0,
   onView,
   onEdit,
-  onDelete,
   onToggleStatus,
   onOpenDocuments,
   onOpenMaintenance,
@@ -516,25 +514,57 @@ function VehicleTable({
                     </td>
 
                     <td>
-                      <button
-                        type="button"
-                        onClick={() => onOpenMaintenance(v)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          padding: 0,
-                          textAlign: "left",
-                          cursor: "pointer",
-                        }}
-                        title="Click to view maintenance logs"
-                      >
-                        <p className="shp-cell-title">
-                          {v.maintenance?.nextServiceDate || "Not Scheduled"}
-                        </p>
-                        <span className="shp-cell-sub">
-                          Last: {v.maintenance?.lastServiceDate || "N/A"}
-                        </span>
-                      </button>
+                      {(() => {
+                        const rawNext =
+                          v.maintenance?.nextServiceDate ||
+                          v.maintenance?.nextDueDate ||
+                          v.maintenanceHistory?.[0]?.nextServiceDate ||
+                          v.maintenanceHistory?.[0]?.nextDueDate;
+                        const rawLast =
+                          v.maintenance?.lastServiceDate ||
+                          v.maintenance?.date ||
+                          v.maintenanceHistory?.[0]?.serviceDate ||
+                          v.maintenanceHistory?.[0]?.date;
+
+                        const formatDisplayDate = (d) => {
+                          if (!d) return null;
+                          try {
+                            const parsed = new Date(d);
+                            if (isNaN(parsed.getTime())) return String(d);
+                            return parsed.toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            });
+                          } catch (e) {
+                            return String(d);
+                          }
+                        };
+
+                        const displayNext =
+                          formatDisplayDate(rawNext) || "Not Scheduled";
+                        const displayLast = formatDisplayDate(rawLast) || "N/A";
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => onOpenMaintenance(v)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              textAlign: "left",
+                              cursor: "pointer",
+                            }}
+                            title="Click to view maintenance logs"
+                          >
+                            <p className="shp-cell-title">{displayNext}</p>
+                            <span className="shp-cell-sub">
+                              Last: {displayLast}
+                            </span>
+                          </button>
+                        );
+                      })()}
                     </td>
 
                     <td style={{ textAlign: "right" }}>
@@ -580,14 +610,6 @@ function VehicleTable({
                           ) : (
                             <PowerOff size={14} />
                           )}
-                        </button>
-                        <button
-                          type="button"
-                          className="shp-icon-btn shp-icon-btn--danger"
-                          title="Delete Vehicle"
-                          onClick={() => onDelete(v)}
-                        >
-                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -1650,27 +1672,27 @@ function VehicleDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-6 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full sm:w-[860px] max-w-4xl my-auto sm:my-6 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
         <div
-          className="px-6 py-4 border-b border-slate-100 flex items-center justify-between text-white"
+          className="px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-center justify-between text-slate-800 gap-2 sm:gap-3 shrink-0"
           style={{ background: "hsl(0deg, 0%, 95%)" }}
         >
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-xs">
-              <Truck className="w-5 h-5" />
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-xs shrink-0">
+              <Truck className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center space-x-2 min-w-0">
                 <h3
-                  className="text-base font-extrabold  tracking-wide"
+                  className="text-sm sm:text-base font-extrabold tracking-wide truncate"
                   style={{ color: "black" }}
                 >
                   {vehicle.model}
                 </h3>
               </div>
               <div
-                className="flex items-center space-x-2 mt-0.5 text-xs"
+                className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-0.5 text-[11px] sm:text-xs text-slate-700"
                 style={{ color: "black" }}
               >
                 <span className="font-mono font-bold">
@@ -1684,13 +1706,13 @@ function VehicleDetailsModal({
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
             <button
               onClick={() => {
                 onClose();
                 onEdit(vehicle);
               }}
-              className="px-3 py-1.5  text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1 border "
+              className="px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center space-x-1 border"
               style={{
                 background: "hsl(0deg, 0%, 80%)",
                 color: "black",
@@ -1702,17 +1724,18 @@ function VehicleDetailsModal({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-200 transition-colors"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="flex items-center space-x-1 px-6 border-b border-slate-200 bg-slate-50/70 overflow-x-auto text-xs font-bold text-slate-600">
+        <div className="flex items-center space-x-1 px-3 sm:px-6 border-b border-slate-200 bg-slate-50/70 overflow-x-auto no-scrollbar text-xs font-bold text-slate-600 shrink-0">
           <button
             onClick={() => setActiveTab("overview")}
-            className={`py-3 px-3.5 border-b-2 transition-colors whitespace-nowrap ${
+            className={`py-2.5 sm:py-3 px-2.5 sm:px-3.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === "overview"
                 ? "border-blue-600 text-blue-600 font-extrabold"
                 : "border-transparent hover:text-slate-900"
@@ -1722,7 +1745,7 @@ function VehicleDetailsModal({
           </button>
           <button
             onClick={() => setActiveTab("assignment")}
-            className={`py-3 px-3.5 border-b-2 transition-colors whitespace-nowrap ${
+            className={`py-2.5 sm:py-3 px-2.5 sm:px-3.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === "assignment"
                 ? "border-blue-600 text-blue-600 font-extrabold"
                 : "border-transparent hover:text-slate-900"
@@ -1732,7 +1755,7 @@ function VehicleDetailsModal({
           </button>
           <button
             onClick={() => setActiveTab("documents")}
-            className={`py-3 px-3.5 border-b-2 transition-colors whitespace-nowrap ${
+            className={`py-2.5 sm:py-3 px-2.5 sm:px-3.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === "documents"
                 ? "border-blue-600 text-blue-600 font-extrabold"
                 : "border-transparent hover:text-slate-900"
@@ -1742,7 +1765,7 @@ function VehicleDetailsModal({
           </button>
           <button
             onClick={() => setActiveTab("maintenance")}
-            className={`py-3 px-3.5 border-b-2 transition-colors whitespace-nowrap ${
+            className={`py-2.5 sm:py-3 px-2.5 sm:px-3.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === "maintenance"
                 ? "border-blue-600 text-blue-600 font-extrabold"
                 : "border-transparent hover:text-slate-900"
@@ -1752,7 +1775,7 @@ function VehicleDetailsModal({
           </button>
           <button
             onClick={() => setActiveTab("fuel")}
-            className={`py-3 px-3.5 border-b-2 transition-colors whitespace-nowrap ${
+            className={`py-2.5 sm:py-3 px-2.5 sm:px-3.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === "fuel"
                 ? "border-blue-600 text-blue-600 font-extrabold"
                 : "border-transparent hover:text-slate-900"
@@ -1762,7 +1785,7 @@ function VehicleDetailsModal({
           </button>
           <button
             onClick={() => setActiveTab("trips")}
-            className={`py-3 px-3.5 border-b-2 transition-colors whitespace-nowrap ${
+            className={`py-2.5 sm:py-3 px-2.5 sm:px-3.5 border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === "trips"
                 ? "border-blue-600 text-blue-600 font-extrabold"
                 : "border-transparent hover:text-slate-900"
@@ -1772,17 +1795,17 @@ function VehicleDetailsModal({
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-3.5 sm:p-6 overflow-y-auto flex-1 space-y-4 sm:space-y-6">
           {activeTab === "overview" && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                <div className="p-2.5 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
                     Operational Status
                   </p>
-                  <p className="text-sm font-extrabold text-slate-800 mt-1 flex items-center space-x-1.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-1 flex items-center space-x-1.5 truncate">
                     <span
-                      className={`w-2 h-2 rounded-full ${
+                      className={`w-2 h-2 rounded-full shrink-0 ${
                         vehicle.status === "Available"
                           ? "bg-emerald-500"
                           : vehicle.status === "Assigned"
@@ -1792,30 +1815,30 @@ function VehicleDetailsModal({
                               : "bg-slate-400"
                       }`}
                     ></span>
-                    <span>{vehicle.status}</span>
+                    <span className="truncate">{vehicle.status}</span>
                   </p>
                 </div>
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
                     Payload Capacity
                   </p>
-                  <p className="text-sm font-extrabold text-slate-800 mt-1">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-1 truncate">
                     {vehicle.capacity}
                   </p>
                 </div>
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
                     Odometer
                   </p>
-                  <p className="text-sm font-extrabold text-slate-800 mt-1">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-1 truncate">
                     {(vehicle.odometer || 0).toLocaleString()} km
                   </p>
                 </div>
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
                     Fleet Health Score
                   </p>
-                  <p className="text-sm font-extrabold text-emerald-600 mt-1 flex items-center space-x-1">
+                  <p className="text-xs sm:text-sm font-extrabold text-emerald-600 mt-1 flex items-center space-x-1 truncate">
                     <span>{maintenance.healthScore || 90}%</span>
                     <span className="text-[10px] font-medium text-slate-500">
                       (Good)
@@ -1824,16 +1847,16 @@ function VehicleDetailsModal({
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
                   Vehicle Specifications
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-4 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2.5 sm:gap-y-3 gap-x-3 sm:gap-x-4 text-xs">
                   <div>
                     <span className="text-slate-400 block text-[11px]">
                       Registration Plate
                     </span>
-                    <span className="font-mono font-bold text-slate-800">
+                    <span className="font-mono font-bold text-slate-800 break-all">
                       {vehicle.registrationNumber}
                     </span>
                   </div>
@@ -1872,10 +1895,10 @@ function VehicleDetailsModal({
                 </div>
               </div>
 
-              <div className="bg-blue-50/40 rounded-xl border border-blue-100 p-4">
-                <div className="flex items-center justify-between mb-2">
+              <div className="bg-blue-50/40 rounded-xl border border-blue-100 p-3.5 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center space-x-1.5">
-                    <User className="w-3.5 h-3.5 text-blue-600" />
+                    <User className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                     <span>Current Assignment &amp; Telemetry</span>
                   </h4>
                   <span className="text-[11px] font-semibold text-blue-700">
@@ -1908,7 +1931,7 @@ function VehicleDetailsModal({
                     </span>
                     <span className="font-bold text-slate-800 flex items-center space-x-1">
                       <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span>{vehicle.location || "Central Depot"}</span>
+                      <span className="break-words">{vehicle.location || "Central Depot"}</span>
                     </span>
                   </div>
                 </div>
@@ -1918,13 +1941,13 @@ function VehicleDetailsModal({
 
           {activeTab === "assignment" && (
             <div className="space-y-4">
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
                   Active Trip Details
                 </h4>
                 {vehicle.currentTrip ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
                       <div>
                         <span className="text-[10px] font-bold text-blue-600 uppercase">
                           Trip Reference
@@ -1933,7 +1956,7 @@ function VehicleDetailsModal({
                           {vehicle.currentTrip.tripId}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="sm:text-right">
                         <span className="text-[10px] font-bold text-slate-400 uppercase">
                           Status
                         </span>
@@ -1943,12 +1966,12 @@ function VehicleDetailsModal({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs">
                       <div className="p-3 bg-slate-50 rounded-lg">
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">
                           Origin
                         </span>
-                        <span className="font-semibold text-slate-800">
+                        <span className="font-semibold text-slate-800 break-words">
                           {vehicle.currentTrip.origin}
                         </span>
                       </div>
@@ -1956,14 +1979,14 @@ function VehicleDetailsModal({
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">
                           Destination
                         </span>
-                        <span className="font-semibold text-slate-800">
+                        <span className="font-semibold text-slate-800 break-words">
                           {vehicle.currentTrip.destination}
                         </span>
                       </div>
                     </div>
 
                     {vehicle.currentTrip.eta && (
-                      <div className="p-2.5 bg-emerald-50 rounded-lg text-emerald-800 text-xs font-medium flex items-center justify-between">
+                      <div className="p-2.5 bg-emerald-50 rounded-lg text-emerald-800 text-xs font-medium flex flex-wrap items-center justify-between gap-1">
                         <span>Estimated Arrival (ETA):</span>
                         <span className="font-bold">
                           {vehicle.currentTrip.eta}
@@ -1988,7 +2011,7 @@ function VehicleDetailsModal({
 
           {activeTab === "documents" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
                   Statutory &amp; Transport Documents
                 </h4>
@@ -1997,22 +2020,22 @@ function VehicleDetailsModal({
                     onClose();
                     onOpenDocuments(vehicle);
                   }}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center space-x-1"
+                  className="w-full sm:w-auto text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center justify-start sm:justify-end space-x-1 py-1"
                 >
                   <span>Open Full Compliance Editor</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
-                  <div className="flex items-center justify-between mb-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                <div className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
                     <span className="font-bold text-xs text-slate-800">
                       Insurance Policy
                     </span>
                     {getDocBadge(docs.insurance?.status)}
                   </div>
-                  <p className="text-xs text-slate-600 font-mono font-medium">
+                  <p className="text-xs text-slate-600 font-mono font-medium break-all">
                     {docs.insurance?.documentNumber ||
                       docs.insurance?.policyNumber ||
                       "N/A"}
@@ -2027,14 +2050,14 @@ function VehicleDetailsModal({
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
                     <span className="font-bold text-xs text-slate-800">
                       Registration Certificate (RC)
                     </span>
                     {getDocBadge(docs.rc?.status)}
                   </div>
-                  <p className="text-xs text-slate-600 font-mono font-medium">
+                  <p className="text-xs text-slate-600 font-mono font-medium break-all">
                     {docs.rc?.documentNumber || docs.rc?.rcNumber || "N/A"}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-1">
@@ -2045,14 +2068,14 @@ function VehicleDetailsModal({
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
                     <span className="font-bold text-xs text-slate-800">
                       Pollution Under Control (PUC)
                     </span>
                     {getDocBadge(docs.puc?.status)}
                   </div>
-                  <p className="text-xs text-slate-600 font-mono font-medium">
+                  <p className="text-xs text-slate-600 font-mono font-medium break-all">
                     {docs.puc?.documentNumber ||
                       docs.puc?.certificateNumber ||
                       "N/A"}
@@ -2065,14 +2088,14 @@ function VehicleDetailsModal({
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
                     <span className="font-bold text-xs text-slate-800">
                       Fitness Certificate
                     </span>
                     {getDocBadge(docs.fitness?.status)}
                   </div>
-                  <p className="text-xs text-slate-600 font-mono font-medium">
+                  <p className="text-xs text-slate-600 font-mono font-medium break-all">
                     {docs.fitness?.documentNumber ||
                       docs.fitness?.certificateNumber ||
                       "N/A"}
@@ -2087,14 +2110,14 @@ function VehicleDetailsModal({
                   </p>
                 </div>
 
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
                     <span className="font-bold text-xs text-slate-800">
                       Transport Permit
                     </span>
                     {getDocBadge(docs.permit?.status)}
                   </div>
-                  <p className="text-xs text-slate-600 font-mono font-medium">
+                  <p className="text-xs text-slate-600 font-mono font-medium break-all">
                     {docs.permit?.documentNumber ||
                       docs.permit?.permitNumber ||
                       "N/A"}
@@ -2114,28 +2137,28 @@ function VehicleDetailsModal({
 
           {activeTab === "maintenance" && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Last Service Date
                   </span>
-                  <p className="text-sm font-extrabold text-slate-800 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
                     {lastMaintDate}
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Next Service Due
                   </span>
-                  <p className="text-sm font-extrabold text-blue-600 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-blue-600 mt-0.5 truncate">
                     {nextMaintDueDate}
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Total Spent
                   </span>
-                  <p className="text-sm font-extrabold text-slate-800 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
                     ₹
                     {(
                       totalMaintenanceSpent ||
@@ -2146,8 +2169,8 @@ function VehicleDetailsModal({
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between mb-3">
+              <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
                     Recent Service Logs ({maintenanceRecords.length})
                   </h4>
@@ -2156,7 +2179,7 @@ function VehicleDetailsModal({
                     onClick={() => {
                       if (onOpenMaintenance) onOpenMaintenance(vehicle);
                     }}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-2xs transition-colors"
+                    className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-2xs transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Service Record</span>
@@ -2175,21 +2198,21 @@ function VehicleDetailsModal({
                         key={m.id || idx}
                         className="p-3 rounded-lg bg-slate-50/70 border border-slate-200/80 text-xs"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-800">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-800 truncate">
                             {m.serviceType || m.type || "Service Check"}
                           </span>
-                          <span className="font-bold text-slate-900">
+                          <span className="font-bold text-slate-900 shrink-0">
                             ₹
                             {(
                               Number(m.serviceCost ?? m.cost) || 0
                             ).toLocaleString("en-IN")}
                           </span>
                         </div>
-                        <p className="text-slate-600 text-[11px] mt-1">
+                        <p className="text-slate-600 text-[11px] mt-1 break-words">
                           {m.description}
                         </p>
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 flex-wrap gap-2">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 flex-wrap gap-x-3 gap-y-1">
                           <span>
                             Workshop:{" "}
                             <strong className="text-slate-600">
@@ -2235,7 +2258,7 @@ function VehicleDetailsModal({
                       onClick={() => {
                         if (onOpenMaintenance) onOpenMaintenance(vehicle);
                       }}
-                      className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-2xs transition-colors"
+                      className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-2xs transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+ Add Service Record</span>
@@ -2248,12 +2271,12 @@ function VehicleDetailsModal({
 
           {activeTab === "fuel" && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Total Fuel Used
                   </span>
-                  <p className="text-sm font-extrabold text-slate-800 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
                     {(
                       totalFuelLitresUsed ||
                       fuelSummary.totalFuelLitres ||
@@ -2262,11 +2285,11 @@ function VehicleDetailsModal({
                     L / Kg
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Total Fuel Cost
                   </span>
-                  <p className="text-sm font-extrabold text-slate-800 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
                     ₹
                     {(
                       totalFuelCostSpent ||
@@ -2275,18 +2298,18 @@ function VehicleDetailsModal({
                     ).toLocaleString("en-IN")}
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Average Mileage
                   </span>
-                  <p className="text-sm font-extrabold text-emerald-600 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-emerald-600 mt-0.5 truncate">
                     {fuelSummary.avgMileage || "N/A"}
                   </p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between mb-3">
+              <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
                     Recent Refueling Records ({fuelRecordsList.length})
                   </h4>
@@ -2295,7 +2318,7 @@ function VehicleDetailsModal({
                     onClick={() => {
                       if (onOpenFuel) onOpenFuel(vehicle);
                     }}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors"
+                    className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Fuel Record</span>
@@ -2312,20 +2335,20 @@ function VehicleDetailsModal({
                     {fuelRecordsList.map((f, idx) => (
                       <div
                         key={f.id || idx}
-                        className="py-2.5 flex items-center justify-between"
+                        className="py-2.5 flex items-center justify-between gap-2"
                       >
-                        <div>
-                          <span className="font-bold text-slate-800">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-bold text-slate-800 block truncate">
                             {f.litres || f.quantity} L ({f.fuelType})
                           </span>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-[11px] text-slate-400 truncate">
                             {f.station || f.fuelStation} •{" "}
                             {f.date ||
                               (f.fuelDate ? f.fuelDate.split("T")[0] : "")}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <span className="font-bold text-slate-900">
+                        <div className="text-right shrink-0">
+                          <span className="font-bold text-slate-900 block">
                             ₹
                             {(f.totalCost || f.fuelCost || 0).toLocaleString(
                               "en-IN",
@@ -2357,7 +2380,7 @@ function VehicleDetailsModal({
                       onClick={() => {
                         if (onOpenFuel) onOpenFuel(vehicle);
                       }}
-                      className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors"
+                      className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+ Add Fuel Record</span>
@@ -2370,42 +2393,42 @@ function VehicleDetailsModal({
 
           {activeTab === "trips" && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Total Trips
                   </span>
-                  <p className="text-sm font-extrabold text-slate-800 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
                     {tripSummary.totalTrips || 0}
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Total Distance
                   </span>
-                  <p className="text-sm font-extrabold text-slate-800 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
                     {(tripSummary.totalDistanceKm || 0).toLocaleString()} km
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Completed
                   </span>
-                  <p className="text-sm font-extrabold text-emerald-600 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-emerald-600 mt-0.5 truncate">
                     {tripSummary.completedTrips || 0}
                   </p>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">
+                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase">
                     Utilization Rate
                   </span>
-                  <p className="text-sm font-extrabold text-blue-600 mt-0.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-blue-600 mt-0.5 truncate">
                     {tripSummary.utilizationRate || 0}%
                   </p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">
                   Recent Dispatches &amp; Trips
                 </h4>
@@ -2414,15 +2437,15 @@ function VehicleDetailsModal({
                     {tripHistory.map((t, idx) => (
                       <div
                         key={idx}
-                        className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs flex items-center justify-between"
+                        className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                       >
-                        <div>
-                          <div className="flex items-center space-x-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-mono font-bold text-slate-900">
                               {t.tripId}
                             </span>
                             <span className="text-slate-400">•</span>
-                            <span className="font-semibold text-slate-800">
+                            <span className="font-semibold text-slate-800 break-words">
                               {t.origin} &rarr; {t.destination}
                             </span>
                           </div>
@@ -2431,7 +2454,7 @@ function VehicleDetailsModal({
                           </p>
                         </div>
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          className={`self-start sm:self-auto px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
                             t.status === "Completed"
                               ? "bg-emerald-50 text-emerald-700"
                               : "bg-blue-50 text-blue-700"
@@ -2452,13 +2475,13 @@ function VehicleDetailsModal({
           )}
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50">
-          <span className="text-xs text-slate-400">
+        <div className="px-4 sm:px-6 py-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 shrink-0">
+          <span className="text-[11px] sm:text-xs text-slate-400 text-center sm:text-left truncate">
             Viewing real-time fleet telematics for {vehicle.registrationNumber}
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 rounded-lg transition-colors"
+            className="w-full sm:w-auto px-4 py-2 sm:py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 rounded-lg transition-colors text-center justify-center"
           >
             Close Profile
           </button>
@@ -2838,6 +2861,7 @@ function MaintenanceModal({
   onAddMaintenanceRecord,
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const formRef = useRef(null);
   const [formData, setFormData] = useState({
     serviceDate: new Date().toISOString().split("T")[0],
     serviceType: "Routine Periodic Service",
@@ -2939,6 +2963,17 @@ function MaintenanceModal({
     currentMaint.serviceCenter ||
     "";
   const latestOdo = lastRecord?.odometer;
+
+  const handleToggleAddForm = () => {
+    const nextState = !showAddForm;
+    setShowAddForm(nextState);
+    setFormError("");
+    if (nextState) {
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -3056,80 +3091,85 @@ function MaintenanceModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
-              <Wrench className="w-5 h-5" />
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Sticky Header */}
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 shrink-0">
+              <Wrench className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                   Maintenance &amp; Service History
                 </h3>
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-200 text-slate-800">
+                <span className="px-1.5 sm:px-2 py-0.5 rounded text-[11px] sm:text-xs font-mono font-bold bg-slate-200 text-slate-800 shrink-0">
                   {vehicle.registrationNumber}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Log service interventions, preventive checkups, component
-                repairs and next schedules.
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block sm:block">
+                Log service interventions, preventive checkups and schedules.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors shrink-0 ml-2"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 sm:p-6 bg-amber-50/30 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Last Service
-            </span>
-            <p className="text-sm font-extrabold text-slate-800 mt-0.5">
-              {lastDate}
-            </p>
-            {lastProvider && (
-              <span className="text-[10px] text-slate-400 truncate block">
-                {lastProvider}
+        {/* Scrollable Modal Body: stats + form + history */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4 overscroll-contain">
+          {/* Stat Cards - responsive 3-column compact summary */}
+          <div className="grid grid-cols-3 gap-2 p-2.5 sm:p-3.5 bg-amber-50/50 border border-amber-100/90 rounded-xl sm:rounded-2xl">
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Last Service
               </span>
-            )}
-            {latestOdo !== undefined && latestOdo !== null && (
-              <span className="text-[10px] font-mono font-semibold text-slate-600 block mt-0.5">
-                {latestOdo.toLocaleString()} km
-              </span>
-            )}
-          </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Next Service Due
-            </span>
-            <p className="text-sm font-extrabold text-amber-600 mt-0.5">
-              {nextDueDate}
-            </p>
-            <span className="text-[10px] text-emerald-600 font-semibold">
-              Health Score: {currentMaint.healthScore || 90}%
-            </span>
-          </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Total Service Spend
-            </span>
-            <p className="text-sm font-extrabold text-slate-900 mt-0.5">
-              ₹{totalCost.toLocaleString("en-IN")}
-            </p>
-            <span className="text-[10px] text-slate-400">
-              {records.length} logged service{records.length === 1 ? "" : "s"}
-            </span>
-          </div>
-        </div>
+              <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
+                {lastDate}
+              </p>
+              {lastProvider && (
+                <span className="text-[9px] sm:text-[10px] text-slate-400 truncate block">
+                  {lastProvider}
+                </span>
+              )}
+              {latestOdo !== undefined && latestOdo !== null && (
+                <span className="text-[9px] sm:text-[10px] font-mono font-semibold text-slate-600 block mt-0.5 truncate">
+                  {latestOdo.toLocaleString()} km
+                </span>
+              )}
+            </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Next Service
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-amber-600 mt-0.5 truncate">
+                {nextDueDate}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-emerald-600 font-semibold block truncate">
+                Health: {currentMaint.healthScore || 90}%
+              </span>
+            </div>
+
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Total Spend
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-slate-900 mt-0.5 truncate">
+                ₹{totalCost.toLocaleString("en-IN")}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-slate-400 block truncate">
+                {records.length} logged
+              </span>
+            </div>
+          </div>
+
           {toastMsg && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl flex items-center space-x-2">
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -3137,29 +3177,33 @@ function MaintenanceModal({
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+          {/* Section Action Row */}
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider truncate">
               Service Log Records ({records.length})
             </h4>
             <button
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                setFormError("");
-              }}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-2xs transition-colors"
+              type="button"
+              onClick={handleToggleAddForm}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-lg shadow-2xs transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{showAddForm ? "Hide Form" : "Log New Service"}</span>
             </button>
           </div>
 
+          {/* Responsive Add Form */}
           {showAddForm && (
             <form
+              ref={formRef}
               onSubmit={handleSubmit}
-              className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150"
+              className="p-3 sm:p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150"
             >
-              <div className="font-bold text-xs text-slate-800 pb-1 border-b border-slate-200 flex items-center justify-between">
-                <span>Record New Maintenance Entry</span>
+              <div className="font-bold text-xs text-slate-800 pb-1.5 border-b border-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5 text-amber-600" />
+                  Record New Maintenance Entry
+                </span>
                 <span className="text-[10px] text-slate-400 font-normal">
                   Vehicle: {vehicle.registrationNumber}
                 </span>
@@ -3172,23 +3216,10 @@ function MaintenanceModal({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Service Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.serviceDate}
-                    onChange={(e) =>
-                      setFormData({ ...formData, serviceDate: e.target.value })
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+              {/* Row 1: Service Type (full on mobile, 1 col on sm) + Dates (2 cols on mobile, 2 cols on sm) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                <div className="sm:col-span-1">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                     Service Type <span className="text-rose-500">*</span>
                   </label>
                   <select
@@ -3196,7 +3227,7 @@ function MaintenanceModal({
                     onChange={(e) =>
                       setFormData({ ...formData, serviceType: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
                   >
                     <option value="Routine Periodic Service">
                       Routine Periodic Service
@@ -3227,34 +3258,51 @@ function MaintenanceModal({
                     </option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Next Service Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.nextServiceDate}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        nextServiceDate: e.target.value,
-                      })
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
-                  />
+
+                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                  <div>
+                    <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                      Service Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.serviceDate}
+                      onChange={(e) =>
+                        setFormData({ ...formData, serviceDate: e.target.value })
+                      }
+                      className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                      Next Service Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.nextServiceDate}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          nextServiceDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Service Provider / Workshop{" "}
-                    <span className="text-rose-500">*</span>
+              {/* Row 2: Provider (full on mobile, 1 col on sm) + Odometer & Cost (2 cols on mobile, 2 cols on sm) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                <div className="sm:col-span-1">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                    Service Provider / Workshop <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Tata Motors Hub / Apex Commercial"
+                    placeholder="e.g. Tata Motors / Apex"
                     value={formData.serviceProvider}
                     onChange={(e) =>
                       setFormData({
@@ -3262,63 +3310,66 @@ function MaintenanceModal({
                         serviceProvider: e.target.value,
                       })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Odometer Reading (km){" "}
-                    <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    placeholder="e.g. 45200"
-                    value={formData.odometer}
-                    onChange={(e) =>
-                      setFormData({ ...formData, odometer: e.target.value })
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Service Cost (₹) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    placeholder="e.g. 8500"
-                    value={formData.serviceCost}
-                    onChange={(e) =>
-                      setFormData({ ...formData, serviceCost: e.target.value })
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
-                  />
+
+                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                  <div>
+                    <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                      Odometer (km) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      placeholder="e.g. 45200"
+                      value={formData.odometer}
+                      onChange={(e) =>
+                        setFormData({ ...formData, odometer: e.target.value })
+                      }
+                      className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                      Service Cost (₹) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      placeholder="e.g. 8500"
+                      value={formData.serviceCost}
+                      onChange={(e) =>
+                        setFormData({ ...formData, serviceCost: e.target.value })
+                      }
+                      className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
 
+              {/* Row 3: Work Description */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                  Work Description &amp; Parts Replaced{" "}
-                  <span className="text-rose-500">*</span>
+                <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                  Work Description &amp; Parts Replaced <span className="text-rose-500">*</span>
                 </label>
                 <textarea
-                  rows="3"
+                  rows="2"
                   required
                   placeholder="e.g. Replaced engine oil, oil filter, air filter, topped up coolant."
                   value={formData.description}
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                  className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-1 border-t border-slate-200">
+              {/* Row 4: Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => {
@@ -3326,14 +3377,14 @@ function MaintenanceModal({
                     setFormError("");
                   }}
                   disabled={isSubmitting}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                  className="flex-1 sm:flex-initial px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg shadow-2xs transition-colors flex items-center space-x-1.5"
+                  className="flex-1 sm:flex-initial px-4 py-2 sm:py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg shadow-2xs transition-colors flex items-center justify-center space-x-1.5 text-center"
                 >
                   {isSubmitting ? (
                     <>
@@ -3351,12 +3402,13 @@ function MaintenanceModal({
             </form>
           )}
 
+          {/* Records List */}
           {records.length > 0 ? (
             <div className="space-y-3">
               {records.map((rec, idx) => (
                 <div
                   key={rec.id || rec._id || idx}
-                  className="p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-colors"
+                  className="p-3 sm:p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -3370,7 +3422,7 @@ function MaintenanceModal({
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <span className="text-sm font-extrabold text-slate-900">
+                      <span className="text-xs sm:text-sm font-extrabold text-slate-900">
                         ₹
                         {(
                           Number(rec.serviceCost ?? rec.cost) || 0
@@ -3420,7 +3472,8 @@ function MaintenanceModal({
           )}
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-end bg-slate-50 shrink-0">
+        {/* Footer */}
+        <div className="px-4 py-2.5 sm:px-6 sm:py-3 border-t border-slate-100 flex items-center justify-end bg-slate-50 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 rounded-lg transition-colors"
@@ -3437,6 +3490,7 @@ function MaintenanceModal({
 
 function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const formRef = useRef(null);
   const [records, setRecords] = useState(vehicle?.fuelRecords || []);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -3515,6 +3569,17 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
     calculatedTotalLitres > 0
       ? (calculatedTotalCost / calculatedTotalLitres).toFixed(2)
       : 90;
+
+  const handleToggleAddForm = () => {
+    const nextState = !showAddForm;
+    setShowAddForm(nextState);
+    setFormError("");
+    if (nextState) {
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  };
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
@@ -3605,76 +3670,77 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-auto overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-              <Fuel className="w-5 h-5" />
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-auto max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Sticky Header */}
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 shrink-0">
+              <Fuel className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                   Fuel Consumption &amp; Expense Log
                 </h3>
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-200 text-slate-800">
+                <span className="px-1.5 sm:px-2 py-0.5 rounded text-[11px] sm:text-xs font-mono font-bold bg-slate-200 text-slate-800 shrink-0">
                   {vehicle.registrationNumber}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Track fuel fillings, dispense volumes, costs and monitor mileage
-                efficiency.
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block sm:block">
+                Track fuel fillings, dispense volumes, costs and monitor mileage.
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors shrink-0 ml-2"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <div className="p-6 bg-emerald-50/30 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Total Fuel Logged
-            </span>
-            <p className="text-sm font-extrabold text-slate-800 mt-0.5">
-              {calculatedTotalLitres.toLocaleString()}{" "}
-              {vehicle.fuelType === "CNG" ? "Kg" : "Litres"}
-            </p>
-            <span className="text-[10px] text-slate-400">
-              {records.length} refuel entries
-            </span>
+        {/* Scrollable Modal Body: stats + form + ledger */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4 overscroll-contain">
+          {/* Stat Cards - responsive 3-column compact summary */}
+          <div className="grid grid-cols-3 gap-2 p-2.5 sm:p-3.5 bg-emerald-50/50 border border-emerald-100/90 rounded-xl sm:rounded-2xl">
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Total Fuel Logged
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
+                {calculatedTotalLitres.toLocaleString()}{" "}
+                {vehicle.fuelType === "CNG" ? "Kg" : "L"}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-slate-400 block truncate">
+                {records.length} refuel{records.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Total Fuel Cost
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-emerald-700 mt-0.5 truncate">
+                ₹{calculatedTotalCost.toLocaleString("en-IN")}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-slate-400 block truncate">
+                Avg ₹{avgPrice}/unit
+              </span>
+            </div>
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Calculated Mileage
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-blue-600 mt-0.5 truncate">
+                {vehicle.fuelSummary?.avgMileage || "9.2 km/L"}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-emerald-600 font-semibold block truncate">
+                Optimal fleet
+              </span>
+            </div>
           </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Total Fuel Cost
-            </span>
-            <p className="text-sm font-extrabold text-emerald-700 mt-0.5">
-              ₹{calculatedTotalCost.toLocaleString("en-IN")}
-            </p>
-            <span className="text-[10px] text-slate-400">
-              Avg ₹{avgPrice}/unit
-            </span>
-          </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Calculated Mileage
-            </span>
-            <p className="text-sm font-extrabold text-blue-600 mt-0.5">
-              {vehicle.fuelSummary?.avgMileage || "9.2 km/L"}
-            </p>
-            <span className="text-[10px] text-emerald-600 font-semibold">
-              Optimal fleet band
-            </span>
-          </div>
-        </div>
 
-        <div className="p-6 space-y-4 flex-1 overflow-y-auto">
           {toastMsg && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl flex items-center space-x-2">
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -3682,30 +3748,33 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+          {/* Section Action Row */}
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider truncate">
               Fueling Ledger Entries ({records.length})
             </h4>
             <button
               type="button"
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                setFormError("");
-              }}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors"
+              onClick={handleToggleAddForm}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg shadow-2xs transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{showAddForm ? "Hide Form" : "Add Fuel Record"}</span>
             </button>
           </div>
 
+          {/* Responsive Add Form */}
           {showAddForm && (
             <form
+              ref={formRef}
               onSubmit={handleAddSubmit}
-              className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150"
+              className="p-3 sm:p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150"
             >
-              <div className="font-bold text-xs text-slate-800 pb-1 border-b border-slate-200 flex items-center justify-between">
-                <span>Record New Fuel Entry</span>
+              <div className="font-bold text-xs text-slate-800 pb-1.5 border-b border-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                  Record New Fuel Entry
+                </span>
                 <span className="text-[10px] text-slate-400 font-normal">
                   Vehicle: {vehicle.registrationNumber}
                 </span>
@@ -3718,9 +3787,10 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Row 1: Date, Fuel Type, Litres / Kg */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                     Date <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -3730,11 +3800,11 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                     onChange={(e) =>
                       setFormData({ ...formData, date: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                     Fuel Type <span className="text-rose-500">*</span>
                   </label>
                   <select
@@ -3742,7 +3812,7 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                     onChange={(e) =>
                       setFormData({ ...formData, fuelType: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                   >
                     <option value="Diesel">Diesel</option>
                     <option value="CNG">CNG</option>
@@ -3750,8 +3820,8 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                     <option value="Electric">Electric</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                     Litres / Kg <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -3764,15 +3834,16 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                     onChange={(e) =>
                       setFormData({ ...formData, litres: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Row 2: Price / Unit, Odometer, Total Amount */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Price / Litre (₹) <span className="text-rose-500">*</span>
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                    Price / Unit (₹) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -3787,30 +3858,30 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                         pricePerLitre: e.target.value,
                       })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Odometer Reading (km){" "}
-                    <span className="text-rose-500">*</span>
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                    Odometer (km) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
                     min="0"
                     required
+                    placeholder="e.g. 45200"
                     value={formData.odometer}
                     onChange={(e) =>
                       setFormData({ ...formData, odometer: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                     Total Amount (₹)
                   </label>
-                  <div className="px-2.5 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 rounded-lg border border-slate-200">
+                  <div className="px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs font-bold text-slate-800 bg-slate-100 rounded-lg border border-slate-200 flex items-center">
                     ₹
                     {(
                       (parseFloat(formData.litres) || 0) *
@@ -3823,8 +3894,9 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                 </div>
               </div>
 
+              {/* Row 3: Fuel Station */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                   Fuel Station / Vendor <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -3835,11 +3907,12 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                   onChange={(e) =>
                     setFormData({ ...formData, station: e.target.value })
                   }
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                  className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-1 border-t border-slate-200">
+              {/* Row 4: Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => {
@@ -3847,17 +3920,26 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                     setFormError("");
                   }}
                   disabled={isSubmitting}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                  className="flex-1 sm:flex-initial px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="inline-flex items-center space-x-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors disabled:opacity-50"
+                  className="flex-1 sm:flex-initial px-4 py-2 sm:py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-2xs transition-colors flex items-center justify-center space-x-1.5 text-center"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{isSubmitting ? "Saving..." : "Save Fuel Record"}</span>
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Save Fuel Record</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -3934,7 +4016,7 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
           )}
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+        <div className="px-4 py-2.5 sm:px-6 sm:py-3 border-t border-slate-100 flex items-center justify-end bg-slate-50 shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -3952,26 +4034,142 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
 
 function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const formRef = useRef(null);
+  const [records, setRecords] = useState(vehicle?.tripHistory || []);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     origin: "",
     destination: "",
-    driver: vehicle?.driver || "Anil Deshmukh",
+    driver: vehicle?.driver || "Staff Driver",
     date: new Date().toISOString().split("T")[0],
     distanceKm: "",
     status: "Completed",
   });
   const [toastMsg, setToastMsg] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen || !vehicle) return;
+    setRecords(vehicle.tripHistory || []);
+
+    const fetchTripHistory = async () => {
+      const targetId = vehicle._id || vehicle.id;
+      const regNum = (vehicle.registrationNumber || "").trim().toUpperCase();
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      setIsLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/trip`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const allTrips = Array.isArray(data?.getTrip) ? data.getTrip : [];
+
+          const vehicleTrips = allTrips
+            .filter((t) => {
+              const tripVehId = t.vehicleId?._id
+                ? String(t.vehicleId._id)
+                : t.vehicleId
+                  ? String(t.vehicleId)
+                  : null;
+              const tripVehReg = (
+                t.vehicleId?.vregistrationnumber ||
+                t.vehicleId?.registrationNumber ||
+                ""
+              )
+                .trim()
+                .toUpperCase();
+
+              const idMatch =
+                targetId &&
+                tripVehId &&
+                (tripVehId === String(targetId) ||
+                  (vehicle._id && tripVehId === String(vehicle._id)));
+              const regMatch = regNum && tripVehReg && tripVehReg === regNum;
+              return idMatch || regMatch;
+            })
+            .map((t) => {
+              const dateVal =
+                t.actualDeparture || t.plannedDeparture || t.createdAt || "";
+              const formattedDate = dateVal
+                ? new Date(dateVal).toISOString().split("T")[0]
+                : "";
+              const rawStatus = (t.status || "").toLowerCase();
+              const statusDisplay =
+                rawStatus === "completed"
+                  ? "Completed"
+                  : rawStatus === "in_transit"
+                    ? "In Transit"
+                    : rawStatus === "dispatched"
+                      ? "Dispatched"
+                      : rawStatus === "planned"
+                        ? "Scheduled"
+                        : rawStatus === "cancelled"
+                          ? "Cancelled"
+                          : t.status || "Completed";
+
+              const driverName =
+                t.driverId?.userId?.name ||
+                t.driverId?.name ||
+                t.driverId?.driverId ||
+                vehicle.driver ||
+                "Staff Driver";
+
+              return {
+                id: t._id,
+                _id: t._id,
+                tripId: t.tripId || `TRP-${String(t._id).slice(-4)}`,
+                origin: t.origin,
+                destination: t.destination,
+                driver: driverName,
+                date: formattedDate,
+                distanceKm: t.plannedDistance || 0,
+                status: statusDisplay,
+                cost: t.tripCost || 0,
+              };
+            });
+
+          // Keep any locally created trips that are not yet in the DB response
+          const inMemoryTrips = (vehicle.tripHistory || []).filter(
+            (mem) => !vehicleTrips.some((vt) => vt.tripId === mem.tripId),
+          );
+
+          setRecords([...inMemoryTrips, ...vehicleTrips]);
+        }
+      } catch (err) {
+        console.error("Error fetching trip history for vehicle:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTripHistory();
+  }, [isOpen, vehicle]);
+
   if (!isOpen || !vehicle) return null;
 
-  const history = vehicle.tripHistory || [];
-  const totalTrips =
-    (vehicle.tripSummary?.totalTrips || 0) +
-    (history.length > 3 ? history.length - 3 : 0);
-  const totalDistance =
-    vehicle.tripSummary?.totalDistanceKm ||
-    history.reduce((acc, curr) => acc + (curr.distanceKm || 0), 0) + 12000;
-  const utilization = vehicle.tripSummary?.utilizationRate || 85;
+  const history = records;
+  const totalTrips = history.length;
+  const totalDistance = history.reduce(
+    (acc, curr) => acc + (Number(curr.distanceKm) || 0),
+    0,
+  );
+  const activeTrips =
+    history.filter((t) =>
+      ["In Transit", "Dispatched", "Scheduled"].includes(t.status),
+    ).length || (vehicle.status === "Assigned" ? 1 : 0);
+  const utilization = totalTrips > 0 ? (totalTrips >= 5 ? 90 : 75) : 0;
+
+  const handleToggleAddForm = () => {
+    const nextState = !showAddForm;
+    setShowAddForm(nextState);
+    if (nextState) {
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  };
 
   const handleAddSubmit = (e) => {
     e.preventDefault();
@@ -3979,6 +4177,7 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
       return;
 
     const newTrip = {
+      id: `TRP-${Math.floor(1000 + Math.random() * 9000)}`,
       tripId: `TRP-${Math.floor(1000 + Math.random() * 9000)}`,
       driver: formData.driver || vehicle.driver || "Staff Driver",
       origin: formData.origin,
@@ -3988,13 +4187,17 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
       status: formData.status,
     };
 
-    onAddTrip(vehicle.id, newTrip);
+    setRecords((prev) => [newTrip, ...prev]);
+    if (onAddTrip) {
+      onAddTrip(vehicle.id || vehicle._id, newTrip);
+    }
+
     setShowAddForm(false);
     setToastMsg(true);
     setFormData({
       origin: "",
       destination: "",
-      driver: vehicle.driver || "Anil Deshmukh",
+      driver: vehicle.driver || "Staff Driver",
       date: new Date().toISOString().split("T")[0],
       distanceKm: "",
       status: "Completed",
@@ -4003,112 +4206,131 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-              <Route className="w-5 h-5" />
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Sticky Header */}
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 shrink-0">
+              <Route className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                   Trip History &amp; Vehicle Utilization
                 </h3>
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-200 text-slate-800">
+                <span className="px-1.5 sm:px-2 py-0.5 rounded text-[11px] sm:text-xs font-mono font-bold bg-slate-200 text-slate-800 shrink-0">
                   {vehicle.registrationNumber}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Log completed journeys, track active shipments and calculate
-                operational fleet utilization.
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block sm:block">
+                Log completed journeys, track active shipments and calculate fleet utilization.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors shrink-0 ml-2"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 bg-blue-50/40 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Lifetime Trips
-            </span>
-            <p className="text-sm font-extrabold text-slate-800 mt-0.5">
-              {totalTrips}
-            </p>
-            <span className="text-[10px] text-slate-400">All dispatches</span>
+        {/* Scrollable Modal Body */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4 overscroll-contain">
+          {/* Stat Cards - responsive compact summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 sm:p-3.5 bg-blue-50/50 border border-blue-100/90 rounded-xl sm:rounded-2xl">
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Lifetime Trips
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
+                {totalTrips}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-slate-400 block truncate">
+                All dispatches
+              </span>
+            </div>
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Total Distance
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
+                {totalDistance.toLocaleString()} km
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-slate-400 block truncate">
+                Recorded mileage
+              </span>
+            </div>
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Active Trips
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-blue-600 mt-0.5 truncate">
+                {activeTrips}
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-blue-500 font-semibold block truncate">
+                {activeTrips > 0 ? "In transit" : "Idle in yard"}
+              </span>
+            </div>
+            <div className="p-2 sm:p-3 bg-white rounded-lg sm:rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
+                Utilization Rate
+              </span>
+              <p className="text-xs sm:text-sm font-extrabold text-emerald-600 mt-0.5 truncate">
+                {utilization}%
+              </p>
+              <span className="text-[9px] sm:text-[10px] text-emerald-600 font-semibold block truncate">
+                {totalTrips > 0 ? "Operational" : "Standby"}
+              </span>
+            </div>
           </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Total Distance
-            </span>
-            <p className="text-sm font-extrabold text-slate-800 mt-0.5">
-              {totalDistance.toLocaleString()} km
-            </p>
-            <span className="text-[10px] text-slate-400">Recorded mileage</span>
-          </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Active Trips
-            </span>
-            <p className="text-sm font-extrabold text-blue-600 mt-0.5">
-              {vehicle.status === "Assigned" ? 1 : 0}
-            </p>
-            <span className="text-[10px] text-blue-500 font-semibold">
-              {vehicle.status === "Assigned" ? "In transit" : "Idle in yard"}
-            </span>
-          </div>
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">
-              Utilization Rate
-            </span>
-            <p className="text-sm font-extrabold text-emerald-600 mt-0.5">
-              {utilization}%
-            </p>
-            <span className="text-[10px] text-emerald-600 font-semibold">
-              High efficiency
-            </span>
-          </div>
-        </div>
 
-        <div className="p-6 space-y-4 max-h-[50vh] overflow-y-auto">
           {toastMsg && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl flex items-center space-x-2">
-              <Check className="w-4 h-4 text-emerald-600" />
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Trip log added successfully to vehicle records!</span>
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+          {/* Section Action Row */}
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider truncate">
               Recent Trip Logs ({history.length})
             </h4>
             <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-2xs transition-colors"
+              type="button"
+              onClick={handleToggleAddForm}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-2xs transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{showAddForm ? "Hide Form" : "Log New Trip"}</span>
             </button>
           </div>
 
+          {/* Responsive Add Form */}
           {showAddForm && (
             <form
+              ref={formRef}
               onSubmit={handleAddSubmit}
-              className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150"
+              className="p-3 sm:p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150"
             >
-              <div className="font-bold text-xs text-slate-800 pb-1 border-b border-slate-200">
-                Dispatch / Log Trip
+              <div className="font-bold text-xs text-slate-800 pb-1.5 border-b border-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5 text-blue-600" />
+                  Dispatch / Log New Trip
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  Vehicle: {vehicle.registrationNumber}
+                </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+              {/* Row 1: Origin & Destination */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Origin *
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                    Origin <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -4118,12 +4340,12 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
                     onChange={(e) =>
                       setFormData({ ...formData, origin: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Destination *
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                    Destination <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -4133,14 +4355,15 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
                     onChange={(e) =>
                       setFormData({ ...formData, destination: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Row 2: Driver, Distance, Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                  <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
                     Driver Name
                   </label>
                   <input
@@ -4150,54 +4373,58 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
                     onChange={(e) =>
                       setFormData({ ...formData, driver: e.target.value })
                     }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Distance (km) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="1420"
-                    value={formData.distanceKm}
-                    onChange={(e) =>
-                      setFormData({ ...formData, distanceKm: e.target.value })
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Trip Status
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium"
-                  >
-                    <option value="Completed">Completed</option>
-                    <option value="In Transit">In Transit</option>
-                    <option value="Scheduled">Scheduled</option>
-                    <option value="Delayed">Delayed</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                  <div>
+                    <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                      Distance (km) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="1420"
+                      value={formData.distanceKm}
+                      onChange={(e) =>
+                        setFormData({ ...formData, distanceKm: e.target.value })
+                      }
+                      className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
+                      Trip Status
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) =>
+                        setFormData({ ...formData, status: e.target.value })
+                      }
+                      className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                    >
+                      <option value="Completed">Completed</option>
+                      <option value="In Transit">In Transit</option>
+                      <option value="Scheduled">Scheduled</option>
+                      <option value="Delayed">Delayed</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-1">
+              {/* Row 3: Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg"
+                  className="flex-1 sm:flex-initial px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-2xs"
+                  className="flex-1 sm:flex-initial px-4 py-2 sm:py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-2xs transition-colors flex items-center justify-center space-x-1.5 text-center"
                 >
                   Save Trip Record
                 </button>
@@ -4205,27 +4432,33 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
             </form>
           )}
 
-          {history.length > 0 ? (
+          {/* Trip Logs List */}
+          {isLoading ? (
+            <div className="py-8 text-center text-slate-400 text-xs">
+              <div className="w-6 h-6 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
+              <span>Loading trip logs...</span>
+            </div>
+          ) : history.length > 0 ? (
             <div className="space-y-2.5">
               {history.map((t, idx) => (
                 <div
-                  key={idx}
-                  className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-colors"
+                  key={t.id || t._id || idx}
+                  className="p-3 sm:p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono font-bold text-slate-900 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2 min-w-0 flex-wrap">
+                      <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
                         {t.tripId}
                       </span>
-                      <span className="text-slate-300">•</span>
-                      <span className="font-semibold text-slate-800 text-xs flex items-center space-x-1">
+                      <span className="text-slate-300 hidden sm:inline">•</span>
+                      <span className="font-semibold text-slate-800 text-xs flex items-center space-x-1 truncate">
                         <span>{t.origin}</span>
                         <span className="text-slate-400">&rarr;</span>
                         <span>{t.destination}</span>
                       </span>
                     </div>
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
                         t.status === "Completed"
                           ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           : t.status === "In Transit"
@@ -4237,7 +4470,7 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
                     </span>
                   </div>
 
-                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500">
                     <span>
                       Driver:{" "}
                       <strong className="text-slate-700">{t.driver}</strong>
@@ -4247,7 +4480,7 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
                       <strong className="text-slate-700">
                         {t.distanceKm} km
                       </strong>{" "}
-                      • {t.date}
+                      {t.date && `• ${t.date}`}
                     </span>
                   </div>
                 </div>
@@ -4260,7 +4493,8 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
           )}
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-end bg-slate-50">
+        {/* Footer */}
+        <div className="px-4 py-2.5 sm:px-6 sm:py-3 border-t border-slate-100 flex items-center justify-end bg-slate-50 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 rounded-lg transition-colors"
@@ -4315,18 +4549,18 @@ function ServiceReminderModal({
     .sort((a, b) => a.daysRemaining - b.daysRemaining);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto sm:my-6 max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 gap-2 shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
+            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 shrink-0">
               <BellRing className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 Fleet Service &amp; Maintenance Reminders
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
                 Scheduled vehicle service due dates, safety inspections and
                 preventive alerts.
               </p>
@@ -4334,13 +4568,13 @@ function ServiceReminderModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+        <div className="p-3.5 sm:p-6 space-y-3 flex-1 overflow-y-auto">
           {reminders.map((r) => {
             const isDueSoon = r.daysRemaining <= 7;
             const isOverdue = r.daysRemaining < 0;
@@ -4348,7 +4582,7 @@ function ServiceReminderModal({
             return (
               <div
                 key={r.vehicleId}
-                className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+                className={`p-3.5 sm:p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
                   isOverdue
                     ? "bg-rose-50/40 border-rose-200"
                     : isDueSoon
@@ -4356,9 +4590,9 @@ function ServiceReminderModal({
                       : "bg-slate-50/70 border-slate-200/80"
                 }`}
               >
-                <div className="flex items-start space-x-3">
+                <div className="flex items-start space-x-2.5 sm:space-x-3 min-w-0 flex-1">
                   <div
-                    className={`p-2 rounded-lg mt-0.5 ${
+                    className={`p-2 rounded-lg mt-0.5 shrink-0 ${
                       isOverdue
                         ? "bg-rose-100 text-rose-600"
                         : isDueSoon
@@ -4368,9 +4602,9 @@ function ServiceReminderModal({
                   >
                     <Truck className="w-4 h-4" />
                   </div>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-slate-900 text-xs">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="font-bold text-slate-900 text-xs truncate max-w-[150px] sm:max-w-none">
                         {r.model}
                       </span>
                       <span className="font-mono font-bold text-xs bg-slate-200 text-slate-800 px-1.5 py-0.2 rounded">
@@ -4393,7 +4627,7 @@ function ServiceReminderModal({
                       {r.serviceType}
                     </p>
 
-                    <div className="flex items-center space-x-3 text-[11px] text-slate-500 mt-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 mt-1">
                       <span className="flex items-center space-x-1">
                         <Calendar className="w-3 h-3 text-slate-400" />
                         <span>
@@ -4403,7 +4637,7 @@ function ServiceReminderModal({
                           </strong>
                         </span>
                       </span>
-                      <span>•</span>
+                      <span className="hidden sm:inline">•</span>
                       <span
                         className={`font-bold ${
                           isOverdue
@@ -4423,12 +4657,12 @@ function ServiceReminderModal({
                   </div>
                 </div>
 
-                <div className="sm:shrink-0 flex sm:justify-end">
+                <div className="sm:shrink-0 flex w-full sm:w-auto">
                   <button
                     onClick={() => onCompleteService(r.vehicleId)}
-                    className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors shadow-2xs"
+                    className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors shadow-2xs"
                   >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>Mark as Completed</span>
                   </button>
                 </div>
@@ -4437,13 +4671,13 @@ function ServiceReminderModal({
           })}
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 text-xs">
-          <span className="text-slate-500">
+        <div className="px-4 sm:px-6 py-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 text-xs shrink-0">
+          <span className="text-slate-500 text-center sm:text-left">
             {reminders.length} service schedules tracked across active fleet
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 rounded-lg transition-colors"
+            className="w-full sm:w-auto px-4 py-2 sm:py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 rounded-lg transition-colors text-center"
           >
             Close
           </button>
@@ -4652,18 +4886,18 @@ VEH-014,HR-26-CC-8820,Container Truck,Eicher Pro 3019,16 Ton,Kuldeep Yadav,In Ma
   const invalidCount = parsedRows.filter((r) => !r.isValid).length;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto sm:my-6 max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 gap-2 shrink-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 shrink-0">
               <Upload className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 Bulk Import Vehicles from CSV
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] sm:text-xs text-slate-500 line-clamp-1 sm:line-clamp-none">
                 Upload or preview CSV spreadsheet with vehicle records for
                 instant batch registration.
               </p>
@@ -4671,27 +4905,27 @@ VEH-014,HR-26-CC-8820,Container Truck,Eicher Pro 3019,16 Ton,Kuldeep Yadav,In Ma
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
-          <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50/60 rounded-2xl p-6 text-center transition-colors">
-            <FileSpreadsheet className="w-10 h-10 text-blue-500 mx-auto mb-2" />
-            <p className="text-xs font-bold text-slate-800">
+        <div className="p-3.5 sm:p-6 space-y-4 flex-1 overflow-y-auto">
+          <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-center transition-colors">
+            <FileSpreadsheet className="w-8 h-8 sm:w-10 sm:h-10 text-blue-500 mx-auto mb-2" />
+            <p className="text-xs font-bold text-slate-800 break-all sm:break-normal">
               {fileName
                 ? `Selected file: ${fileName}`
                 : "Upload your Vehicle CSV file"}
             </p>
-            <p className="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
               Expected columns: vehicleId, registrationNumber, type, model,
               capacity, driver, status
             </p>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-2xs transition-colors">
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-2">
+              <label className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-2xs transition-colors text-center">
                 Choose CSV File
                 <input
                   type="file"
@@ -4704,7 +4938,7 @@ VEH-014,HR-26-CC-8820,Container Truck,Eicher Pro 3019,16 Ton,Kuldeep Yadav,In Ma
               <button
                 type="button"
                 onClick={handleLoadSample}
-                className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center space-x-1"
+                className="w-full sm:w-auto px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center justify-center space-x-1"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Load Sample CSV</span>
@@ -4793,11 +5027,11 @@ VEH-014,HR-26-CC-8820,Container Truck,Eicher Pro 3019,16 Ton,Kuldeep Yadav,In Ma
           )}
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="px-4 sm:px-6 py-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 bg-slate-100 sm:bg-transparent rounded-lg transition-colors text-center"
           >
             Cancel
           </button>
@@ -4806,7 +5040,7 @@ VEH-014,HR-26-CC-8820,Container Truck,Eicher Pro 3019,16 Ton,Kuldeep Yadav,In Ma
             type="button"
             disabled={validCount === 0}
             onClick={handleConfirmImport}
-            className={`px-5 py-2 text-xs font-bold text-white rounded-lg shadow-2xs transition-colors flex items-center space-x-1.5 ${
+            className={`w-full sm:w-auto px-5 py-2 text-xs font-bold text-white rounded-lg shadow-2xs transition-colors flex items-center justify-center space-x-1.5 ${
               validCount > 0
                 ? "bg-blue-600 hover:bg-blue-700 cursor-pointer"
                 : "bg-slate-300 cursor-not-allowed"
@@ -4860,9 +5094,6 @@ export default function Vehicles({ onVehicleCountChange }) {
 
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
-
-  // Delete Confirmation state
-  const [vehicleToDelete, setVehicleToDelete] = useState(null);
 
   // Toast feedback notification
   const [toastMessage, setToastMessage] = useState(null);
@@ -4964,11 +5195,17 @@ export default function Vehicles({ onVehicleCountChange }) {
     }
 
     try {
-      const [vehRes, tripRes] = await Promise.allSettled([
+      const [vehRes, tripRes, maintRes, fuelRes] = await Promise.allSettled([
         fetch(`${API_BASE_URL}/vechile`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_BASE_URL}/trip`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE_URL}/vechile-maintenance`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE_URL}/vechile-fuel`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -4983,6 +5220,26 @@ export default function Vehicles({ onVehicleCountChange }) {
         }
       }
 
+      let maintList = [];
+      if (maintRes.status === "fulfilled" && maintRes.value.ok) {
+        try {
+          const mData = await maintRes.value.json();
+          maintList = Array.isArray(mData) ? mData : [];
+        } catch (e) {
+          console.error("Error parsing maintenance in vehicles dashboard:", e);
+        }
+      }
+
+      let fuelList = [];
+      if (fuelRes.status === "fulfilled" && fuelRes.value.ok) {
+        try {
+          const fData = await fuelRes.value.json();
+          fuelList = Array.isArray(fData) ? fData : [];
+        } catch (e) {
+          console.error("Error parsing fuel in vehicles dashboard:", e);
+        }
+      }
+
       if (vehRes.status === "fulfilled" && vehRes.value.ok) {
         const data = await vehRes.value.json();
         if (Array.isArray(data)) {
@@ -4992,6 +5249,66 @@ export default function Vehicles({ onVehicleCountChange }) {
               v.registrationNumber ||
               `VEH-${index + 1}`
             ).toUpperCase();
+
+            // Match all trips for this vehicle from database
+            const matchedVehicleTrips = tripList
+              .filter((t) => {
+                const tripVehId = t.vehicleId?._id
+                  ? String(t.vehicleId._id)
+                  : t.vehicleId
+                    ? String(t.vehicleId)
+                    : null;
+                const tripVehReg = (
+                  t.vehicleId?.vregistrationnumber ||
+                  t.vehicleId?.registrationNumber ||
+                  ""
+                ).toUpperCase();
+                const idMatch =
+                  (v._id && tripVehId && String(v._id) === tripVehId) ||
+                  (v.id && tripVehId && String(v.id) === tripVehId);
+                const regMatch = regNum && tripVehReg && tripVehReg === regNum;
+                return idMatch || regMatch;
+              })
+              .map((t) => {
+                const dateVal =
+                  t.actualDeparture || t.plannedDeparture || t.createdAt || "";
+                const formattedDate = dateVal
+                  ? new Date(dateVal).toISOString().split("T")[0]
+                  : "";
+                const rawStatus = (t.status || "").toLowerCase();
+                const statusDisplay =
+                  rawStatus === "completed"
+                    ? "Completed"
+                    : rawStatus === "in_transit"
+                      ? "In Transit"
+                      : rawStatus === "dispatched"
+                        ? "Dispatched"
+                        : rawStatus === "planned"
+                          ? "Scheduled"
+                          : rawStatus === "cancelled"
+                            ? "Cancelled"
+                            : t.status || "Completed";
+
+                const driverName =
+                  t.driverId?.userId?.name ||
+                  t.driverId?.name ||
+                  t.driverId?.driverId ||
+                  v.driver ||
+                  "Staff Driver";
+
+                return {
+                  id: t._id,
+                  _id: t._id,
+                  tripId: t.tripId || `TRP-${String(t._id).slice(-4)}`,
+                  origin: t.origin,
+                  destination: t.destination,
+                  driver: driverName,
+                  date: formattedDate,
+                  distanceKm: t.plannedDistance || 0,
+                  status: statusDisplay,
+                  cost: t.tripCost || 0,
+                };
+              });
 
             // Match active trip for this vehicle if assigned
             const activeTrip = tripList.find((t) => {
@@ -5106,6 +5423,145 @@ export default function Vehicles({ onVehicleCountChange }) {
 
             const cap = v.vcapacity || v.capacityValue || 1;
 
+            // Match maintenance records for this vehicle
+            const matchedMaintLogs = maintList
+              .filter((m) => {
+                const mVehId = m.vehicleId?._id
+                  ? String(m.vehicleId._id)
+                  : m.vehicleId
+                    ? String(m.vehicleId)
+                    : m.vechileId?._id
+                      ? String(m.vechileId._id)
+                      : m.vechileId
+                        ? String(m.vechileId)
+                        : null;
+                const mVehReg = (
+                  m.vehicleId?.vregistrationnumber ||
+                  m.vehicleId?.registrationNumber ||
+                  m.vechileId?.vregistrationnumber ||
+                  m.vechileId?.registrationNumber ||
+                  ""
+                ).toUpperCase();
+                return (
+                  (v._id && mVehId && String(v._id) === mVehId) ||
+                  (v.id && mVehId && String(v.id) === mVehId) ||
+                  (regNum && mVehReg && regNum === mVehReg)
+                );
+              })
+              .map((item) => ({
+                id: item._id,
+                _id: item._id,
+                vehicleId: item.vehicleId || item.vechileId,
+                date: item.serviceDate
+                  ? new Date(item.serviceDate).toISOString().split("T")[0]
+                  : "",
+                serviceDate: item.serviceDate
+                  ? new Date(item.serviceDate).toISOString().split("T")[0]
+                  : "",
+                type: item.serviceType || "Periodic Maintenance",
+                serviceType: item.serviceType || "Periodic Maintenance",
+                description: item.description || "",
+                odometer: item.odometer,
+                cost: Number(item.serviceCost) || 0,
+                serviceCost: Number(item.serviceCost) || 0,
+                serviceCenter: item.serviceProvider || "",
+                serviceProvider: item.serviceProvider || "",
+                nextDueDate: item.nextServiceDate
+                  ? new Date(item.nextServiceDate).toISOString().split("T")[0]
+                  : "",
+                nextServiceDate: item.nextServiceDate
+                  ? new Date(item.nextServiceDate).toISOString().split("T")[0]
+                  : "",
+              }))
+              .sort(
+                (a, b) =>
+                  new Date(b.serviceDate || 0) - new Date(a.serviceDate || 0),
+              );
+
+            const latestMaint = matchedMaintLogs[0];
+            const nextServiceDate =
+              latestMaint?.nextServiceDate ||
+              latestMaint?.nextDueDate ||
+              null;
+            const lastServiceDate =
+              latestMaint?.serviceDate ||
+              latestMaint?.date ||
+              null;
+            const serviceCenter =
+              latestMaint?.serviceProvider ||
+              latestMaint?.serviceCenter ||
+              "";
+            const lastCost =
+              Number(latestMaint?.serviceCost ?? latestMaint?.cost) || 0;
+            const totalMaintenanceCost = matchedMaintLogs.reduce(
+              (acc, curr) => acc + (Number(curr.serviceCost ?? curr.cost) || 0),
+              0,
+            );
+
+            // Match fuel records for this vehicle
+            const matchedFuelLogs = fuelList
+              .filter((f) => {
+                const fVehId = f.vehicleId?._id
+                  ? String(f.vehicleId._id)
+                  : f.vehicleId
+                    ? String(f.vehicleId)
+                    : f.vechileId?._id
+                      ? String(f.vechileId._id)
+                      : f.vechileId
+                        ? String(f.vechileId)
+                        : null;
+                const fVehReg = (
+                  f.vehicleId?.vregistrationnumber ||
+                  f.vehicleId?.registrationNumber ||
+                  ""
+                ).toUpperCase();
+                return (
+                  (v._id && fVehId && String(v._id) === fVehId) ||
+                  (v.id && fVehId && String(v.id) === fVehId) ||
+                  (regNum && fVehReg && regNum === fVehReg)
+                );
+              })
+              .map((f) => ({
+                id: f._id,
+                _id: f._id,
+                vehicleId: f.vehicleId || f.vechileId,
+                date: f.fuelDate
+                  ? new Date(f.fuelDate).toISOString().split("T")[0]
+                  : "",
+                fuelDate: f.fuelDate
+                  ? new Date(f.fuelDate).toISOString().split("T")[0]
+                  : "",
+                litres: Number(f.quantity) || 0,
+                quantity: Number(f.quantity) || 0,
+                cost: Number(f.fuelCost) || 0,
+                fuelCost: Number(f.fuelCost) || 0,
+                totalCost: Number(f.fuelCost) || 0,
+                odometer: f.odometer,
+                fuelStation: f.fuelStation || "",
+                station: f.fuelStation || "",
+                fuelType: f.fuelType || v.vfuletype || "Diesel",
+              }))
+              .sort(
+                (a, b) => new Date(b.fuelDate || 0) - new Date(a.fuelDate || 0),
+              );
+
+            const totalFuelLitres = matchedFuelLogs.reduce(
+              (sum, f) => sum + (Number(f.quantity) || 0),
+              0,
+            );
+            const totalFuelCost = matchedFuelLogs.reduce(
+              (sum, f) => sum + (Number(f.fuelCost) || 0),
+              0,
+            );
+            const totalDistance = matchedVehicleTrips.reduce(
+              (acc, curr) => acc + (curr.distanceKm || 0),
+              0,
+            );
+            const avgMileage =
+              totalFuelLitres > 0 && totalDistance > 0
+                ? `${(totalDistance / totalFuelLitres).toFixed(1)} km/L`
+                : "0.0 km/L";
+
             return {
               id: `VEH-${String(index + 1).padStart(3, "0")}`,
               _id: v._id,
@@ -5166,20 +5622,32 @@ export default function Vehicles({ onVehicleCountChange }) {
                 },
               },
               maintenance: {
-                lastServiceDate: null,
-                nextServiceDate: null,
-                serviceCenter: "",
-                lastCost: 0,
-                totalMaintenanceCost: 0,
+                lastServiceDate,
+                nextServiceDate,
+                serviceCenter,
+                lastCost,
+                totalMaintenanceCost,
                 healthScore: 100,
               },
-              maintenanceHistory: [],
-              fuelSummary: {
-                totalFuelLitres: 0,
-                totalFuelCost: 0,
-                avgMileage: "0.0 km/L",
+              tripSummary: {
+                totalTrips: matchedVehicleTrips.length,
+                totalDistanceKm: matchedVehicleTrips.reduce(
+                  (acc, curr) => acc + (curr.distanceKm || 0),
+                  0,
+                ),
+                completedTrips: matchedVehicleTrips.filter(
+                  (t) => t.status === "Completed",
+                ).length,
+                utilizationRate: matchedVehicleTrips.length > 0 ? 85 : 0,
               },
-              fuelRecords: [],
+              tripHistory: matchedVehicleTrips,
+              maintenanceHistory: matchedMaintLogs,
+              fuelSummary: {
+                totalFuelLitres,
+                totalFuelCost,
+                avgMileage,
+              },
+              fuelRecords: matchedFuelLogs,
             };
           });
 
@@ -5264,15 +5732,6 @@ export default function Vehicles({ onVehicleCountChange }) {
       showToast(`Vehicle ${vehicleData.registrationNumber} added to fleet!`);
     }
     setIsVehicleModalOpen(false);
-  };
-
-  // Handlers for Delete
-  const handleConfirmDelete = () => {
-    if (!vehicleToDelete) return;
-    const reg = vehicleToDelete.registrationNumber;
-    setVehicles((prev) => prev.filter((v) => v.id !== vehicleToDelete.id));
-    setVehicleToDelete(null);
-    showToast(`Vehicle ${reg} removed from fleet records.`, "info");
   };
 
   // Handler for Activate / Deactivate
@@ -5668,7 +6127,6 @@ export default function Vehicles({ onVehicleCountChange }) {
           setIsDetailsModalOpen(true);
         }}
         onEdit={handleOpenEditVehicle}
-        onDelete={(veh) => setVehicleToDelete(veh)}
         onToggleStatus={handleToggleStatus}
         onOpenDocuments={handleOpenDocuments}
         onOpenMaintenance={handleOpenMaintenance}
@@ -5736,53 +6194,6 @@ export default function Vehicles({ onVehicleCountChange }) {
         existingVehicles={vehicles}
         onImportVehicles={handleBulkImport}
       />
-
-      {/* Delete Confirmation Modal */}
-      {vehicleToDelete && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-100">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Delete Fleet Vehicle
-                </h3>
-                <p className="text-xs text-slate-500">
-                  This action will remove vehicle from records
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
-              Are you sure you want to delete vehicle{" "}
-              <strong className="text-slate-900 font-mono font-bold">
-                {vehicleToDelete.registrationNumber} ({vehicleToDelete.model})
-              </strong>
-              ? All associated service and fuel records will be dereferenced.
-            </p>
-
-            <div className="flex items-center justify-end space-x-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setVehicleToDelete(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-2xs transition-colors flex items-center space-x-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Vehicle</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

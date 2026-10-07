@@ -747,10 +747,7 @@ export default function Driverdashboard() {
           state: s.receiverState || "",
           phone: s.receiverPhoneNumber || s.receiverPhone || "-",
           email:
-            s.receiverEmail ||
-            s.customerId?.email ||
-            s.customerEmail ||
-            "",
+            s.receiverEmail || s.customerId?.email || s.customerEmail || "",
         },
         packageDetails: {
           type: s.packageDescription || s.packageType || "Parcel",
@@ -854,7 +851,10 @@ export default function Driverdashboard() {
                 const delData = await fetchDeliveryForShipment(sId);
                 if (delData) {
                   tripItem.deliveryInfo = delData;
-                  if (tripItem.status === "delivered" || delData.status === "delivered") {
+                  if (
+                    tripItem.status === "delivered" ||
+                    delData.status === "delivered"
+                  ) {
                     tripItem.deliveryStatus = "delivered";
                     tripItem.reattemptDate = null;
                     tripItem.rescheduleDate = null;
@@ -862,7 +862,8 @@ export default function Driverdashboard() {
                     tripItem.failureNote = "";
                     tripItem.reattemptNotes = "";
                   } else {
-                    if (delData.status) tripItem.deliveryStatus = delData.status;
+                    if (delData.status)
+                      tripItem.deliveryStatus = delData.status;
                     if (delData.reattemptDate) {
                       tripItem.reattemptDate = delData.reattemptDate;
                       tripItem.rescheduleDate = delData.reattemptDate;
@@ -1255,9 +1256,11 @@ export default function Driverdashboard() {
         <div className="drv-header-top">
           {/* Logo Brand Title */}
           <div className="drv-logo-group">
-            <span className="drv-logo-brand">LOGO</span>
-            <span className="drv-logo-divider">|</span>
-            <span className="drv-logo-title">Driver Dashboard</span>
+            <img src="/Athenura.png" alt="Athenura" className="drv-logo-img" />
+            <span className="drv-logo-divider" aria-hidden="true" />
+            <div className="drv-logo-title-group">
+              <span className="drv-logo-title">Driver Dashboard</span>
+            </div>
           </div>
 
           {/* Right Action Controls */}
@@ -1734,7 +1737,8 @@ export default function Driverdashboard() {
                                   color: "#64748b",
                                 }}
                               >
-                                Original ETA: {formatETA(trip.estimatedDelivery)}
+                                Original ETA:{" "}
+                                {formatETA(trip.estimatedDelivery)}
                               </span>
                               <span
                                 style={{
@@ -2600,7 +2604,8 @@ function DeliveryOtpModal({
                   lineHeight: 1.45,
                 }}
               >
-                A 4-digit confirmation code has been sent to the receiver's email:
+                A 4-digit confirmation code has been sent to the receiver's
+                email:
               </p>
               <div
                 style={{
@@ -3851,7 +3856,11 @@ function ViewPodModal({ trip, onClose }) {
                 type="button"
                 onClick={fetchPod}
                 className="drv-btn-default"
-                style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                }}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Retry
@@ -3969,7 +3978,10 @@ function ViewPodModal({ trip, onClose }) {
 
               {/* Signature Preview */}
               {signature && (
-                <div className="drv-form-group" style={{ marginBottom: "1rem" }}>
+                <div
+                  className="drv-form-group"
+                  style={{ marginBottom: "1rem" }}
+                >
                   <span
                     className="drv-label"
                     style={{
@@ -3997,7 +4009,11 @@ function ViewPodModal({ trip, onClose }) {
                     <img
                       src={signature}
                       alt="Recipient Signature"
-                      style={{ maxHeight: "100px", maxWidth: "100%", objectFit: "contain" }}
+                      style={{
+                        maxHeight: "100px",
+                        maxWidth: "100%",
+                        objectFit: "contain",
+                      }}
                     />
                   </div>
                 </div>
@@ -4283,47 +4299,47 @@ function TripDetailsModal({ trip, vehiclesMap, onClose, onOpenPOD }) {
               trip.failureReason ||
               trip.failureNote) && (
               <div className="drv-form-group">
-              <span className="drv-label" style={{ color: "#e11d48" }}>
-                Failed Delivery Record
-              </span>
-              <div
-                style={{
-                  padding: "0.75rem",
-                  background: "#fff1f2",
-                  borderRadius: "0.5rem",
-                  border: "1px solid #fda4af",
-                  fontSize: "0.825rem",
-                }}
-              >
+                <span className="drv-label" style={{ color: "#e11d48" }}>
+                  Failed Delivery Record
+                </span>
                 <div
                   style={{
-                    fontWeight: 700,
-                    color: "#be123c",
-                    marginBottom: "0.25rem",
+                    padding: "0.75rem",
+                    background: "#fff1f2",
+                    borderRadius: "0.5rem",
+                    border: "1px solid #fda4af",
+                    fontSize: "0.825rem",
                   }}
                 >
-                  Reason: {trip.failureReason || "Not specified"}
-                </div>
-                <div style={{ color: "#334155" }}>
-                  Note:{" "}
-                  {trip.failureNote ||
-                    trip.statusNotes ||
-                    "No details provided"}
-                </div>
-                {trip.failureReportedAt && (
                   <div
                     style={{
-                      fontSize: "0.7rem",
-                      color: "#9f1239",
-                      marginTop: "0.25rem",
+                      fontWeight: 700,
+                      color: "#be123c",
+                      marginBottom: "0.25rem",
                     }}
                   >
-                    Reported at: {formatETA(trip.failureReportedAt)}
+                    Reason: {trip.failureReason || "Not specified"}
                   </div>
-                )}
+                  <div style={{ color: "#334155" }}>
+                    Note:{" "}
+                    {trip.failureNote ||
+                      trip.statusNotes ||
+                      "No details provided"}
+                  </div>
+                  {trip.failureReportedAt && (
+                    <div
+                      style={{
+                        fontSize: "0.7rem",
+                        color: "#9f1239",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      Reported at: {formatETA(trip.failureReportedAt)}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* Pinned Footer */}

@@ -42,6 +42,7 @@ import {
   exportInvoicesToCSV,
   formatINR,
   numberToWordsINR,
+  setCompanyInfoData,
 } from "./utils/pdfGenerator";
 
 import "../../styles/ShipmentManagement.css";
@@ -49,26 +50,19 @@ import "../../styles/ShipmentManagement.css";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
-const COMPANY_INFO = {
-  name: "LogiTrack Express & Freight Solutions Pvt. Ltd.",
-  tagline: "Integrated Logistics, Supply Chain & Fleet Management",
-  cin: "U63090MH2016PTC284912",
-  gstin: "27AABCL8931M1ZQ",
-  pan: "AABCL8931M",
-  hsnSacCode: "996511 (Road Freight Transport Services)",
-  headOffice:
-    "LogiTrack Corporate Towers, 6th Floor, Sector 18, MIDC Industrial Area, Vashi, Navi Mumbai, Maharashtra - 400705",
-  phone: "+91 22 6890 4000 / 1800 209 8899",
-  email: "billing@logitrack-logistics.com",
-  web: "www.logitrack-logistics.com",
-  bankDetails: {
-    bankName: "HDFC Bank Ltd",
-    accountName: "LogiTrack Express & Freight Solutions Pvt Ltd",
-    accountNumber: "50200084920194",
-    ifscCode: "HDFC0000128",
-    branch: "Vashi Sector 17 Branch, Navi Mumbai",
+// Module-level dynamic cache populated solely from the database
+let dynamicCompanyInfo = null;
+
+// Proxy object for seamless, reactive access to live database company info across helpers
+export const COMPANY_INFO = new Proxy(
+  {},
+  {
+    get(target, prop) {
+      if (!dynamicCompanyInfo) return undefined;
+      return dynamicCompanyInfo[prop];
+    },
   },
-};
+);
 
 // ==========================================
 // 1. TOAST COMPONENT
@@ -1313,16 +1307,29 @@ function formatBackendInvoice(inv) {
     notes: inv.notes || "Payment due within credit terms.",
     bankDetails: {
       accountName:
-        inv.bankDetails?.accountName || COMPANY_INFO.bankDetails.accountName,
+        inv.bankDetails?.accountName ||
+        dynamicCompanyInfo?.bankDetails?.accountName ||
+        "",
       accountNumber:
         inv.bankDetails?.accountNumber ||
-        COMPANY_INFO.bankDetails.accountNumber,
+        dynamicCompanyInfo?.bankDetails?.accountNumber ||
+        "",
       bankAndBranch:
         inv.bankDetails?.bankAndBranch ||
         (inv.bankDetails?.bankName
           ? `${inv.bankDetails.bankName}, ${inv.bankDetails.branch || ""}`
-          : `${COMPANY_INFO.bankDetails.bankName}, ${COMPANY_INFO.bankDetails.branch}`),
-      ifscCode: inv.bankDetails?.ifscCode || COMPANY_INFO.bankDetails.ifscCode,
+              .trim()
+              .replace(/^, |, $/g, "")
+          : dynamicCompanyInfo?.bankDetails?.bankAndBranch ||
+            (dynamicCompanyInfo?.bankDetails?.bankName
+              ? `${dynamicCompanyInfo.bankDetails.bankName}, ${dynamicCompanyInfo.bankDetails.branch || ""}`
+                  .trim()
+                  .replace(/^, |, $/g, "")
+              : "")),
+      ifscCode:
+        inv.bankDetails?.ifscCode ||
+        dynamicCompanyInfo?.bankDetails?.ifscCode ||
+        "",
     },
     paymentHistory: Array.isArray(inv.paymentHistory) ? inv.paymentHistory : [],
   };
@@ -1331,7 +1338,7 @@ function formatBackendInvoice(inv) {
 // ==========================================
 // 5. CREATE INVOICE MODAL COMPONENT
 // ==========================================
-function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
+function InvoiceModal({ isOpen, onClose, onSaveInvoice, companyInfo }) {
   if (!isOpen) return null;
 
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -1364,6 +1371,49 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
   const [accountNumber, setAccountNumber] = useState("");
   const [bankAndBranch, setBankAndBranch] = useState("");
   const [ifscCode, setIfscCode] = useState("");
+  const [isLoadingBankDetails, setIsLoadingBankDetails] = useState(false);
+  const [bankAutofillSuccess, setBankAutofillSuccess] = useState(false);
+
+  const applyBankDetails = (bd) => {
+    if (!bd) return;
+    const bName = bd.bankName || "";
+    const bBranch = bd.branch || "";
+    const resolvedBankBranch =
+      bd.bankAndBranch ||
+      (bName && bBranch ? `${bName}, ${bBranch}` : bName || bBranch || "");
+
+    setAccountName(bd.accountName || "");
+    setAccountNumber(bd.accountNumber || "");
+    setBankAndBranch(resolvedBankBranch);
+    setIfscCode(bd.ifscCode || "");
+    setBankAutofillSuccess(true);
+  };
+
+  const fetchAndAutofillBankDetails = async () => {
+    setIsLoadingBankDetails(true);
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_BASE_URL}/company-info`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const bd = data?.company?.bankDetails || data?.bankDetails;
+        if (bd) {
+          applyBankDetails(bd);
+        } else if (companyInfo?.bankDetails) {
+          applyBankDetails(companyInfo.bankDetails);
+        }
+      } else if (companyInfo?.bankDetails) {
+        applyBankDetails(companyInfo.bankDetails);
+      }
+    } catch {
+      if (companyInfo?.bankDetails) {
+        applyBankDetails(companyInfo.bankDetails);
+      }
+    } finally {
+      setIsLoadingBankDetails(false);
+    }
+  };
 
   const [items, setItems] = useState([
     {
@@ -1411,6 +1461,9 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
         setShipmentList(list);
       })
       .catch(() => {});
+
+    // Automatically autofill company bank remittance details from DB on modal open
+    fetchAndAutofillBankDetails();
   }, [isOpen]);
 
   useEffect(() => {
@@ -2447,15 +2500,19 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
 
           {/* Section 5: Company Bank Remittance Details */}
           <div className="bg-[#f8f9fa] p-4 rounded-xl border border-gray-200 space-y-3">
-            <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-              <span className="font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                5. Company Bank Remittance Details
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Official bank details printed on tax invoice for NEFT/RTGS
-                payments
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                  5. Company Bank Remittance Details
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400 hidden sm:inline">
+                  Official bank details printed on tax invoice for NEFT/RTGS
+                  payments
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
@@ -2466,7 +2523,10 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
                 <input
                   type="text"
                   value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
+                  onChange={(e) => {
+                    setAccountName(e.target.value);
+                    setBankAutofillSuccess(false);
+                  }}
                   placeholder="Account Name"
                   className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-blue-500"
                 />
@@ -2479,7 +2539,10 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
                 <input
                   type="text"
                   value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
+                  onChange={(e) => {
+                    setAccountNumber(e.target.value);
+                    setBankAutofillSuccess(false);
+                  }}
                   placeholder="Account Number"
                   className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-blue-500"
                 />
@@ -2492,7 +2555,10 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
                 <input
                   type="text"
                   value={bankAndBranch}
-                  onChange={(e) => setBankAndBranch(e.target.value)}
+                  onChange={(e) => {
+                    setBankAndBranch(e.target.value);
+                    setBankAutofillSuccess(false);
+                  }}
                   placeholder="Bank & Branch Name"
                   className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-blue-500"
                 />
@@ -2505,7 +2571,10 @@ function InvoiceModal({ isOpen, onClose, onSaveInvoice }) {
                 <input
                   type="text"
                   value={ifscCode}
-                  onChange={(e) => setIfscCode(e.target.value)}
+                  onChange={(e) => {
+                    setIfscCode(e.target.value);
+                    setBankAutofillSuccess(false);
+                  }}
                   placeholder="IFSC Code"
                   className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-blue-500 uppercase"
                 />
@@ -3030,6 +3099,7 @@ function InvoiceDetailModal({
   onClose,
   onUpdateStatus,
   onTriggerDownload,
+  companyInfo,
 }) {
   if (!isOpen || !invoice) return null;
 
@@ -3057,11 +3127,11 @@ function InvoiceDetailModal({
     }, 1000);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (onTriggerDownload) {
       onTriggerDownload(invoice);
     } else {
-      downloadInvoicePDF(invoice);
+      await downloadInvoicePDF(invoice);
     }
   };
 
@@ -3229,33 +3299,62 @@ function InvoiceDetailModal({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xl font-extrabold text-blue-900 tracking-tight font-heading">
-                    LOGITRACK LOGISTICS SOLUTIONS
+                    {companyInfo?.name || ""}
                   </span>
                 </div>
-                <div className="text-xs font-medium text-slate-600 mt-0.5">
-                  LogiTrack Express & Freight Solutions Pvt. Ltd.
-                </div>
+                {companyInfo?.tagline && (
+                  <div className="text-xs font-medium text-slate-600 mt-0.5">
+                    {companyInfo.tagline}
+                  </div>
+                )}
                 <div className="text-[11px] text-slate-500 mt-1 space-y-0.5 leading-tight">
-                  <p>{COMPANY_INFO.headOffice}</p>
+                  {companyInfo?.headOffice && <p>{companyInfo.headOffice}</p>}
                   <p>
-                    <span className="font-semibold text-slate-700">GSTIN:</span>{" "}
-                    {COMPANY_INFO.gstin} |
-                    <span className="font-semibold text-slate-700 ml-1">
-                      CIN:
-                    </span>{" "}
-                    {COMPANY_INFO.cin} |
-                    <span className="font-semibold text-slate-700 ml-1">
-                      PAN:
-                    </span>{" "}
-                    {COMPANY_INFO.pan}
+                    {companyInfo?.gstin && (
+                      <span>
+                        <span className="font-semibold text-slate-700">
+                          GSTIN:
+                        </span>{" "}
+                        {companyInfo.gstin}
+                      </span>
+                    )}
+                    {companyInfo?.cin && (
+                      <span className="ml-1">
+                        |{" "}
+                        <span className="font-semibold text-slate-700">
+                          CIN:
+                        </span>{" "}
+                        {companyInfo.cin}
+                      </span>
+                    )}
+                    {companyInfo?.pan && (
+                      <span className="ml-1">
+                        |{" "}
+                        <span className="font-semibold text-slate-700">
+                          PAN:
+                        </span>{" "}
+                        {companyInfo.pan}
+                      </span>
+                    )}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-700">Phone:</span>{" "}
-                    {COMPANY_INFO.phone} |
-                    <span className="font-semibold text-slate-700 ml-1">
-                      Email:
-                    </span>{" "}
-                    {COMPANY_INFO.email}
+                    {companyInfo?.phone && (
+                      <span>
+                        <span className="font-semibold text-slate-700">
+                          Phone:
+                        </span>{" "}
+                        {companyInfo.phone}
+                      </span>
+                    )}
+                    {companyInfo?.email && (
+                      <span className="ml-1">
+                        |{" "}
+                        <span className="font-semibold text-slate-700">
+                          Email:
+                        </span>{" "}
+                        {companyInfo.email}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -3557,25 +3656,32 @@ function InvoiceDetailModal({
                   <span className="font-medium">Account Name:</span>
                   <span className="col-span-2 font-semibold text-slate-800">
                     {invoice.bankDetails?.accountName ||
-                      COMPANY_INFO.bankDetails.accountName}
+                      companyInfo?.bankDetails?.accountName ||
+                      ""}
                   </span>
 
                   <span className="font-medium">Account No:</span>
                   <span className="col-span-2 font-mono font-bold text-blue-700">
                     {invoice.bankDetails?.accountNumber ||
-                      COMPANY_INFO.bankDetails.accountNumber}
+                      companyInfo?.bankDetails?.accountNumber ||
+                      ""}
                   </span>
 
                   <span className="font-medium">Bank & Branch:</span>
                   <span className="col-span-2 text-slate-800">
                     {invoice.bankDetails?.bankAndBranch ||
-                      `${COMPANY_INFO.bankDetails.bankName}, ${COMPANY_INFO.bankDetails.branch}`}
+                      (companyInfo?.bankDetails?.bankName
+                        ? `${companyInfo.bankDetails.bankName}, ${companyInfo.bankDetails.branch || ""}`
+                            .trim()
+                            .replace(/^, |, $/g, "")
+                        : companyInfo?.bankDetails?.branch || "")}
                   </span>
 
                   <span className="font-medium">IFSC Code:</span>
                   <span className="col-span-2 font-mono font-bold text-slate-800">
                     {invoice.bankDetails?.ifscCode ||
-                      COMPANY_INFO.bankDetails.ifscCode}
+                      companyInfo?.bankDetails?.ifscCode ||
+                      ""}
                   </span>
                 </div>
               </div>
@@ -3660,10 +3766,6 @@ function InvoiceDetailModal({
 
         {/* Modal Footer */}
         <div className="no-print px-6 py-3 bg-[#f8f9fa] border-t border-gray-200 flex justify-between items-center">
-          <div className="text-xs text-slate-500">
-            Document ID:{" "}
-            <span className="font-mono font-medium">{invoice.id}</span>
-          </div>
           <div className="flex gap-2">
             <button
               onClick={onClose}
@@ -3718,9 +3820,30 @@ export default function DashboardInvoice() {
     useState(null);
   const [showReportsSection, setShowReportsSection] = useState(true);
   const [toast, setToast] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
 
-  // Fetch initial invoices from MongoDB on mount
+  const fetchCompanyInfoFromDB = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_BASE_URL}/company-info`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.company) {
+          dynamicCompanyInfo = data.company;
+          setCompanyInfoData(data.company);
+          setCompanyInfo(data.company);
+        }
+      }
+    } catch (err) {
+      console.warn("Company info fetch notice:", err);
+    }
+  };
+
+  // Fetch initial company info and invoices from MongoDB on mount
   useEffect(() => {
+    fetchCompanyInfoFromDB();
+
     const token = localStorage.getItem("token");
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -3748,6 +3871,7 @@ export default function DashboardInvoice() {
   };
 
   const handleRefresh = () => {
+    fetchCompanyInfoFromDB();
     const token = localStorage.getItem("token");
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -3879,8 +4003,8 @@ export default function DashboardInvoice() {
   };
 
   // 5. Download Invoice PDF
-  const handleDownloadInvoice = (invoice) => {
-    const success = downloadInvoicePDF(invoice);
+  const handleDownloadInvoice = async (invoice) => {
+    const success = await downloadInvoicePDF(invoice, companyInfo);
     if (success) {
       showToast(
         `Downloaded official PDF for ${invoice.invoiceNumber || invoice.id}`,
@@ -3981,6 +4105,7 @@ export default function DashboardInvoice() {
         isOpen={isCreateInvoiceModalOpen}
         onClose={() => setIsCreateInvoiceModalOpen(false)}
         onSaveInvoice={handleSaveNewInvoice}
+        companyInfo={companyInfo}
       />
 
       {/* Create User Modal */}
@@ -4005,6 +4130,7 @@ export default function DashboardInvoice() {
         onClose={() => setSelectedInvoiceForDetail(null)}
         onUpdateStatus={handleUpdateStatus}
         onTriggerDownload={handleDownloadInvoice}
+        companyInfo={companyInfo}
       />
     </div>
   );

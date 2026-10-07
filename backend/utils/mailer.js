@@ -405,6 +405,68 @@ Administration Team`,
   });
 };
 
+const sendCustomerCreatedEmail = async (email, customerName, customerId) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: `Customer Account Created Successfully - ${customerId}`,
+
+    text: `Dear ${customerName},
+
+We are pleased to inform you that your customer account has been created successfully.
+
+Customer ID: ${customerId}
+Customer Name: ${customerName}
+
+Your customer account is now active and ready to use.
+
+Please keep your Customer ID safe, as you may need it when contacting our support team or managing your account.
+
+If you have any questions or need further assistance, please feel free to contact our support team.
+
+Regards,
+Logistics Management Team`,
+
+    html: `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Customer Account Created Successfully</h2>
+
+      <p>Dear ${customerName},</p>
+
+      <p>
+        We are pleased to inform you that your customer account
+        has been created successfully.
+      </p>
+
+      <p>
+        <strong>Customer ID:</strong> ${customerId}<br />
+        <strong>Customer Name:</strong> ${customerName}
+      </p>
+
+      <p>
+        Your customer account is now
+        <strong>active and ready to use</strong>.
+      </p>
+
+      <p>
+        Please keep your Customer ID safe, as you may need it when
+        contacting our support team or managing your account.
+      </p>
+
+      <p>
+        If you have any questions or need further assistance,
+        please feel free to contact our support team.
+      </p>
+
+      <p>
+        Regards,<br />
+        <strong>Logistics Management Team</strong>
+      </p>
+    </div>
+  `,
+  });
+};
+
 module.exports = {
   sendOtpEmail,
   sendDeliveryOtpEmail,
@@ -412,4 +474,5 @@ module.exports = {
   sendShipmentStatusUpdate,
   sendShipmentAssignedEmail,
   sendAccountCreatedEmail,
+  sendCustomerCreatedEmail,
 };

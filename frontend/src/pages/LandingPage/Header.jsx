@@ -63,7 +63,7 @@ export default function Header() {
   return (
     <>
       <header className={`landingHeader  ${scrolled ? "navbarScrolled" : ""}`}>
-        <h3>LOGO</h3>
+        <img src="./Athenura.png" alt="Athenura" className="HeaderLogo" />
         <p className="headerManu" onClick={openNav}>
           {navtoggle ? <X /> : <Menu />}
         </p>

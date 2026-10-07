@@ -30,7 +30,9 @@ import {
   Building2,
   Landmark,
   MapPin,
+  LayoutDashboard,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -52,6 +54,7 @@ function ProfileTabSection({ onShowToast }) {
     lastName: "Admin",
     email: "admin@routeflow.io",
     phone: "+91 98765 43210",
+    role: "System Administrator",
     primaryHub: "Pune Main Logistics Hub (MH-12)",
     timezone: "(UTC+05:30) Asia/Kolkata (IST)",
     twoFactorEnabled: true,
@@ -70,12 +73,16 @@ function ProfileTabSection({ onShowToast }) {
         if (data.user) {
           const user = data.user;
           const nameParts = (user.name || "").split(" ");
+          const localUser = JSON.parse(localStorage.getItem("user") || "{}");
+          const resolvedRole =
+            user.role || localUser.role || "System Administrator";
           setFormData((prev) => ({
             ...prev,
             firstName: user.firstName || nameParts[0] || "Admin",
             lastName: user.lastName || nameParts.slice(1).join(" ") || "",
             email: user.email || prev.email,
             phone: user.phone || prev.phone,
+            role: resolvedRole,
             primaryHub: user.primaryHub || prev.primaryHub,
             timezone: user.timezone || prev.timezone,
             twoFactorEnabled:
@@ -167,46 +174,46 @@ function ProfileTabSection({ onShowToast }) {
   return (
     <form onSubmit={handleSaveProfile} className="space-y-6">
       {/* Personal Info Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-6">
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <UserCircle className="w-5 h-5 text-blue-600" />
-            Personal Information
+            <UserCircle className="w-5 h-5 text-blue-600 shrink-0" />
+            <span>Personal Information</span>
           </h3>
           <button
             type="submit"
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition disabled:opacity-50"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer self-start sm:self-auto w-full sm:w-auto"
           >
             {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="w-4 h-4 shrink-0" />
             )}
-            Save Profile
+            <span>Save Profile</span>
           </button>
         </div>
 
         {/* Avatar Header */}
-        <div className="flex items-center gap-6 mb-8 pb-6 border-b border-slate-100">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold ring-4 ring-blue-50 shadow-md">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-6 sm:mb-8 pb-6 border-b border-slate-100">
+          <div className="relative shrink-0">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold ring-4 ring-blue-50 shadow-md">
               {formData.firstName
                 ? formData.firstName.charAt(0).toUpperCase()
                 : "A"}
             </div>
           </div>
           <div>
-            <h4 className="text-lg font-semibold text-slate-900">
+            <h4 className="text-base sm:text-lg font-semibold text-slate-900">
               {formData.firstName} {formData.lastName}
             </h4>
-            <p className="text-sm text-slate-500">
-              System Administrator • Master Logistics Operations
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              {formData.role || "User"}
             </p>
             <div className="mt-2 flex items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></span>{" "}
-                Verified Active Account
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-medium bg-emerald-100 text-emerald-800">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 shrink-0"></span>
+                <span>Verified Active Account</span>
               </span>
             </div>
           </div>
@@ -261,23 +268,22 @@ function CompanyInfoTabSection({ onShowToast }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    name: "LogiTrack Express & Freight Solutions Pvt. Ltd.",
-    tagline: "Integrated Logistics, Supply Chain & Fleet Management",
-    cin: "U63090MH2016PTC284912",
-    gstin: "27AABCL8931M1ZQ",
-    pan: "AABCL8931M",
-    hsnSacCode: "996511 (Road Freight Transport Services)",
-    headOffice:
-      "LogiTrack Corporate Towers, 6th Floor, Sector 18, MIDC Industrial Area, Vashi, Navi Mumbai, Maharashtra - 400705",
-    phone: "+91 22 6890 4000 / 1800 209 8899",
-    email: "billing@logitrack-logistics.com",
-    web: "www.logitrack-logistics.com",
+    name: "",
+    tagline: "",
+    cin: "",
+    gstin: "",
+    pan: "",
+    hsnSacCode: "",
+    headOffice: "",
+    phone: "",
+    email: "",
+    web: "",
     bankDetails: {
-      bankName: "HDFC Bank Ltd",
-      accountName: "LogiTrack Express & Freight Solutions Pvt Ltd",
-      accountNumber: "50200084920194",
-      ifscCode: "HDFC0000128",
-      branch: "Vashi Sector 17 Branch, Navi Mumbai",
+      bankName: "",
+      accountName: "",
+      accountNumber: "",
+      ifscCode: "",
+      branch: "",
     },
   });
 
@@ -289,34 +295,25 @@ function CompanyInfoTabSection({ onShowToast }) {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.companyInfo) {
-          const ci = data.companyInfo;
+        const ci = data.company || data.companyInfo;
+        if (ci) {
           setFormData({
-            name: ci.name || "LogiTrack Express & Freight Solutions Pvt. Ltd.",
-            tagline:
-              ci.tagline ||
-              "Integrated Logistics, Supply Chain & Fleet Management",
-            cin: ci.cin || "U63090MH2016PTC284912",
-            gstin: ci.gstin || "27AABCL8931M1ZQ",
-            pan: ci.pan || "AABCL8931M",
-            hsnSacCode:
-              ci.hsnSacCode || "996511 (Road Freight Transport Services)",
-            headOffice:
-              ci.headOffice ||
-              "LogiTrack Corporate Towers, 6th Floor, Sector 18, MIDC Industrial Area, Vashi, Navi Mumbai, Maharashtra - 400705",
-            phone: ci.phone || "+91 22 6890 4000 / 1800 209 8899",
-            email: ci.email || "billing@logitrack-logistics.com",
-            web: ci.web || "www.logitrack-logistics.com",
+            name: ci.name || "",
+            tagline: ci.tagline || "",
+            cin: ci.cin || "",
+            gstin: ci.gstin || "",
+            pan: ci.pan || "",
+            hsnSacCode: ci.hsnSacCode || "",
+            headOffice: ci.headOffice || "",
+            phone: ci.phone || "",
+            email: ci.email || "",
+            web: ci.web || "",
             bankDetails: {
-              bankName: ci.bankDetails?.bankName || "HDFC Bank Ltd",
-              accountName:
-                ci.bankDetails?.accountName ||
-                "LogiTrack Express & Freight Solutions Pvt Ltd",
-              accountNumber: ci.bankDetails?.accountNumber || "50200084920194",
-              ifscCode: ci.bankDetails?.ifscCode || "HDFC0000128",
-              branch:
-                ci.bankDetails?.branch ||
-                "Vashi Sector 17 Branch, Navi Mumbai",
+              bankName: ci.bankDetails?.bankName || "",
+              accountName: ci.bankDetails?.accountName || "",
+              accountNumber: ci.bankDetails?.accountNumber || "",
+              ifscCode: ci.bankDetails?.ifscCode || "",
+              branch: ci.bankDetails?.branch || "",
             },
           });
         }
@@ -363,7 +360,29 @@ function CompanyInfoTabSection({ onShowToast }) {
 
       const data = await res.json();
       if (res.ok) {
-        onShowToast("Company information updated successfully!");
+        const ci = data.company || data.companyInfo;
+        if (ci) {
+          setFormData({
+            name: ci.name || "",
+            tagline: ci.tagline || "",
+            cin: ci.cin || "",
+            gstin: ci.gstin || "",
+            pan: ci.pan || "",
+            hsnSacCode: ci.hsnSacCode || "",
+            headOffice: ci.headOffice || "",
+            phone: ci.phone || "",
+            email: ci.email || "",
+            web: ci.web || "",
+            bankDetails: {
+              bankName: ci.bankDetails?.bankName || "",
+              accountName: ci.bankDetails?.accountName || "",
+              accountNumber: ci.bankDetails?.accountNumber || "",
+              ifscCode: ci.bankDetails?.ifscCode || "",
+              branch: ci.bankDetails?.branch || "",
+            },
+          });
+        }
+        onShowToast("Company information updated successfully in database!");
       } else {
         onShowToast(data.message || "Failed to update company info.");
       }
@@ -387,23 +406,23 @@ function CompanyInfoTabSection({ onShowToast }) {
   return (
     <form onSubmit={handleSaveCompanyInfo} className="space-y-6">
       {/* Corporate Registration Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-6">
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-blue-600" />
-            Company Identification & Registration
+            <Building2 className="w-5 h-5 text-blue-600 shrink-0" />
+            <span>Company Identification & Registration</span>
           </h3>
           <button
             type="submit"
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition disabled:opacity-50"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer self-start sm:self-auto w-full sm:w-auto"
           >
             {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="w-4 h-4 shrink-0" />
             )}
-            Save Company Info
+            <span>Save Company Info</span>
           </button>
         </div>
 
@@ -624,6 +643,22 @@ function CompanyInfoTabSection({ onShowToast }) {
           </div>
         </div>
       </div>
+
+      {/* Bottom Save Action Bar */}
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+        >
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          <span>{saving ? "Saving Company Info..." : "Save Company Info"}</span>
+        </button>
+      </div>
     </form>
   );
 }
@@ -662,33 +697,36 @@ function UsersTabSection({
   return (
     <div className="space-y-6">
       {/* Controls Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto">
+      <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 lg:pb-0 w-full lg:w-auto">
           <button
+            type="button"
             onClick={() => setFilter("all")}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition shrink-0 cursor-pointer ${
               filter === "all"
-                ? "bg-blue-600 text-white"
+                ? "bg-blue-600 text-white shadow-xs"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
             All ({users.length})
           </button>
           <button
+            type="button"
             onClick={() => setFilter("active")}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition shrink-0 cursor-pointer ${
               filter === "active"
-                ? "bg-blue-600 text-white"
+                ? "bg-blue-600 text-white shadow-xs"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
             Active ({activeCount})
           </button>
           <button
+            type="button"
             onClick={() => setFilter("pending")}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition shrink-0 cursor-pointer ${
               filter === "pending"
-                ? "bg-blue-600 text-white"
+                ? "bg-blue-600 text-white shadow-xs"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
@@ -696,8 +734,8 @@ function UsersTabSection({
           </button>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+          <div className="relative flex-1 lg:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -708,11 +746,12 @@ function UsersTabSection({
             />
           </div>
           <button
+            type="button"
             onClick={onOpenAddUser}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 transition shrink-0"
+            className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 sm:py-1.5 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            Add User
+            <span>Add User</span>
           </button>
         </div>
       </div>
@@ -735,7 +774,6 @@ function UsersTabSection({
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-5">User Profile</th>
                   <th className="py-3 px-5">Role</th>
-                  <th className="py-3 px-5">Assigned Hub</th>
                   <th className="py-3 px-5">Status</th>
                   <th className="py-3 px-5 text-right">Actions</th>
                 </tr>
@@ -767,9 +805,6 @@ function UsersTabSection({
                         <span className="inline-block px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded text-xs text-slate-800 font-semibold">
                           {user.role || "User"}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-5 text-slate-600">
-                        {user.hub || user.primaryHub || "Main Hub"}
                       </td>
                       <td className="py-3.5 px-5">
                         <button
@@ -861,19 +896,97 @@ function RolesTabSection() {
   ];
 
   const sidebarMatrix = [
-    { name: "Dashboard", admin: true, manager: true, dispatcher: true, warehouse: true },
-    { name: "Customers", admin: true, manager: false, dispatcher: false, warehouse: false },
-    { name: "Shipments", admin: true, manager: true, dispatcher: true, warehouse: true },
-    { name: "Vehicles", admin: true, manager: true, dispatcher: true, warehouse: false },
-    { name: "Drivers", admin: true, manager: true, dispatcher: true, warehouse: false },
-    { name: "Warehouses", admin: true, manager: false, dispatcher: false, warehouse: true },
-    { name: "Trips", admin: true, manager: true, dispatcher: true, warehouse: false },
-    { name: "Deliveries", admin: true, manager: true, dispatcher: true, warehouse: true },
-    { name: "POD", admin: true, manager: false, dispatcher: false, warehouse: false },
-    { name: "Invoices", admin: true, manager: false, dispatcher: false, warehouse: false },
-    { name: "Reports", admin: true, manager: true, dispatcher: false, warehouse: false },
-    { name: "Notifications", admin: true, manager: true, dispatcher: true, warehouse: true },
-    { name: "Settings", admin: true, manager: "Profile", dispatcher: "Profile", warehouse: "Profile" },
+    {
+      name: "Dashboard",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: true,
+    },
+    {
+      name: "Customers",
+      admin: true,
+      manager: false,
+      dispatcher: false,
+      warehouse: false,
+    },
+    {
+      name: "Shipments",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: true,
+    },
+    {
+      name: "Vehicles",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: false,
+    },
+    {
+      name: "Drivers",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: false,
+    },
+    {
+      name: "Warehouses",
+      admin: true,
+      manager: false,
+      dispatcher: false,
+      warehouse: true,
+    },
+    {
+      name: "Trips",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: false,
+    },
+    {
+      name: "Deliveries",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: true,
+    },
+    {
+      name: "POD",
+      admin: true,
+      manager: false,
+      dispatcher: false,
+      warehouse: false,
+    },
+    {
+      name: "Invoices",
+      admin: true,
+      manager: false,
+      dispatcher: false,
+      warehouse: false,
+    },
+    {
+      name: "Reports",
+      admin: true,
+      manager: true,
+      dispatcher: false,
+      warehouse: false,
+    },
+    {
+      name: "Notifications",
+      admin: true,
+      manager: true,
+      dispatcher: true,
+      warehouse: true,
+    },
+    {
+      name: "Settings",
+      admin: true,
+      manager: "Profile",
+      dispatcher: "Profile",
+      warehouse: "Profile",
+    },
   ];
 
   const renderCell = (val) => {
@@ -908,11 +1021,15 @@ function RolesTabSection() {
                 <span className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center font-bold shadow-xs">
                   {r.icon}
                 </span>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${r.bgBadge}`}>
+                <span
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${r.bgBadge}`}
+                >
                   Active Role
                 </span>
               </div>
-              <h4 className="font-bold text-slate-900 text-base mb-2">{r.title}</h4>
+              <h4 className="font-bold text-slate-900 text-base mb-2">
+                {r.title}
+              </h4>
               <ul className="space-y-1.5 text-xs text-slate-600">
                 {r.features.map((feat, idx) => (
                   <li key={idx} className="flex items-center gap-1.5">
@@ -935,7 +1052,8 @@ function RolesTabSection() {
               Role-Based Sidebar Access Matrix
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              System access privileges and navigation visibility matrix across all application roles.
+              System access privileges and navigation visibility matrix across
+              all application roles.
             </p>
           </div>
         </div>
@@ -957,10 +1075,18 @@ function RolesTabSection() {
                   <td className="py-3 px-5 font-semibold text-slate-900">
                     {row.name}
                   </td>
-                  <td className="py-3 px-5 text-center">{renderCell(row.admin)}</td>
-                  <td className="py-3 px-5 text-center">{renderCell(row.manager)}</td>
-                  <td className="py-3 px-5 text-center">{renderCell(row.dispatcher)}</td>
-                  <td className="py-3 px-5 text-center">{renderCell(row.warehouse)}</td>
+                  <td className="py-3 px-5 text-center">
+                    {renderCell(row.admin)}
+                  </td>
+                  <td className="py-3 px-5 text-center">
+                    {renderCell(row.manager)}
+                  </td>
+                  <td className="py-3 px-5 text-center">
+                    {renderCell(row.dispatcher)}
+                  </td>
+                  <td className="py-3 px-5 text-center">
+                    {renderCell(row.warehouse)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1177,9 +1303,9 @@ function AuditLogsTabSection({ onShowToast }) {
       </div>
 
       {/* Control Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
-          <div className="relative flex-1 md:w-64">
+      <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto flex-1">
+          <div className="relative flex-1 lg:max-w-xs">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -1190,38 +1316,40 @@ function AuditLogsTabSection({ onShowToast }) {
             />
           </div>
 
-          <select
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="All">Action: All ({logs.length})</option>
-            {actionOptions.map((act) => (
-              <option key={act} value={act}>
-                {act}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 sm:flex items-center gap-2">
+            <select
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value)}
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-auto"
+            >
+              <option value="All">Action: All ({logs.length})</option>
+              {actionOptions.map((act) => (
+                <option key={act} value={act}>
+                  {act}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={resourceFilter}
-            onChange={(e) => setResourceFilter(e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="All">Resource: All</option>
-            {resourceOptions.map((res) => (
-              <option key={res} value={res}>
-                {res}
-              </option>
-            ))}
-          </select>
+            <select
+              value={resourceFilter}
+              onChange={(e) => setResourceFilter(e.target.value)}
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-auto"
+            >
+              <option value="All">Resource: All</option>
+              {resourceOptions.map((res) => (
+                <option key={res} value={res}>
+                  {res}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+        <div className="flex items-center gap-2 w-full lg:w-auto justify-end pt-1 lg:pt-0 border-t lg:border-t-0 border-slate-100">
           <button
             type="button"
             onClick={fetchAuditLogs}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition"
+            className="flex-1 sm:flex-initial px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer"
             title="Refresh logs"
           >
             <RefreshCw
@@ -1233,7 +1361,7 @@ function AuditLogsTabSection({ onShowToast }) {
           <button
             type="button"
             onClick={handleExportCSV}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition"
+            className="flex-1 sm:flex-initial px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer"
           >
             <Save className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -1271,7 +1399,9 @@ function AuditLogsTabSection({ onShowToast }) {
                   <th className="py-3 px-5">Performed By</th>
                   <th className="py-3 px-5">Action</th>
                   <th className="py-3 px-5">Target Resource</th>
-                  <th className="py-3 px-5 text-right">Resource Details / Ref</th>
+                  <th className="py-3 px-5 text-right">
+                    Resource Details / Ref
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -1331,7 +1461,9 @@ function AuditLogsTabSection({ onShowToast }) {
                           {log.resourceName || log.resourceId || "—"}
                         </div>
                         {log.resourceId &&
-                          log.resourceId !== log.resourceName && (
+                          log.resourceId !== log.resourceName &&
+                          !log.resourceName?.startsWith(log.resourceId) &&
+                          !/^[0-9a-fA-F]{24}$/.test(log.resourceId) && (
                             <div className="text-[10.5px] font-mono text-slate-400 mt-0.5">
                               ID: {log.resourceId}
                             </div>
@@ -1347,8 +1479,8 @@ function AuditLogsTabSection({ onShowToast }) {
 
         {/* Footer Pagination */}
         {!loading && !error && filteredLogs.length > 0 && (
-          <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
-            <div>
+          <div className="px-4 sm:px-5 py-3.5 bg-slate-50/60 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            <div className="text-center sm:text-left">
               Showing <strong>{startIndex + 1}</strong> to{" "}
               <strong>{endIndex}</strong> of{" "}
               <strong>{filteredLogs.length}</strong> entries
@@ -1359,11 +1491,11 @@ function AuditLogsTabSection({ onShowToast }) {
                 type="button"
                 disabled={safeCurrentPage === 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 transition"
+                className="px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 transition cursor-pointer"
               >
                 Previous
               </button>
-              <span className="font-semibold">
+              <span className="font-semibold px-1">
                 Page {safeCurrentPage} of {totalPages}
               </span>
               <button
@@ -1372,7 +1504,7 @@ function AuditLogsTabSection({ onShowToast }) {
                 onClick={() =>
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 transition"
+                className="px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 transition cursor-pointer"
               >
                 Next
               </button>
@@ -1386,6 +1518,7 @@ function AuditLogsTabSection({ onShowToast }) {
 
 // ── Main DashboardSetting Component ─────────────────────────────────────────
 export default function DashboardSetting() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("profile");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [users, setUsers] = useState([]);
@@ -1543,14 +1676,16 @@ export default function DashboardSetting() {
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto p-8 space-y-6">
+      <main className="flex-1 overflow-y-auto space-y-6">
         {/* Header Banner */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-              {isAdmin ? "System Configuration" : "User Profile & Account Settings"}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-2">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight truncate">
+              {isAdmin
+                ? "System Configuration"
+                : "User Profile & Account Settings"}
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-2 sm:line-clamp-none">
               {isAdmin
                 ? "Manage profile parameters, team member permissions, role matrix, and automated notifications."
                 : "Manage your personal profile parameters and warehouse location preferences."}
@@ -1560,85 +1695,92 @@ export default function DashboardSetting() {
 
         {/* Module Navigation Tabs (Admin Only) */}
         {isAdmin && (
-          <div className="flex items-center gap-2 border-b border-slate-200/80 pb-3 overflow-x-auto">
-            <button
-              onClick={() => setActiveTab("profile")}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === "profile"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                <span>Profile</span>
-              </div>
-            </button>
+          <div className="w-full overflow-x-auto no-scrollbar border-b border-slate-200/80 pb-2 -mx-1 px-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-max">
+              <button
+                type="button"
+                onClick={() => setActiveTab("profile")}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition shrink-0 cursor-pointer ${
+                  activeTab === "profile"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>Profile</span>
+                </div>
+              </button>
 
-            <button
-              onClick={() => setActiveTab("company")}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === "company"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
-                <span>Company Info</span>
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("company")}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition shrink-0 cursor-pointer ${
+                  activeTab === "company"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>Company Info</span>
+                </div>
+              </button>
 
-            <button
-              onClick={() => setActiveTab("users")}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === "users"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span>Users</span>
-                <span
-                  className={`ml-1 text-xs px-2 py-0.5 rounded-full font-semibold transition ${
-                    activeTab === "users"
-                      ? "bg-blue-700 text-white"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  {users.length}
-                </span>
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("users")}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition shrink-0 cursor-pointer ${
+                  activeTab === "users"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>Users</span>
+                  <span
+                    className={`ml-1 text-[11px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-semibold transition ${
+                      activeTab === "users"
+                        ? "bg-blue-700 text-white"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {users.length}
+                  </span>
+                </div>
+              </button>
 
-            <button
-              onClick={() => setActiveTab("roles")}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === "roles"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Roles</span>
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("roles")}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition shrink-0 cursor-pointer ${
+                  activeTab === "roles"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>Roles</span>
+                </div>
+              </button>
 
-            <button
-              onClick={() => setActiveTab("audit")}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                activeTab === "audit"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                <span>Audit Logs</span>
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("audit")}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition shrink-0 cursor-pointer ${
+                  activeTab === "audit"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>Audit Logs</span>
+                </div>
+              </button>
+            </div>
           </div>
         )}
 
@@ -1670,22 +1812,26 @@ export default function DashboardSetting() {
 
       {/* Add User Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4 sm:space-y-5 animate-in zoom-in-95 duration-150 my-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
-                Add New System User
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600 shrink-0" />
+                <span>Add New System User</span>
               </h3>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateUserSubmit} className="space-y-4">
+            <form
+              onSubmit={handleCreateUserSubmit}
+              className="space-y-3.5 sm:space-y-4"
+            >
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                   Full Name *
@@ -1734,56 +1880,58 @@ export default function DashboardSetting() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Role
-                </label>
-                <select
-                  value={newUserForm.role}
-                  onChange={(e) =>
-                    setNewUserForm({ ...newUserForm, role: e.target.value })
-                  }
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
-                >
-                  <option value="Admin">Admin</option>
-                  <option value="Logistics Manager">Logistics Manager</option>
-                  <option value="Dispatcher">Dispatcher</option>
-                  <option value="Warehouse Manager">Warehouse Manager</option>
-                  <option value="Driver">Driver</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Role
+                  </label>
+                  <select
+                    value={newUserForm.role}
+                    onChange={(e) =>
+                      setNewUserForm({ ...newUserForm, role: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+                  >
+                    <option value="Admin">Admin</option>
+                    <option value="Logistics Manager">Logistics Manager</option>
+                    <option value="Dispatcher">Dispatcher</option>
+                    <option value="Warehouse Manager">Warehouse Manager</option>
+                    <option value="Driver">Driver</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Assigned Hub
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserForm.hub}
+                    onChange={(e) =>
+                      setNewUserForm({ ...newUserForm, hub: e.target.value })
+                    }
+                    placeholder="e.g. Pune Hub"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Assigned Hub
-                </label>
-                <input
-                  type="text"
-                  value={newUserForm.hub}
-                  onChange={(e) =>
-                    setNewUserForm({ ...newUserForm, hub: e.target.value })
-                  }
-                  placeholder="e.g. Pune Hub"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-3">
+              <div className="pt-2 sm:pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                  className="px-4 py-2 text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addingUser}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition disabled:opacity-50"
+                  className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
                 >
                   {addingUser ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
                       <span>Creating...</span>
                     </>
                   ) : (

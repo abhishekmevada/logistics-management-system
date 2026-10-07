@@ -1,5 +1,64 @@
 import { jsPDF } from "jspdf";
-import { COMPANY_INFO } from "../data/mockBillingData";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
+let dbCompanyInfo = null;
+let fetchPromise = null;
+
+/**
+ * Fetches official company information directly from the database (/company-info)
+ */
+export const fetchCompanyInfoFromDB = async () => {
+  if (dbCompanyInfo) return dbCompanyInfo;
+  if (fetchPromise) return fetchPromise;
+
+  fetchPromise = (async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_BASE_URL}/company-info`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const company = data?.company || data?.companyInfo || data;
+        if (company && typeof company === "object") {
+          dbCompanyInfo = company;
+          return company;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch company info from DB in pdfGenerator:", err);
+    } finally {
+      fetchPromise = null;
+    }
+    return dbCompanyInfo || {};
+  })();
+
+  return fetchPromise;
+};
+
+// Eagerly prefetch company info from DB in background
+if (typeof window !== "undefined") {
+  fetchCompanyInfoFromDB();
+}
+
+/**
+ * Update or prime the company info cache explicitly
+ */
+export const setCompanyInfoData = (info) => {
+  if (info && typeof info === "object") {
+    dbCompanyInfo = info;
+  }
+};
+
+/**
+ * Live accessor for COMPANY_INFO backed solely by database values
+ */
+export const COMPANY_INFO = new Proxy({}, {
+  get(target, prop) {
+    return dbCompanyInfo?.[prop];
+  },
+});
 
 // Format Indian Rupee Currency
 export const formatINR = (amount) => {
@@ -98,8 +157,14 @@ export const numberToWordsINR = (num) => {
 };
 
 // Generate and Download PDF using jsPDF
-export const downloadInvoicePDF = (invoice) => {
+export const downloadInvoicePDF = async (invoice, customCompanyInfo) => {
   try {
+    let company = customCompanyInfo || dbCompanyInfo;
+    if (!company) {
+      company = await fetchCompanyInfoFromDB();
+    }
+    company = company || {};
+
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
@@ -124,22 +189,26 @@ export const downloadInvoicePDF = (invoice) => {
     doc.setFillColor(15, 23, 42); // slate-900
     doc.rect(0, 0, pageWidth, 30, "F");
 
-    // Company Header
+    // Company Header from DB
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
     doc.setTextColor(255, 255, 255);
-    doc.text("LOGITRACK LOGISTICS SOLUTIONS", leftMargin, 12);
+    const companyName = (company.name || "LOGITRACK LOGISTICS SOLUTIONS").toUpperCase();
+    doc.text(companyName, leftMargin, 12);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(203, 213, 225);
     doc.text(
-      `TAX INVOICE / FREIGHT BILL OF SUPPLY | GSTIN: ${COMPANY_INFO.gstin}`,
+      `TAX INVOICE / FREIGHT BILL OF SUPPLY | GSTIN: ${company.gstin || "N/A"}`,
       leftMargin,
       18,
     );
+    const companyAddress = company.headOffice || company.address || "MIDC Industrial Area, Turbhe, Navi Mumbai - 400705";
+    const companyPhone = company.phone || "+91 22 6890 4000";
+    const companyEmail = company.email || "billing@logitrack.com";
     doc.text(
-      `MIDC Industrial Area, Turbhe, Navi Mumbai - 400705 | Ph: +91 22 6890 4000 | billing@logitrack.com`,
+      `${companyAddress} | Ph: ${companyPhone} | ${companyEmail}`,
       leftMargin,
       23,
     );
@@ -420,15 +489,16 @@ export const downloadInvoicePDF = (invoice) => {
     doc.text(`Beneficiary:`, leftMargin + 4, bankBoxY + 23.5);
 
     const bd = invoice.bankDetails || {};
+    const bankInfo = company.bankDetails || {};
     const pdfBankName = bd.bankAndBranch
       ? bd.bankAndBranch.split(",")[0]
-      : COMPANY_INFO.bankDetails.bankName;
-    const pdfAccNo = bd.accountNumber || COMPANY_INFO.bankDetails.accountNumber;
+      : bankInfo.bankName || "HDFC Bank Ltd";
+    const pdfAccNo = bd.accountNumber || bankInfo.accountNumber || "";
     const pdfIfscBranch = bd.ifscCode
-      ? `${bd.ifscCode} (${bd.bankAndBranch || COMPANY_INFO.bankDetails.branch})`
-      : `${COMPANY_INFO.bankDetails.ifscCode} (${COMPANY_INFO.bankDetails.branch})`;
+      ? `${bd.ifscCode} (${bd.bankAndBranch || bankInfo.branch || ""})`
+      : `${bankInfo.ifscCode || ""} (${bankInfo.branch || ""})`;
     const pdfBeneficiary =
-      bd.accountName || COMPANY_INFO.bankDetails.accountName;
+      bd.accountName || bankInfo.accountName || company.name || "LogiTrack Express & Freight Solutions Pvt Ltd";
 
     doc.setFont("helvetica", "bold");
     doc.setTextColor(15, 23, 42);
@@ -513,7 +583,7 @@ export const downloadInvoicePDF = (invoice) => {
     doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
     doc.text(
-      "For LogiTrack Express & Freight Solutions Pvt. Ltd.",
+      `For ${company.name || "LogiTrack Express & Freight Solutions Pvt. Ltd."}`,
       rightEdge,
       bottomSectionY + 2,
       { align: "right" },

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserPlus, Bell } from "lucide-react";
+import { UserPlus, Bell, LogOut } from "lucide-react";
 import "../../styles/Dashboard.css";
 import DashboardOverview from "./Dashboardoverview";
 import DashboardCustomer from "./DashboardCustomer";
@@ -16,6 +16,7 @@ import DashboardReport from "./DashboardReport";
 import DashboardInvoice from "./DashboardInvoice";
 import DashboardSetting from "./DashboardSetting";
 import DashboardNotification from "./DashboardNotification";
+import DashboardQuery from "./DashboardQuery";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -37,9 +38,12 @@ const ICON_PATHS = {
   invoice: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 9h6M9 13h6",
   chart: "M4 20V10M11 20V4M18 20v-7",
   bell: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9zM13.73 21a2 2 0 01-3.46 0",
+  mail: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
   settings:
     "M12 15a3 3 0 100-6 3 3 0 000 6zM19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z",
   menu: "M4 6h16M4 12h16M4 18h16",
+  logout:
+    "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
 };
 
 function Icon({ name }) {
@@ -74,6 +78,7 @@ const NAV = [
   { key: "invoices", label: "Invoices", icon: "invoice" },
   { key: "reports", label: "Reports", icon: "chart" },
   { key: "notifications", label: "Notifications", icon: "bell" },
+  { key: "queries", label: "Inquiries", icon: "mail" },
   { key: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -96,8 +101,32 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
     reports: "/reports",
     notifications: "/notifications",
     notification: "/notifications",
+    queries: "/queries",
+    query: "/queries",
     settings: "/settings",
     setting: "/settings",
+  };
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        await fetch(`${API_BASE_URL}/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      if (onClose) onClose();
+      navigate("/login");
+    }
   };
 
   return (
@@ -106,8 +135,7 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
 
       <aside className={"dash-sidebar" + (open ? " dash-sidebar--open" : "")}>
         <div className="dash-sidebar__brand">
-          <span className="dash-sidebar__brand-mark">RF</span>
-          <span className="dash-sidebar__brand-name">Routeflow</span>
+          <img src="./Athenura.png" alt="Athenura" />
         </div>
         <nav className="dash-sidebar__nav">
           {NAV.filter((item) => canAccess(role, item.key)).map((item) => {
@@ -139,6 +167,16 @@ function Sidebar({ open, onClose, role, activeTab, onSelectTab }) {
             );
           })}
         </nav>
+        <div className="dash-sidebar__footer">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="dash-sidebar__logout-btn"
+          >
+            <LogOut size={18} />
+            <p>Logout</p>
+          </button>
+        </div>
       </aside>
     </>
   );
@@ -187,7 +225,9 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
           headers: { Authorization: `Bearer ${token}` },
         });
         setNotifications((prev) =>
-          prev.map((item) => (item._id === n._id ? { ...item, read: true } : item))
+          prev.map((item) =>
+            item._id === n._id ? { ...item, read: true } : item,
+          ),
         );
       } catch (err) {
         console.error("Mark notification read error:", err);
@@ -214,10 +254,25 @@ function Topbar({ title, alertCount, username, role, onMenuClick }) {
     return `${diffDays}d ago`;
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        await fetch(`${API_BASE_URL}/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Topbar logout error:", err);
+    } finally {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      navigate("/login");
+    }
   };
 
   return (
@@ -437,6 +492,9 @@ export default function Dashboardx({ initialTab = "dashboard" }) {
           {(activeTab === "notifications" || activeTab === "notification") && (
             <DashboardNotification />
           )}
+          {(activeTab === "queries" || activeTab === "query") && (
+            <DashboardQuery />
+          )}
           {(activeTab === "settings" || activeTab === "setting") && (
             <DashboardSetting />
           )}
@@ -458,6 +516,8 @@ export default function Dashboardx({ initialTab = "dashboard" }) {
             activeTab !== "report" &&
             activeTab !== "notifications" &&
             activeTab !== "notification" &&
+            activeTab !== "queries" &&
+            activeTab !== "query" &&
             activeTab !== "settings" &&
             activeTab !== "setting" && <DashboardOverview />}
         </main>

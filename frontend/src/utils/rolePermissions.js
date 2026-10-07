@@ -30,6 +30,8 @@ const adminPermissions = {
   invoices: true,
   reports: true,
   notifications: true,
+  queries: true,
+  query: true,
   settings: true,
 };
 
@@ -46,6 +48,8 @@ const logisticsManagerPermissions = {
   invoices: false,
   reports: true,
   notifications: true,
+  queries: true,
+  query: true,
   settings: "Profile",
 };
 
@@ -62,6 +66,8 @@ const dispatcherPermissions = {
   invoices: false,
   reports: false,
   notifications: true,
+  queries: true,
+  query: true,
   settings: "Profile",
 };
 

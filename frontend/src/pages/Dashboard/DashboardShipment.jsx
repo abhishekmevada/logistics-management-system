@@ -2237,25 +2237,41 @@ function ShipmentDetailsModalContent({
   const [loadingDocs, setLoadingDocs] = useState(false);
   const detailQrRef = useRef(null);
 
+  const getDocBackendUrl = (doc, isDownload = false) => {
+    const docId = doc._id || doc.id;
+    const shpId =
+      shipment._id ||
+      shipment.id ||
+      shipment.shipmentId ||
+      shipment.trackingId;
+    const token = localStorage.getItem("token") || "";
+
+    if (docId) {
+      const base = shpId
+        ? `${API_BASE_URL}/shipments/${shpId}/documents/${docId}`
+        : `${API_BASE_URL}/documents/${docId}`;
+      const params = new URLSearchParams();
+      if (token) params.set("token", token);
+      if (isDownload) params.set("download", "true");
+      const qs = params.toString();
+      return qs ? `${base}?${qs}` : base;
+    }
+    return doc.url || doc.documentUrl || "#";
+  };
+
+  const handleViewDoc = (e, doc) => {
+    e.preventDefault();
+    const viewUrl = getDocBackendUrl(doc, false);
+    window.open(viewUrl, "_blank", "noopener,noreferrer");
+  };
+
   const handleDownloadDoc = async (doc) => {
     try {
-      const docId = doc._id || doc.id;
-      const shpId =
-        shipment._id ||
-        shipment.id ||
-        shipment.shipmentId ||
-        shipment.trackingId;
+      const downloadUrl = getDocBackendUrl(doc, true);
       const token = localStorage.getItem("token");
 
-      const targetUrl =
-        doc.url ||
-        doc.documentUrl ||
-        `${API_BASE_URL}/shipments/${shpId}/documents/${docId}`;
-
-      const res = await fetch(targetUrl, {
-        headers: {
-          ...(token && !doc.url ? { Authorization: `Bearer ${token}` } : {}),
-        },
+      const res = await fetch(downloadUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!res.ok) {
@@ -2589,17 +2605,29 @@ function ShipmentDetailsModalContent({
   return (
     <div className="shp-modal-overlay">
       <div className="shp-modal shp-modal--xl">
-        <div className="shp-modal__header">
+        <div className="shp-modal__header shp-details-modal-header">
           <div className="shp-details-head">
-            <span className="shp-details-head__tracking">{trackingNo}</span>
-            <span
-              className={`shp-badge shp-badge--${getStatusTone(shipment.status)}`}
+            <div className="shp-details-head__main">
+              <span className="shp-details-head__tracking">{trackingNo}</span>
+              <div className="shp-details-head__badges">
+                <span
+                  className={`shp-badge shp-badge--${getStatusTone(shipment.status)}`}
+                >
+                  {normalizedStatus || shipment.status}
+                </span>
+                <span className="shp-badge shp-badge--outline">
+                  {shipment.priority || "Standard"} Priority
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="shp-modal__close shp-modal__close--mobile"
+              onClick={onClose}
+              aria-label="Close"
             >
-              {normalizedStatus || shipment.status}
-            </span>
-            <span className="shp-badge shp-badge--outline">
-              {shipment.priority || "Standard"} Priority
-            </span>
+              <X size={18} />
+            </button>
           </div>
           <div className="shp-modal__actions-top">
             <button
@@ -2618,7 +2646,7 @@ function ShipmentDetailsModalContent({
             </button>
             <button
               type="button"
-              className="shp-modal__close"
+              className="shp-modal__close shp-modal__close--desktop"
               onClick={onClose}
               aria-label="Close"
             >
@@ -2898,9 +2926,10 @@ function ShipmentDetailsModalContent({
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          {(doc.url || doc.documentUrl) && (
+                          {(doc.url || doc.documentUrl || doc._id || doc.id) && (
                             <a
-                              href={doc.url || doc.documentUrl}
+                              href={getDocBackendUrl(doc, false)}
+                              onClick={(e) => handleViewDoc(e, doc)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="shp-btn shp-btn--ghost shp-btn--xs"
@@ -4212,13 +4241,6 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
     }
   };
 
-  const handleDeleteShipment = (id, trackingId) => {
-    if (window.confirm(`Delete shipment ${trackingId}?`)) {
-      setShipments((prev) => prev.filter((s) => s._id !== id && s.id !== id));
-      showToast(`Shipment ${trackingId} removed from records.`, "info");
-    }
-  };
-
   const handleExportCSV = () => {
     if (shipments.length === 0) return;
 
@@ -4895,19 +4917,6 @@ export default function DashboardShipment({ searchTerm: externalSearch = "" }) {
                           onClick={() => setSelectedEdit(shp)}
                         >
                           <Edit2 size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="shp-icon-btn shp-icon-btn--danger"
-                          title="Delete"
-                          onClick={() =>
-                            handleDeleteShipment(
-                              shp._id || shp.id,
-                              shp.trackingId || shp.shipmentId,
-                            )
-                          }
-                        >
-                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>

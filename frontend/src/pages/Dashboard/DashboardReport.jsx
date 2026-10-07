@@ -483,6 +483,7 @@ export default function DashboardReport() {
     periodType,
     summaryYear,
     summaryMonth,
+    allReports,
   ]);
 
   // ── DYNAMIC SUMMARY KPI STATS (Calculated from filtered records) ─────────────

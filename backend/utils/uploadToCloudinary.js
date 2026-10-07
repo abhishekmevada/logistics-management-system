@@ -40,9 +40,7 @@ const uploadToCloudinary = (fileInput, originalName) => {
     }
 
     // 3. If fileInput is a Buffer or has a buffer property
-    const buffer = Buffer.isBuffer(fileInput)
-      ? fileInput
-      : fileInput?.buffer;
+    const buffer = Buffer.isBuffer(fileInput) ? fileInput : fileInput?.buffer;
 
     if (buffer) {
       const uploadStream = cloudinary.uploader.upload_stream(
@@ -58,7 +56,9 @@ const uploadToCloudinary = (fileInput, originalName) => {
       return;
     }
 
-    reject(new Error("No valid file path or buffer provided for Cloudinary upload"));
+    reject(
+      new Error("No valid file path or buffer provided for Cloudinary upload"),
+    );
   });
 };
 

@@ -312,10 +312,7 @@ export default function DashboardPod() {
       shp.receiverPhoneNumber ||
       "—";
     const deliveryAddress =
-      details.deliveryAddress ||
-      details.location ||
-      shp.receiverAddress ||
-      "—";
+      details.deliveryAddress || details.location || shp.receiverAddress || "—";
     const deliveryDateFormatted =
       details.deliveryDate || details.createdAt
         ? formatDate(details.deliveryDate || details.createdAt)
@@ -326,9 +323,7 @@ export default function DashboardPod() {
       shp.driverName?.userId?.name ||
       "Assigned Fleet Driver";
     const driverContact =
-      details.submittedBy?.email ||
-      shp.driverName?.phonenumber ||
-      "—";
+      details.submittedBy?.email || shp.driverName?.phonenumber || "—";
     const vehicleNo =
       shp.vehicleNo?.vregistrationnumber ||
       shp.vehicleNo ||
@@ -581,7 +576,7 @@ export default function DashboardPod() {
 
       {/* ── Filter & Control Bar ───────────────────────────────── */}
       <div className="shp-control-bar">
-        <div className="shp-tabs">
+        <div className="shp-tabs no-scrollbar">
           {[
             { key: "All", label: "All PODs", count: stats.total },
             {
@@ -1014,25 +1009,39 @@ export default function DashboardPod() {
         <div className="shp-modal-overlay">
           <div className="shp-modal shp-modal--xl">
             {/* Modal Header */}
-            <div className="shp-modal__header">
+            <div className="shp-modal__header shp-details-modal-header">
               <div className="shp-details-head">
-                <span className="shp-details-head__tracking">
-                  {selectedDetails.shipmentId?.trackingId ||
-                    selectedDetails.shipmentId?.shipmentId ||
-                    selectedDetails.shipmentId ||
-                    "POD-REC"}
-                </span>
-                <span className="shp-badge shp-badge--success">Delivered</span>
-                {selectedDetails.otpVerified !== false ? (
-                  <span className="shp-badge shp-badge--outline">
-                    <ShieldCheck size={12} style={{ marginRight: "4px" }} />
-                    OTP Verified Handoff
+                <div className="shp-details-head__main">
+                  <span className="shp-details-head__tracking">
+                    {selectedDetails.shipmentId?.trackingId ||
+                      selectedDetails.shipmentId?.shipmentId ||
+                      selectedDetails.shipmentId ||
+                      "POD-REC"}
                   </span>
-                ) : (
-                  <span className="shp-badge shp-badge--outline">
-                    Direct Delivery
-                  </span>
-                )}
+                  <div className="shp-details-head__badges">
+                    <span className="shp-badge shp-badge--success">
+                      Delivered
+                    </span>
+                    {selectedDetails.otpVerified !== false ? (
+                      <span className="shp-badge shp-badge--outline">
+                        <ShieldCheck size={12} style={{ marginRight: "4px" }} />
+                        OTP Verified Handoff
+                      </span>
+                    ) : (
+                      <span className="shp-badge shp-badge--outline">
+                        Direct Delivery
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="shp-modal__close shp-modal__close--mobile"
+                  onClick={() => setSelectedDetails(null)}
+                  aria-label="Close"
+                >
+                  <X size={18} />
+                </button>
               </div>
               <div className="shp-modal__actions-top">
                 <button
@@ -1065,7 +1074,7 @@ export default function DashboardPod() {
                 </button>
                 <button
                   type="button"
-                  className="shp-modal__close"
+                  className="shp-modal__close shp-modal__close--desktop"
                   onClick={() => setSelectedDetails(null)}
                   aria-label="Close"
                 >
@@ -1084,18 +1093,20 @@ export default function DashboardPod() {
                 <h4 className="shp-section-title">
                   Delivery Lifecycle Workflow
                 </h4>
-                <div className="shp-stepper">
-                  {WORKFLOW_STEPS.map((step) => (
-                    <div
-                      key={step}
-                      className="shp-stepper__step shp-stepper__step--completed"
-                    >
-                      <div className="shp-stepper__circle">
-                        <Check size={14} strokeWidth={2.5} />
+                <div className="shp-profile-stepper-wrap no-scrollbar">
+                  <div className="shp-stepper">
+                    {WORKFLOW_STEPS.map((step) => (
+                      <div
+                        key={step}
+                        className="shp-stepper__step shp-stepper__step--completed"
+                      >
+                        <div className="shp-stepper__circle">
+                          <Check size={14} strokeWidth={2.5} />
+                        </div>
+                        <span className="shp-stepper__label">{step}</span>
                       </div>
-                      <span className="shp-stepper__label">{step}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1320,48 +1331,15 @@ export default function DashboardPod() {
                       </p>
                     )}
                   </div>
-
-
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div
-              className="shp-modal__footer"
-              style={{ display: "flex", justifyContent: "space-between" }}
-            >
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  type="button"
-                  className="shp-btn shp-btn--primary"
-                  onClick={() => handleDownloadCertificate(selectedDetails)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <Download size={15} />
-                  Download Certificate
-                </button>
-                <button
-                  type="button"
-                  className="shp-btn shp-btn--secondary"
-                  onClick={() => handlePrintCertificate(selectedDetails)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <Printer size={15} />
-                  Print / Save PDF
-                </button>
-              </div>
+            <div className="shp-modal__footer shp-pod-modal-footer">
               <button
                 type="button"
-                className="shp-btn shp-btn--secondary"
+                className="shp-btn shp-btn--ghost shp-pod-btn-close"
                 onClick={() => setSelectedDetails(null)}
               >
                 Close

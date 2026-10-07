@@ -729,25 +729,17 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
       <div className="shp-container">
         {toastNode}
         {/* Top actions & Back button */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "10px",
-          }}
-        >
+        <div className="shp-profile-top-bar">
           <button
             type="button"
             onClick={handleBackToCustomers}
-            className="shp-btn shp-btn--ghost shp-btn--sm"
+            className="shp-btn shp-btn--ghost shp-btn--sm shp-profile-back-btn"
           >
             <ArrowLeft size={14} />
             <span>Back to Customers</span>
           </button>
 
-          <div className="shp-header__actions">
+          <div className="shp-profile-top-actions">
             <button
               type="button"
               onClick={() => handleOpenEdit(selectedCustomer)}
@@ -780,36 +772,15 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
         </div>
 
         {/* Customer Profile Header Banner */}
-        <div className="shp-panel">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "14px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-              <div
-                className="shp-avatar"
-                style={{ width: 44, height: 44, fontSize: 18 }}
-              >
+        <div className="shp-panel shp-profile-banner">
+          <div className="shp-profile-banner-inner">
+            <div className="shp-profile-banner-main">
+              <div className="shp-avatar shp-profile-banner-avatar">
                 {selectedCustomer.name.charAt(0).toUpperCase()}
               </div>
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <h2
-                    className="shp-title"
-                    style={{ margin: 0, fontSize: "20px" }}
-                  >
+              <div className="shp-profile-banner-info">
+                <div className="shp-profile-banner-title-row">
+                  <h2 className="shp-title shp-profile-banner-title">
                     {selectedCustomer.name}
                   </h2>
                   <span
@@ -835,10 +806,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                     </span>
                   )}
                 </div>
-                <p
-                  className="shp-subtitle"
-                  style={{ fontFamily: "monospace", marginTop: "4px" }}
-                >
+                <p className="shp-subtitle shp-profile-banner-id">
                   Customer ID: {selectedCustomer.id}
                 </p>
               </div>
@@ -914,13 +882,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
         </div>
 
         {/* Customer Information & Addresses Section */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: "16px",
-          }}
-        >
+        <div className="shp-profile-details-grid">
           {/* Customer Information Card */}
           <div className="shp-card">
             <div className="shp-card__header">
@@ -962,13 +924,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
 
           {/* Addresses Card */}
           <div className="shp-card">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
+            <div className="shp-profile-card-header">
               <div className="shp-card__header">
                 <span className="shp-card__icon shp-card__icon--dest">
                   <MapPin size={16} />
@@ -978,20 +934,13 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
               <button
                 type="button"
                 onClick={() => setIsAddAddressOpen(true)}
-                className="shp-btn shp-btn--primary shp-btn--xs"
+                className="shp-btn shp-btn--primary shp-btn--xs shp-profile-add-btn"
               >
                 <Plus size={13} />
                 <span>Add Address</span>
               </button>
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: "10px",
-                marginTop: "4px",
-              }}
-            >
+            <div className="shp-profile-address-list">
               {(
                 selectedCustomer.addresses || [
                   {
@@ -1049,37 +998,13 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
 
         {/* Shipment History */}
         <div className="shp-table-card">
-          <div
-            style={{
-              padding: "14px 16px",
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "12px",
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontSize: "15px",
-                fontWeight: 700,
-                fontFamily: "var(--primary-text)",
-              }}
-            >
+          <div className="shp-profile-history-header">
+            <h3 className="shp-profile-history-title">
               Customer Shipment History
             </h3>
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                flexWrap: "wrap",
-              }}
-            >
-              <div className="shp-search-box" style={{ minWidth: 200 }}>
+            <div className="shp-profile-history-controls">
+              <div className="shp-search-box shp-profile-search-box">
                 <span className="shp-search-icon">
                   <Search size={14} />
                 </span>
@@ -1104,7 +1029,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
               <select
                 value={shipmentStatusFilter}
                 onChange={(e) => setShipmentStatusFilter(e.target.value)}
-                className="shp-select-filter"
+                className="shp-select-filter shp-profile-select-filter"
               >
                 <option value="All">All Statuses</option>
                 <option value="Order Placed">Order Placed</option>
@@ -1117,7 +1042,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
           </div>
 
           <div className="shp-table-wrap">
-            <table className="shp-table">
+            <table className="shp-table shp-profile-table">
               <thead>
                 <tr>
                   <th>Tracking No.</th>
@@ -1200,7 +1125,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                         <button
                           type="button"
                           onClick={() => setViewingShipment(s)}
-                          className="shp-btn shp-btn--ghost shp-btn--xs"
+                          className="shp-btn shp-btn--ghost shp-btn--xs shp-btn-table-action"
                         >
                           <Eye size={13} />
                           <span>View Shipment</span>
@@ -1241,37 +1166,39 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                   <h4 className="shp-section-title">
                     Shipment Lifecycle Workflow
                   </h4>
-                  <div className="shp-stepper">
-                    {timelineSteps.map((step, idx) => {
-                      const currentIdx = getStepIndex(viewingShipment.status);
-                      const isDelivered = String(viewingShipment?.status || "")
-                        .toLowerCase()
-                        .includes("delivered");
-                      const isCompleted = isDelivered
-                        ? idx <= currentIdx
-                        : idx < currentIdx;
-                      const isCurrent = !isDelivered && idx === currentIdx;
+                  <div className="shp-profile-stepper-wrap">
+                    <div className="shp-stepper">
+                      {timelineSteps.map((step, idx) => {
+                        const currentIdx = getStepIndex(viewingShipment.status);
+                        const isDelivered = String(viewingShipment?.status || "")
+                          .toLowerCase()
+                          .includes("delivered");
+                        const isCompleted = isDelivered
+                          ? idx <= currentIdx
+                          : idx < currentIdx;
+                        const isCurrent = !isDelivered && idx === currentIdx;
 
-                      return (
-                        <div
-                          key={step.step}
-                          className={`shp-stepper__step ${
-                            isCompleted ? "shp-stepper__step--completed" : ""
-                          } ${isCurrent ? "shp-stepper__step--current" : ""}`}
-                        >
-                          <div className="shp-stepper__circle">
-                            {isCompleted ? (
-                              <CheckCircle2 size={14} />
-                            ) : (
-                              step.step
-                            )}
+                        return (
+                          <div
+                            key={step.step}
+                            className={`shp-stepper__step ${
+                              isCompleted ? "shp-stepper__step--completed" : ""
+                            } ${isCurrent ? "shp-stepper__step--current" : ""}`}
+                          >
+                            <div className="shp-stepper__circle">
+                              {isCompleted ? (
+                                <CheckCircle2 size={14} />
+                              ) : (
+                                step.step
+                              )}
+                            </div>
+                            <span className="shp-stepper__label">
+                              {step.label}
+                            </span>
                           </div>
-                          <span className="shp-stepper__label">
-                            {step.label}
-                          </span>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -1347,10 +1274,10 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                 </div>
               </div>
 
-              <div className="shp-modal__footer">
+              <div className="shp-modal__footer shp-profile-modal-footer-single">
                 <button
                   type="button"
-                  className="shp-btn shp-btn--ghost"
+                  className="shp-btn shp-btn--ghost shp-profile-modal-btn"
                   onClick={() => setViewingShipment(null)}
                 >
                   Close
@@ -1423,18 +1350,18 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                   />
                 </div>
 
-                <div
-                  className="shp-modal__footer"
-                  style={{ margin: "8px -20px -20px -20px" }}
-                >
+                <div className="shp-modal__footer shp-profile-modal-footer-actions">
                   <button
                     type="button"
-                    className="shp-btn shp-btn--ghost"
+                    className="shp-btn shp-btn--ghost shp-profile-modal-btn"
                     onClick={() => setIsAddAddressOpen(false)}
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="shp-btn shp-btn--primary">
+                  <button
+                    type="submit"
+                    className="shp-btn shp-btn--primary shp-profile-modal-btn"
+                  >
                     Save Address
                   </button>
                 </div>
@@ -1542,18 +1469,18 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                   )}
                 </div>
 
-                <div
-                  className="shp-modal__footer"
-                  style={{ margin: "8px -20px -20px -20px" }}
-                >
+                <div className="shp-modal__footer shp-profile-modal-footer-actions">
                   <button
                     type="button"
-                    className="shp-btn shp-btn--ghost"
+                    className="shp-btn shp-btn--ghost shp-profile-modal-btn"
                     onClick={() => setEditingCustomer(null)}
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="shp-btn shp-btn--primary">
+                  <button
+                    type="submit"
+                    className="shp-btn shp-btn--primary shp-profile-modal-btn"
+                  >
                     Save Changes
                   </button>
                 </div>
@@ -1602,10 +1529,10 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                 </p>
               </div>
 
-              <div className="shp-modal__footer">
+              <div className="shp-modal__footer shp-profile-modal-footer-confirm">
                 <button
                   type="button"
-                  className="shp-btn shp-btn--ghost"
+                  className="shp-btn shp-btn--ghost shp-profile-modal-btn"
                   onClick={() => setDeactivatingCustomer(null)}
                 >
                   Cancel
@@ -1616,7 +1543,7 @@ export const DashboardCustomer = ({ searchTerm: externalSearch = "" }) => {
                     deactivatingCustomer.status === "Active"
                       ? "shp-btn--secondary"
                       : "shp-btn--primary"
-                  }`}
+                  } shp-profile-modal-btn`}
                   style={
                     deactivatingCustomer.status === "Active"
                       ? { color: "var(--danger)", borderColor: "var(--danger)" }

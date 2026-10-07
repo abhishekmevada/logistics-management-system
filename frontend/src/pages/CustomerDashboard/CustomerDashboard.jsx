@@ -104,9 +104,7 @@ const resolveDriverDisplay = (shipment) => {
   if (!d) return "";
   if (typeof d === "object") {
     return (
-      d.userId?.name ||
-      d.name ||
-      (d.driverId ? `Driver (${d.driverId})` : "")
+      d.userId?.name || d.name || (d.driverId ? `Driver (${d.driverId})` : "")
     );
   }
   const str = String(d).trim();
@@ -262,14 +260,17 @@ export default function CustomerDashboard() {
           onClick={() => navigate("/")}
           role="button"
           tabIndex={0}
+          title="Return to Home"
         >
-          <h3>LOGO</h3>
-          {/* <div className="cdb-navbar__logo">
-            <Package size={22} />
-            <span>LOGIX</span>
-          </div> */}
-
-          <span className="cdb-navbar__tagline">Customer Portal</span>
+          <img
+            src="/Athenura.png"
+            alt="Athenura"
+            className="cdb-navbar__logo-img"
+          />
+          <span className="cdb-navbar__divider" aria-hidden="true" />
+          <div className="cdb-navbar__title-group">
+            <span className="cdb-navbar__tagline">Customer Portal</span>
+          </div>
         </div>
 
         <div className="cdb-navbar__actions">

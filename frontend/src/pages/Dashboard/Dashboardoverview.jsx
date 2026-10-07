@@ -68,7 +68,17 @@ const PIE_COLORS = {
   Failed: "hsl(4, 78%, 52%)",
 };
 
-function ChartsPanel({ shipmentVolume = [], deliveryPerformance = [] }) {
+function ChartsPanel({
+  shipmentVolume = [],
+  deliveryPerformance = [],
+  timeframe = "weekly",
+}) {
+  const TIMEFRAME_TITLES = {
+    weekly: "Shipment volume, this week",
+    monthly: "Shipment volume, this month",
+    yearly: "Shipment volume, this year",
+  };
+
   const totalPerf = deliveryPerformance.reduce(
     (acc, curr) => acc + (Number(curr.value) || 0),
     0
@@ -77,7 +87,9 @@ function ChartsPanel({ shipmentVolume = [], deliveryPerformance = [] }) {
   return (
     <div className="ov-charts-panel">
       <div className="ov-panel ov-charts-panel__block">
-        <div className="ov-section__title">Shipment volume, this week</div>
+        <div className="ov-section__title">
+          {TIMEFRAME_TITLES[timeframe] || "Shipment volume"}
+        </div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart
             data={shipmentVolume}
@@ -253,10 +265,11 @@ export default function DashboardOverview() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [lastUpdatedTime, setLastUpdatedTime] = useState("");
+  const [timeframe, setTimeframe] = useState("weekly");
   const navigate = useNavigate();
 
   const fetchOverview = useCallback(
-    async (isManualRefresh = false) => {
+    async (isManualRefresh = false, selectedTimeframe = timeframe) => {
       const token = localStorage.getItem("token");
       if (!token) {
         navigate("/login");
@@ -271,12 +284,15 @@ export default function DashboardOverview() {
       setError(null);
 
       try {
-        const res = await fetch(`${API_BASE_URL}/dashboard/overview`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
+        const res = await fetch(
+          `${API_BASE_URL}/dashboard/overview?timeframe=${selectedTimeframe}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
         if (res.status === 401) {
           localStorage.removeItem("token");
@@ -304,8 +320,13 @@ export default function DashboardOverview() {
         setRefreshing(false);
       }
     },
-    [navigate]
+    [navigate, timeframe]
   );
+
+  const handleTimeframeChange = (newTimeframe) => {
+    setTimeframe(newTimeframe);
+    fetchOverview(false, newTimeframe);
+  };
 
   useEffect(() => {
     fetchOverview();
@@ -540,11 +561,31 @@ export default function DashboardOverview() {
       <section>
         <div className="ov-section-head">
           <span className="ov-section__title">Reports</span>
+          <div className="ov-report-select-wrap">
+            <select
+              id="ov-report-timeframe"
+              value={timeframe}
+              onChange={(e) => handleTimeframeChange(e.target.value)}
+              className="ov-report-select"
+              aria-label="Filter report timeframe"
+            >
+              <option value="yearly">Yearly</option>
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
         </div>
         <div className="ov-two-col">
           <ChartsPanel
-            shipmentVolume={shipmentVolume}
+            shipmentVolume={
+              data?.shipmentVolumes?.[timeframe] ||
+              (timeframe === (data?.timeframe || "weekly")
+                ? shipmentVolume
+                : null) ||
+              shipmentVolume
+            }
             deliveryPerformance={deliveryPerformance}
+            timeframe={timeframe}
           />
           <AlertsPanel alerts={alerts} />
         </div>
