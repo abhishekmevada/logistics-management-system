@@ -50,16 +50,10 @@ function ProfileTabSection({ onShowToast }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: "Abhishek",
-    lastName: "Admin",
-    email: "admin@routeflow.io",
-    phone: "+91 98765 43210",
-    role: "System Administrator",
-    primaryHub: "Pune Main Logistics Hub (MH-12)",
-    timezone: "(UTC+05:30) Asia/Kolkata (IST)",
-    twoFactorEnabled: true,
-    newPassword: "",
-    confirmPassword: "",
+    name: "",
+    email: "",
+    role: "",
+    status: "",
   });
 
   const fetchProfile = async () => {
@@ -72,24 +66,13 @@ function ProfileTabSection({ onShowToast }) {
         const data = await res.json();
         if (data.user) {
           const user = data.user;
-          const nameParts = (user.name || "").split(" ");
           const localUser = JSON.parse(localStorage.getItem("user") || "{}");
-          const resolvedRole =
-            user.role || localUser.role || "System Administrator";
-          setFormData((prev) => ({
-            ...prev,
-            firstName: user.firstName || nameParts[0] || "Admin",
-            lastName: user.lastName || nameParts.slice(1).join(" ") || "",
-            email: user.email || prev.email,
-            phone: user.phone || prev.phone,
-            role: resolvedRole,
-            primaryHub: user.primaryHub || prev.primaryHub,
-            timezone: user.timezone || prev.timezone,
-            twoFactorEnabled:
-              typeof user.twoFactorEnabled === "boolean"
-                ? user.twoFactorEnabled
-                : true,
-          }));
+          setFormData({
+            name: user.name || localUser.name || "",
+            email: user.email || localUser.email || "",
+            role: user.role || localUser.role || "",
+            status: user.status || localUser.status || "active",
+          });
         }
       }
     } catch (err) {
@@ -104,38 +87,23 @@ function ProfileTabSection({ onShowToast }) {
   }, []);
 
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: value,
     }));
   };
 
   const handleSaveProfile = async (e) => {
     if (e) e.preventDefault();
-    if (
-      formData.newPassword &&
-      formData.newPassword !== formData.confirmPassword
-    ) {
-      onShowToast("Passwords do not match!");
-      return;
-    }
-
     setSaving(true);
     try {
       const payload = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        name: `${formData.firstName} ${formData.lastName}`.trim(),
-        email: formData.email,
-        phone: formData.phone,
-        primaryHub: formData.primaryHub,
-        timezone: formData.timezone,
-        twoFactorEnabled: formData.twoFactorEnabled,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        role: formData.role.trim(),
+        status: formData.status.trim(),
       };
-      if (formData.newPassword) {
-        payload.password = formData.newPassword;
-      }
 
       const res = await fetch(`${API_BASE_URL}/user/profile`, {
         method: "PUT",
@@ -146,11 +114,19 @@ function ProfileTabSection({ onShowToast }) {
       const data = await res.json();
       if (res.ok) {
         onShowToast("Profile updated successfully!");
-        setFormData((prev) => ({
-          ...prev,
-          newPassword: "",
-          confirmPassword: "",
-        }));
+        if (data.user) {
+          setFormData({
+            name: data.user.name || formData.name,
+            email: data.user.email || formData.email,
+            role: data.user.role || formData.role,
+            status: data.user.status || formData.status,
+          });
+          const localUser = JSON.parse(localStorage.getItem("user") || "{}");
+          localStorage.setItem(
+            "user",
+            JSON.stringify({ ...localUser, ...data.user }),
+          );
+        }
       } else {
         onShowToast(data.message || "Failed to update profile.");
       }
@@ -198,22 +174,34 @@ function ProfileTabSection({ onShowToast }) {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-6 sm:mb-8 pb-6 border-b border-slate-100">
           <div className="relative shrink-0">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold ring-4 ring-blue-50 shadow-md">
-              {formData.firstName
-                ? formData.firstName.charAt(0).toUpperCase()
-                : "A"}
+              {formData.name ? formData.name.charAt(0).toUpperCase() : "U"}
             </div>
           </div>
           <div>
             <h4 className="text-base sm:text-lg font-semibold text-slate-900">
-              {formData.firstName} {formData.lastName}
+              {formData.name || "User"}
             </h4>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
               {formData.role || "User"}
             </p>
             <div className="mt-2 flex items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-medium bg-emerald-100 text-emerald-800">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 shrink-0"></span>
-                <span>Verified Active Account</span>
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-medium ${
+                  (formData.status || "active").toLowerCase() === "active"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${
+                    (formData.status || "active").toLowerCase() === "active"
+                      ? "bg-emerald-500"
+                      : "bg-amber-500"
+                  }`}
+                ></span>
+                <span className="capitalize">
+                  {formData.status || "Active"}
+                </span>
               </span>
             </div>
           </div>
@@ -223,13 +211,14 @@ function ProfileTabSection({ onShowToast }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-              First Name
+              Name
             </label>
             <input
               type="text"
-              name="firstName"
-              value={formData.firstName}
+              name="name"
+              value={formData.name}
               onChange={handleChange}
+              placeholder="Enter name"
               className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
             />
           </div>
@@ -242,20 +231,36 @@ function ProfileTabSection({ onShowToast }) {
               name="email"
               value={formData.email}
               onChange={handleChange}
+              placeholder="Enter email address"
               className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
             />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-              Phone Number
+              Role
             </label>
             <input
               type="text"
-              name="phone"
-              value={formData.phone}
+              name="role"
+              value={formData.role}
               onChange={handleChange}
+              placeholder="Role"
               className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+              Status
+            </label>
+            <select
+              name="status"
+              value={formData.status || "active"}
+              onChange={handleChange}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition capitalize"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
           </div>
         </div>
       </div>
@@ -671,6 +676,7 @@ function UsersTabSection({
   onToggleStatus,
   onOpenAddUser,
 }) {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -747,7 +753,7 @@ function UsersTabSection({
           </div>
           <button
             type="button"
-            onClick={onOpenAddUser}
+            onClick={() => navigate("/register-user")}
             className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-semibold px-4 py-2 sm:py-1.5 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -1956,7 +1962,7 @@ export default function DashboardSetting() {
             loading={loadingUsers}
             onDeleteUser={handleDeleteUser}
             onToggleStatus={handleToggleUserStatus}
-            onOpenAddUser={() => setIsModalOpen(true)}
+            onOpenAddUser={() => navigate("/register-user")}
           />
         )}
 
