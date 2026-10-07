@@ -2541,6 +2541,11 @@ app.get("/user/profile", authMiddleware, async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
     return res.status(200).json({ user });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -2570,6 +2575,13 @@ app.put("/user/profile", authMiddleware, async (req, res) => {
     if (firstName) updateFields.firstName = String(firstName).trim();
     if (lastName) updateFields.lastName = String(lastName).trim();
     if (email) updateFields.email = String(email).trim().toLowerCase();
+    if (req.body.role) updateFields.role = String(req.body.role).trim();
+    if (req.body.status !== undefined && req.body.status !== null) {
+      const normStatus = String(req.body.status).trim().toLowerCase();
+      if (normStatus === "active" || normStatus === "inactive") {
+        updateFields.status = normStatus;
+      }
+    }
     if (phone) updateFields.phone = String(phone).trim();
     if (primaryHub) updateFields.primaryHub = String(primaryHub).trim();
     if (timezone) updateFields.timezone = String(timezone).trim();
@@ -2588,6 +2600,17 @@ app.put("/user/profile", authMiddleware, async (req, res) => {
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    try {
+      await createAuditLog({
+        userId: updatedUser._id,
+        action: "UPDATE_PROFILE",
+        resource: "User",
+        resourceId: updatedUser._id.toString(),
+      });
+    } catch (auditErr) {
+      console.warn("Profile audit log error:", auditErr.message);
     }
 
     return res
