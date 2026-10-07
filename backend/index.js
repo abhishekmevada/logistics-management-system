@@ -666,10 +666,85 @@ app.patch("/notifications/:id/read", authMiddleware, async (req, res) => {
   }
 });
 
+// Helper to provide human-friendly fallback identifiers when resource document is deleted/not found
+const formatFallbackResource = (resourceType, rawId, action = "") => {
+  const type = String(resourceType || "").toLowerCase();
+  const str = String(rawId || "").trim();
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(str);
+  const shortId = isObjectId ? str.slice(-6).toUpperCase() : str;
+
+  if (type === "customer") {
+    return {
+      name: isObjectId ? `CUST-${shortId}` : str || "Customer",
+      id: isObjectId ? `CUST-${shortId}` : str || "—",
+    };
+  }
+  if (type === "shipment") {
+    return {
+      name: isObjectId ? `SHP-${shortId}` : str || "Shipment",
+      id: isObjectId ? `SHP-${shortId}` : str || "—",
+    };
+  }
+  if (type === "driver") {
+    return {
+      name: isObjectId ? `Driver #${shortId}` : str || "Driver",
+      id: isObjectId ? `DRV-${shortId}` : str || "—",
+    };
+  }
+  if (type === "vehicle" || type === "vechile") {
+    return {
+      name: isObjectId ? `Vehicle #${shortId}` : str || "Vehicle",
+      id: isObjectId ? `VEH-${shortId}` : str || "—",
+    };
+  }
+  if (type === "trip") {
+    return {
+      name: isObjectId ? `TRIP-${shortId}` : str || "Trip",
+      id: isObjectId ? `TRIP-${shortId}` : str || "—",
+    };
+  }
+  if (type === "warehouse") {
+    return {
+      name: isObjectId ? `Warehouse #${shortId}` : str || "Warehouse",
+      id: isObjectId ? `WH-${shortId}` : str || "—",
+    };
+  }
+  if (type === "delivery") {
+    return {
+      name: isObjectId ? `DEL-${shortId}` : str || "Delivery",
+      id: isObjectId ? `DEL-${shortId}` : str || "—",
+    };
+  }
+  if (type === "pod") {
+    return {
+      name: isObjectId ? `POD #${shortId}` : str || "POD",
+      id: isObjectId ? `POD-${shortId}` : str || "—",
+    };
+  }
+  if (type === "invoice") {
+    return {
+      name: isObjectId ? `INV-${shortId}` : str || "Invoice",
+      id: isObjectId ? `INV-${shortId}` : str || "—",
+    };
+  }
+  if (type === "user") {
+    const isAdm = action && action.toUpperCase().includes("ADMIN");
+    return {
+      name: isAdm ? "Admin User" : isObjectId ? "User" : str || "User",
+      id: "",
+    };
+  }
+
+  return {
+    name: isObjectId ? `${resourceType || "Resource"} #${shortId}` : str || "—",
+    id: isObjectId ? `#${shortId}` : str || "—",
+  };
+};
+
 // Helper to extract clean name and reference ID from populated resource documents
 const extractResourceDetails = (resourceType, doc, fallbackId) => {
   if (!doc || typeof doc !== "object")
-    return { name: fallbackId || "—", id: fallbackId || "—" };
+    return formatFallbackResource(resourceType, fallbackId);
 
   const type = String(resourceType || "").toLowerCase();
   let name = "";
@@ -681,6 +756,19 @@ const extractResourceDetails = (resourceType, doc, fallbackId) => {
       shpId ||
       (doc.senderName ? `${doc.senderName} → ${doc.receiverName || ""}` : "");
     id = shpId || id;
+  } else if (type === "customer") {
+    const custId = doc.customerId;
+    const cName = doc.name || doc.companyName || doc.customerName || "";
+    if (custId && cName) {
+      name = `${custId} (${cName})`;
+      id = custId;
+    } else if (custId) {
+      name = custId;
+      id = custId;
+    } else {
+      name = cName;
+      id = cName;
+    }
   } else if (type === "driver") {
     const dName = doc.userId?.name || doc.name;
     name = dName || doc.phonenumber || "";
@@ -757,12 +845,18 @@ const extractResourceDetails = (resourceType, doc, fallbackId) => {
     id = doc.invoiceNumber || id;
   } else if (type === "user") {
     name = doc.name || doc.email || "";
-  } else if (type === "customer") {
-    name = doc.companyName || doc.customerName || doc.name || "";
+    id = "";
   }
 
-  if (!name) name = id || fallbackId || "—";
-  return { name, id: id || fallbackId || "—" };
+  const fallback = formatFallbackResource(resourceType, fallbackId);
+  if (!name || /^[0-9a-fA-F]{24}$/.test(name)) name = fallback.name;
+  if (type === "user") {
+    id = "";
+  } else {
+    if (!id || /^[0-9a-fA-F]{24}$/.test(id)) id = fallback.id;
+  }
+
+  return { name, id };
 };
 
 // GET Audit Logs endpoint
@@ -834,6 +928,16 @@ app.get("/audit-logs", authMiddleware, async (req, res) => {
           try {
             if (type === "shipment") {
               doc = await Shipment.findById(strId).lean();
+              if (!doc) {
+                doc = await Shipment.findOne({
+                  $or: [{ shipmentId: strId }, { trackingId: strId }],
+                }).lean();
+              }
+            } else if (type === "customer") {
+              doc = await Customer.findById(strId).lean();
+              if (!doc) {
+                doc = await Customer.findOne({ customerId: strId }).lean();
+              }
             } else if (type === "delivery") {
               const shp = await Shipment.findById(strId).lean();
               if (shp) doc = shp;
@@ -850,12 +954,31 @@ app.get("/audit-logs", authMiddleware, async (req, res) => {
               doc = await Driver.findById(strId)
                 .populate("userId", "name email")
                 .lean();
+              if (!doc) {
+                doc = await Driver.findOne({ driverId: strId })
+                  .populate("userId", "name email")
+                  .lean();
+              }
             } else if (type === "vehicle" || type === "vechile") {
               doc = await Vechile.findById(strId).lean();
+              if (!doc) {
+                doc = await Vechile.findOne({
+                  $or: [
+                    { vregistrationnumber: strId },
+                    { registrationNumber: strId },
+                  ],
+                }).lean();
+              }
             } else if (type === "trip") {
               doc = await Trip.findById(strId).lean();
+              if (!doc) {
+                doc = await Trip.findOne({ tripId: strId }).lean();
+              }
             } else if (type === "invoice") {
               doc = await Invoice.findById(strId).lean();
+              if (!doc) {
+                doc = await Invoice.findOne({ invoiceNumber: strId }).lean();
+              }
             } else if (type === "user") {
               doc = await User.findById(strId).lean();
             }
@@ -950,7 +1073,13 @@ app.get("/audit-logs", authMiddleware, async (req, res) => {
           resourceName = details.name;
           resourceRefId = details.id;
         } else {
-          resourceName = strId;
+          const fallback = formatFallbackResource(
+            log.resource,
+            strId,
+            log.action,
+          );
+          resourceName = fallback.name;
+          resourceRefId = fallback.id;
         }
 
         return {
@@ -964,14 +1093,17 @@ app.get("/audit-logs", authMiddleware, async (req, res) => {
           user: log.userId
             ? {
                 _id: log.userId._id,
-                name: log.userId.name || "System User",
-                email: log.userId.email || "",
-                role: log.userId.role || "User",
+                name: log.userId.name || "System",
+                email:
+                  log.userId.email === "system@routeflow.io"
+                    ? ""
+                    : log.userId.email || "",
+                role: log.userId.role || "",
               }
             : {
                 _id: null,
-                name: "System / Admin",
-                email: "system@routeflow.io",
+                name: "System",
+                email: "",
                 role: "System",
               },
         };

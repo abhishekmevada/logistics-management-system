@@ -1097,6 +1097,145 @@ function RolesTabSection() {
   );
 }
 
+// ── Helper to format Resource Details / Ref cleanly without ObjectIds ─────
+const formatResourceDetails = (log) => {
+  if (!log) return { primary: "—", secondary: null, fullText: "—" };
+
+  const resource = String(log.resource || "").trim();
+  const resLower = resource.toLowerCase();
+  const actionUpper = String(log.action || "").toUpperCase();
+  const rawName = String(log.resourceName || "").trim();
+  const rawId = String(log.resourceId || "").trim();
+  const isObjectId = (val) =>
+    /^[0-9a-fA-F]{24}$/.test(String(val || "").trim());
+
+  const getShortHex = (val) => {
+    const s = String(val || "").trim();
+    return isObjectId(s) ? s.slice(-6).toUpperCase() : s;
+  };
+
+  // 1. Customer: always display CUST Id (e.g. CUST-817633)
+  if (resLower === "customer" || actionUpper.includes("CUSTOMER")) {
+    const custIdMatch = (rawId + " " + rawName).match(/CUST-[A-Za-z0-9]+/i);
+    let resolvedCustId = "";
+    if (custIdMatch) {
+      resolvedCustId = custIdMatch[0].toUpperCase();
+    } else if (rawId && !isObjectId(rawId)) {
+      resolvedCustId = rawId.startsWith("CUST-") ? rawId : `CUST-${rawId}`;
+    } else {
+      const fallbackHex = getShortHex(rawId || rawName);
+      resolvedCustId = fallbackHex ? `CUST-${fallbackHex}` : "CUST-Ref";
+    }
+
+    let custName = "";
+    if (rawName && !isObjectId(rawName) && rawName !== resolvedCustId) {
+      const cleaned = rawName
+        .replace(new RegExp(resolvedCustId, "gi"), "")
+        .replace(/[()]/g, "")
+        .trim();
+      if (cleaned) custName = cleaned;
+    }
+
+    return {
+      primary: resolvedCustId,
+      secondary: custName || null,
+      fullText: custName ? `${resolvedCustId} (${custName})` : resolvedCustId,
+    };
+  }
+
+  // 2. Shipment: always clean Shipment ID (e.g. SHP-xxxx)
+  if (resLower === "shipment" || actionUpper.includes("SHIPMENT")) {
+    let shpRef = rawName;
+    if (!shpRef || isObjectId(shpRef)) {
+      if (rawId && !isObjectId(rawId)) {
+        shpRef = rawId;
+      } else {
+        const short = getShortHex(rawId || rawName);
+        shpRef = short ? `SHP-${short}` : "Shipment";
+      }
+    }
+
+    let sub = null;
+    if (
+      rawId &&
+      rawId !== shpRef &&
+      !isObjectId(rawId) &&
+      !shpRef.includes(rawId)
+    ) {
+      sub = `ID: ${rawId}`;
+    }
+
+    return {
+      primary: shpRef,
+      secondary: sub,
+      fullText: sub ? `${shpRef} (${sub})` : shpRef,
+    };
+  }
+
+  // 3. User: display clean user name/role without ID: ${rawId} or predefined data
+  if (
+    resLower === "user" ||
+    actionUpper.includes("USER") ||
+    actionUpper.includes("ADMIN")
+  ) {
+    let userName = rawName;
+    if (
+      !userName ||
+      isObjectId(userName) ||
+      userName.startsWith("User #") ||
+      userName.startsWith("USR-")
+    ) {
+      userName =
+        !isObjectId(rawId) && rawId && !rawId.startsWith("USR-")
+          ? rawId
+          : actionUpper.includes("ADMIN")
+            ? "Admin User"
+            : "User";
+    }
+    return {
+      primary: userName,
+      secondary: null,
+      fullText: userName,
+    };
+  }
+
+  // 4. Other Resources: never display raw 24-character ObjectIds
+  let primary = rawName;
+  if (!primary || isObjectId(primary)) {
+    if (rawId && !isObjectId(rawId)) {
+      primary = rawId;
+    } else {
+      const short = getShortHex(rawId || rawName);
+      if (resLower === "driver") primary = `Driver #${short}`;
+      else if (resLower === "vehicle" || resLower === "vechile")
+        primary = `Vehicle #${short}`;
+      else if (resLower === "warehouse") primary = `Warehouse #${short}`;
+      else if (resLower === "trip") primary = `TRIP-${short}`;
+      else if (resLower === "delivery") primary = `DEL-${short}`;
+      else if (resLower === "pod") primary = `POD #${short}`;
+      else if (resLower === "invoice") primary = `INV-${short}`;
+      else primary = `${resource || "Resource"} #${short}`;
+    }
+  }
+
+  let secondary = null;
+  if (
+    rawId &&
+    rawId !== primary &&
+    !isObjectId(rawId) &&
+    !primary.startsWith(rawId) &&
+    !primary.includes(rawId)
+  ) {
+    secondary = `ID: ${rawId}`;
+  }
+
+  return {
+    primary: primary || "—",
+    secondary,
+    fullText: secondary ? `${primary} (${secondary})` : primary || "—",
+  };
+};
+
 // ── Audit Logs Tab ─────────────────────────────────────────────────────────
 function AuditLogsTabSection({ onShowToast }) {
   const [logs, setLogs] = useState([]);
@@ -1162,11 +1301,14 @@ function AuditLogsTabSection({ onShowToast }) {
         const resId = (log.resourceId || "").toLowerCase();
         const userName = (log.user?.name || "").toLowerCase();
         const userEmail = (log.user?.email || "").toLowerCase();
+        const details = formatResourceDetails(log);
+        const detailText = details.fullText.toLowerCase();
 
         return (
           act.includes(q) ||
           resName.includes(q) ||
           resId.includes(q) ||
+          detailText.includes(q) ||
           userName.includes(q) ||
           userEmail.includes(q)
         );
@@ -1198,14 +1340,21 @@ function AuditLogsTabSection({ onShowToast }) {
       const dateStr = l.timestamp
         ? new Date(l.timestamp).toLocaleString("en-IN")
         : "";
+      const details = formatResourceDetails(l);
+      const userEmail =
+        l.user?.email &&
+        !l.user.email.includes("system@") &&
+        !l.user.email.includes("routeflow.io")
+          ? l.user.email
+          : "";
       return [
         `"${dateStr}"`,
         `"${l.user?.name || "System"}"`,
-        `"${l.user?.email || ""}"`,
+        `"${userEmail}"`,
         `"${l.user?.role || "System"}"`,
         `"${l.action || ""}"`,
         `"${l.resource || ""}"`,
-        `"${l.resourceId || ""}"`,
+        `"${details.primary || ""}"`,
       ];
     });
 
@@ -1436,11 +1585,15 @@ function AuditLogsTabSection({ onShowToast }) {
                           </div>
                           <div>
                             <div className="font-semibold text-slate-900">
-                              {log.user?.name || "System User"}
+                              {log.user?.name || "System"}
                             </div>
-                            <div className="text-[10.5px] text-slate-500">
-                              {log.user?.email || "system@routeflow.io"}
-                            </div>
+                            {log.user?.email &&
+                              !log.user.email.includes("system@") &&
+                              !log.user.email.includes("routeflow.io") && (
+                                <div className="text-[10.5px] text-slate-500">
+                                  {log.user.email}
+                                </div>
+                              )}
                           </div>
                         </div>
                       </td>
@@ -1457,17 +1610,21 @@ function AuditLogsTabSection({ onShowToast }) {
                         {log.resource}
                       </td>
                       <td className="py-3.5 px-5 text-right">
-                        <div className="font-semibold text-slate-900">
-                          {log.resourceName || log.resourceId || "—"}
-                        </div>
-                        {log.resourceId &&
-                          log.resourceId !== log.resourceName &&
-                          !log.resourceName?.startsWith(log.resourceId) &&
-                          !/^[0-9a-fA-F]{24}$/.test(log.resourceId) && (
-                            <div className="text-[10.5px] font-mono text-slate-400 mt-0.5">
-                              ID: {log.resourceId}
-                            </div>
-                          )}
+                        {(() => {
+                          const details = formatResourceDetails(log);
+                          return (
+                            <>
+                              <div className="font-semibold text-slate-900">
+                                {details.primary}
+                              </div>
+                              {details.secondary && (
+                                <div className="text-[10.5px] font-mono text-slate-500 mt-0.5">
+                                  {details.secondary}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
