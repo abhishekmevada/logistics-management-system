@@ -21,6 +21,9 @@ import {
   Loader2,
 } from "lucide-react";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 // ── Status config (same as DriverDashboard) ────────────────────────────────
 const STATUS_CONFIG = {
   created: { label: "Created", className: "drv-status--created" },
@@ -204,16 +207,13 @@ export default function WarehouseScan() {
     setLoading(true);
     setNoti(null);
     try {
-      const res = await fetch(
-        `http://localhost:5000/warehouse-scane/${trackingId}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+      const res = await fetch(`${API_BASE_URL}/warehouse-scane/${trackingId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-      );
+      });
 
       const data = await res.json();
 
@@ -238,7 +238,7 @@ export default function WarehouseScan() {
     setStatusUpdating(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/shipments/${shipmentData._id}/status`,
+        `${API_BASE_URL}/shipments/${shipmentData._id}/status`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -291,7 +291,7 @@ export default function WarehouseScan() {
     setLoadingWarehouses(true);
     setInboundError("");
     try {
-      const res = await fetch("http://localhost:5000/warehouse-list", {
+      const res = await fetch(`${API_BASE_URL}/warehouse-list`, {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -324,7 +324,7 @@ export default function WarehouseScan() {
     setLoadingLocations(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/warehouse-location-get/${whId}`,
+        `${API_BASE_URL}/warehouse-location-get/${whId}`,
         {
           headers: {
             "Content-Type": "application/json",
@@ -396,7 +396,7 @@ export default function WarehouseScan() {
           currentUser.userId || currentUser._id || processedByUserName.trim(),
       };
 
-      const res = await fetch("http://localhost:5000/warehouse/inbound", {
+      const res = await fetch(`${API_BASE_URL}/warehouse/inbound`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -457,11 +457,7 @@ export default function WarehouseScan() {
         ──────────────────────────────────────────────────────────────── */}
         <div className="wh-header">
           <div className="wh-logo-group">
-            <img
-              src="/Athenura.png"
-              alt="Athenura"
-              className="wh-logo-img"
-            />
+            <img src="/Athenura.png" alt="Athenura" className="wh-logo-img" />
             <span className="wh-logo-divider" aria-hidden="true" />
             <div className="wh-logo-title-group">
               <span className="wh-logo-title">Shipment Verification</span>
