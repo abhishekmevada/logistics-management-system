@@ -40,7 +40,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  overflow-x: scroll;
   gap: 10px;
+}
+.platformOverviewWorldContainerHeader::-webkit-scrollbar {
+  display: none;
 }
 .platformOverviewWorldContainerHeaderP {
   padding: 10px 10px;
@@ -50,6 +54,7 @@
   background-color: hsl(0, 0%, 95%);
   width: max-content;
   cursor: pointer;
+  white-space: nowrap;
   font-size: 16px;
 }
 .platformOverviewWorldContainerHeaderP:hover {
@@ -88,4 +93,16 @@
   height: 100%;
   object-fit: cover;
   border-radius: 20px;
+}
+
+@media (max-width: 783px) {
+  .platformOverviewWorldContainerBodyCustomer {
+    flex-direction: column;
+  }
+  .platformOverviewBodyCustomerBoxa {
+    width: 100%;
+  }
+  .platformOverviewBodyCustomerBoxb {
+    width: 100%;
+  }
 }
