@@ -38,6 +38,7 @@ export default function App() {
   return (
     <AppProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Landingpage />} />
