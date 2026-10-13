@@ -467,6 +467,86 @@ Logistics Management Team`,
   });
 };
 
+const sendInquiryReplyEmail = async (
+  email,
+  customerName,
+  replyMessage,
+  inquirySubject = "your inquiry",
+) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: inquirySubject
+      ? `Response to Your Inquiry: ${inquirySubject}`
+      : `Response to Your Inquiry`,
+
+    text: `Dear ${customerName || "Customer"},
+
+Thank you for contacting our Logistics Management Team.
+
+We have reviewed your inquiry and are pleased to provide you with the following response.
+
+Our Response:
+${replyMessage}
+
+If you have any further questions or require additional assistance, please feel free to contact our support team.
+
+Thank you for choosing our Logistics Management System.
+
+Regards,
+Logistics Management Team`,
+
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
+
+        <div style="background-color: #007FFF; color: #ffffff; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0;">Inquiry Response</h2>
+        </div>
+
+        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; background-color: #ffffff;">
+
+          <p>Dear <strong>${customerName || "Customer"}</strong>,</p>
+
+          <p>
+            Thank you for contacting our
+            <strong>Logistics Management Team</strong>.
+          </p>
+
+          <p>
+            We have reviewed your inquiry regarding
+            <strong>${inquirySubject}</strong> and are pleased
+            to provide you with the following response:
+          </p>
+
+          <div style="background-color: #f8fafc; padding: 16px 20px; border-left: 4px solid #007FFF; border-radius: 4px; margin: 20px 0;">
+            <h4 style="margin: 0 0 8px 0; color: #007FFF; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px;">
+              Our Response
+            </h4>
+
+            <p style="white-space: pre-line; margin: 0; color: #1e293b; font-size: 15px;">${replyMessage}</p>
+          </div>
+
+          <p style="color: #64748b; font-size: 14px;">
+            If you have any further questions or require additional
+            assistance, please feel free to contact our support team.
+          </p>
+
+          <p style="margin-top: 24px;">
+            Regards,<br />
+            <strong>Logistics Management Team</strong>
+          </p>
+
+        </div>
+
+        <div style="text-align: center; padding: 14px; font-size: 12px; color: #94a3b8;">
+          This email was sent in response to your inquiry.
+        </div>
+
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendOtpEmail,
   sendDeliveryOtpEmail,
@@ -475,4 +555,5 @@ module.exports = {
   sendShipmentAssignedEmail,
   sendAccountCreatedEmail,
   sendCustomerCreatedEmail,
+  sendInquiryReplyEmail,
 };

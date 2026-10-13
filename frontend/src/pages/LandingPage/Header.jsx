@@ -77,16 +77,26 @@ export default function Header() {
           <Link to="/about" onClick={clicklink} className="headerNavP">
             About
           </Link>
-          <Link to="/platform" onClick={clicklink} className="headerNavP">
-            Platform
+          <Link
+            to="/shipment-cost-calculator"
+            onClick={clicklink}
+            className="headerNavP"
+          >
+            Shipping Cost Calculator
           </Link>
+          <Link to="/faq" onClick={clicklink} className="headerNavP">
+            FAQ
+          </Link>
+          {/* <Link to="/platform" onClick={clicklink} className="headerNavP">
+            Platform
+          </Link> */}
           <Link to="/contact" onClick={clicklink} className="headerNavP">
             Contact
           </Link>
           <a
             href="/#customer"
             onClick={handleGetStarted}
-            className="ladingpageCtaa"
+            className="aboutHeroBtnPrimary"
           >
             Track Shipment
           </a>

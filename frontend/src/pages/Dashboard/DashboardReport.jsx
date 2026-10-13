@@ -176,14 +176,13 @@ export default function DashboardReport() {
 
         if (isManual) {
           const currentName =
-            REPORT_OPTIONS.find((r) => r.value === selectedReport)?.label || "Report";
+            REPORT_OPTIONS.find((r) => r.value === selectedReport)?.label ||
+            "Report";
           const currentCount =
             (json.reports && json.reports[selectedReport]?.length) ||
             json.data?.length ||
             0;
-          showToast(
-            `${currentName} generated with ${currentCount} record(s).`,
-          );
+          showToast(`${currentName} generated with ${currentCount} record(s).`);
         }
       } catch (err) {
         console.error("Report fetch error:", err);
@@ -1319,15 +1318,6 @@ export default function DashboardReport() {
             {reportLabel}
           </h3>
           <div className="rpt-result-exports">
-            <button
-              type="button"
-              onClick={handleExportPDF}
-              className="rpt-btn rpt-btn--export"
-              title="Print or save as PDF"
-            >
-              <Printer size={14} />
-              Export PDF
-            </button>
             <button
               type="button"
               onClick={handleExportExcel}

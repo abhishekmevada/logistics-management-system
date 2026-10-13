@@ -22,6 +22,7 @@ const {
   sendShipmentAssignedEmail,
   sendAccountCreatedEmail,
   sendCustomerCreatedEmail,
+  sendInquiryReplyEmail,
 } = require("./utils/mailer");
 const {
   User,
@@ -51,22 +52,16 @@ const {
   generateInvoicePDF,
   generateInvoiceHTML,
   generateBillingExcelReport,
+  calculateShippingCost,
 } = require("./utils/billing");
 
 const app = express();
 
-app.use(
-  cors({
-    origin: "https://logistics-management-system-pi.vercel.app",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }),
-);
+app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-const port = process.env.PORT || 5000;
+const port = 5000;
 
 const jwt = process.env.JWT_SECRET;
 
@@ -10870,6 +10865,101 @@ app.delete("/query/:id", authMiddleware, async (req, res) => {
     res.status(200).json({ message: "Query deleted successfully" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/query/:id/reply", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { replyMessage, subject } = req.body;
+
+  try {
+    if (!replyMessage || !replyMessage.trim()) {
+      return res.status(400).json({ message: "Reply message cannot be empty." });
+    }
+
+    const query = await Query.findById(id);
+    if (!query) {
+      return res.status(404).json({ message: "Query not found." });
+    }
+
+    if (!query.email) {
+      return res.status(400).json({ message: "Recipient email is missing for this query." });
+    }
+
+    const inquirySubject =
+      (subject && subject.trim()) ||
+      (query.message ? query.message.slice(0, 60) : "your inquiry");
+
+    await sendInquiryReplyEmail(
+      query.email.trim(),
+      query.name || "Customer",
+      replyMessage.trim(),
+      inquirySubject
+    );
+
+    query.replied = true;
+    query.replyMessage = replyMessage.trim();
+    query.repliedAt = new Date();
+    await query.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Reply email sent successfully to ${query.email}`,
+      query,
+    });
+  } catch (error) {
+    console.error("Error sending query reply email:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send reply email.",
+    });
+  }
+});
+
+app.post("/cost-calculator", async (req, res) => {
+  const {
+    pickupAddress,
+    deliveryAddress,
+    distanceKm,
+    weight,
+    length,
+    width,
+    height,
+    packageCount,
+    deliveryType,
+  } = req.body;
+  try {
+    if (!pickupAddress?.trim() || !deliveryAddress?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Pickup and delivery addresses are required.",
+      });
+    }
+
+    const result = calculateShippingCost({
+      distanceKm,
+      weight,
+      length,
+      width,
+      height,
+      packageCount,
+      deliveryType,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipping cost calculated successfully.",
+      data: {
+        pickupAddress: pickupAddress.trim(),
+        deliveryAddress: deliveryAddress.trim(),
+        ...result,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Unable to calculate shipping cost.",
+    });
   }
 });
 

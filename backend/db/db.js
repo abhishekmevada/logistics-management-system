@@ -1,10 +1,8 @@
-require("dotenv").config();
-
 const mongosse = require("mongoose");
 
 const connectDb = async () => {
   try {
-    await mongosse.connect(process.env.DB);
+    await mongosse.connect("mongodb://localhost:27017/logisticmanagement");
     console.log("db connect");
 
     try {
@@ -1082,6 +1080,9 @@ const querySchema = mongosse.Schema({
   email: { type: String, required: true },
   message: { type: String, required: true },
   datetime: { type: Date, default: Date.now },
+  replied: { type: Boolean, default: false },
+  replyMessage: { type: String },
+  repliedAt: { type: Date },
 });
 
 const Query = mongosse.model("query", querySchema);

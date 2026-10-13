@@ -71,7 +71,7 @@ function ProfileTabSection({ onShowToast }) {
             name: user.name || localUser.name || "",
             email: user.email || localUser.email || "",
             role: user.role || localUser.role || "",
-            status: user.status || localUser.status || "active",
+            status: String(user.status || localUser.status || "active").toLowerCase(),
           });
         }
       }
@@ -102,7 +102,7 @@ function ProfileTabSection({ onShowToast }) {
         name: formData.name.trim(),
         email: formData.email.trim(),
         role: formData.role.trim(),
-        status: formData.status.trim(),
+        status: (formData.status || "active").trim().toLowerCase(),
       };
 
       const res = await fetch(`${API_BASE_URL}/user/profile`, {
@@ -119,7 +119,7 @@ function ProfileTabSection({ onShowToast }) {
             name: data.user.name || formData.name,
             email: data.user.email || formData.email,
             role: data.user.role || formData.role,
-            status: data.user.status || formData.status,
+            status: String(data.user.status || formData.status || "active").toLowerCase(),
           });
           const localUser = JSON.parse(localStorage.getItem("user") || "{}");
           localStorage.setItem(
@@ -174,7 +174,9 @@ function ProfileTabSection({ onShowToast }) {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-6 sm:mb-8 pb-6 border-b border-slate-100">
           <div className="relative shrink-0">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold ring-4 ring-blue-50 shadow-md">
-              {formData.name ? formData.name.charAt(0).toUpperCase() : "U"}
+              {formData.name
+                ? formData.name.charAt(0).toUpperCase()
+                : "U"}
             </div>
           </div>
           <div>
