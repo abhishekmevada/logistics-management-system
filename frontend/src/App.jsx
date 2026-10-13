@@ -20,6 +20,8 @@ import WarehouseScan from "./pages/WarehouseScan/WarehouseScan";
 import { ROLES } from "./utils/rolePermissions";
 import AdminRegistration from "./pages/AdminResgistration/AdminRegistration";
 import ScrollToTop from "./pages/LandingPage/Scrolltop";
+import LandingShipmentCost from "./pages/LandingPage/LandingShipmentCost";
+import LandingFaq from "./pages/LandingPage/LandingFaq";
 
 // All valid roles matching User db schema
 const ALL_ROLES = [
@@ -44,7 +46,12 @@ export default function App() {
           {/* Public routes */}
           <Route path="/" element={<Landingpage />} />
           <Route path="/about" element={<LandingAboutPage />} />
-          <Route path="/platform" element={<LandingPlatform />} />
+          {/* <Route path="/platform" element={<LandingPlatform />} /> */}
+          <Route
+            path="/shipment-cost-calculator"
+            element={<LandingShipmentCost />}
+          />
+          <Route path="/faq" element={<LandingFaq />} />
           <Route path="/contact" element={<LandingContact />} />
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

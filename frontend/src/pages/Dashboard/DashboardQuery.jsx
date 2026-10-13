@@ -35,11 +35,104 @@ export default function DashboardQuery() {
   const [copiedEmail, setCopiedEmail] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
 
+  // Reply modal state
+  const [replyModalQuery, setReplyModalQuery] = useState(null);
+  const [replySubject, setReplySubject] = useState("");
+  const [replyMessage, setReplyMessage] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+
   const token = localStorage.getItem("token");
 
   const showToast = (text, type = "success") => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const openReplyModal = (item) => {
+    setReplyModalQuery(item);
+    setReplySubject(
+      item?.message
+        ? `Re: Inquiry regarding "${item.message.slice(0, 35)}${item.message.length > 35 ? "..." : ""}"`
+        : "Response to Your Inquiry",
+    );
+    setReplyMessage("");
+  };
+
+  const closeReplyModal = () => {
+    if (sendingReply) return;
+    setReplyModalQuery(null);
+    setReplySubject("");
+    setReplyMessage("");
+  };
+
+  const handleSendReply = async (e) => {
+    if (e) e.preventDefault();
+    if (!replyMessage.trim()) {
+      showToast("Please enter a reply message", "error");
+      return;
+    }
+
+    setSendingReply(true);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/query/${replyModalQuery._id}/reply`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            replyMessage: replyMessage.trim(),
+            subject: replySubject.trim(),
+          }),
+        },
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to send reply email");
+      }
+
+      showToast(
+        data.message || `Reply email sent to ${replyModalQuery.email}!`,
+        "success",
+      );
+
+      // Mark local query as replied
+      setQueries((prev) =>
+        prev.map((q) =>
+          q._id === replyModalQuery._id
+            ? {
+                ...q,
+                replied: true,
+                replyMessage: replyMessage.trim(),
+                repliedAt: new Date(),
+              }
+            : q,
+        ),
+      );
+
+      if (selectedQuery?._id === replyModalQuery._id) {
+        setSelectedQuery((prev) => ({
+          ...prev,
+          replied: true,
+          replyMessage: replyMessage.trim(),
+          repliedAt: new Date(),
+        }));
+      }
+
+      closeReplyModal();
+    } catch (err) {
+      console.error("Send reply error:", err);
+      showToast(
+        err.message ||
+          "Failed to send email. Please check your mail credentials.",
+        "error",
+      );
+    } finally {
+      setSendingReply(false);
+    }
   };
 
   // Fetch queries from backend GET /query
@@ -66,10 +159,10 @@ export default function DashboardQuery() {
       const rawList = Array.isArray(data?.getQuery)
         ? data.getQuery
         : Array.isArray(data?.queries)
-        ? data.queries
-        : Array.isArray(data)
-        ? data
-        : [];
+          ? data.queries
+          : Array.isArray(data)
+            ? data
+            : [];
 
       setQueries(rawList);
       if (isManualRefresh) {
@@ -147,7 +240,7 @@ export default function DashboardQuery() {
     link.setAttribute("href", encodedUri);
     link.setAttribute(
       "download",
-      `contact_queries_${new Date().toISOString().slice(0, 10)}.csv`
+      `contact_queries_${new Date().toISOString().slice(0, 10)}.csv`,
     );
     document.body.appendChild(link);
     link.click();
@@ -203,7 +296,7 @@ export default function DashboardQuery() {
         (item) =>
           item.name?.toLowerCase().includes(q) ||
           item.email?.toLowerCase().includes(q) ||
-          item.message?.toLowerCase().includes(q)
+          item.message?.toLowerCase().includes(q),
       );
     }
 
@@ -221,11 +314,11 @@ export default function DashboardQuery() {
     const total = queries.length;
     const today = new Date().toDateString();
     const todayCount = queries.filter(
-      (q) => q.datetime && new Date(q.datetime).toDateString() === today
+      (q) => q.datetime && new Date(q.datetime).toDateString() === today,
     ).length;
 
     const uniqueEmails = new Set(
-      queries.map((q) => q.email?.toLowerCase()).filter(Boolean)
+      queries.map((q) => q.email?.toLowerCase()).filter(Boolean),
     ).size;
 
     return { total, todayCount, uniqueEmails };
@@ -251,8 +344,8 @@ export default function DashboardQuery() {
               toastMessage.type === "error"
                 ? "bg-rose-900 text-white border-rose-700"
                 : toastMessage.type === "info"
-                ? "bg-slate-900 text-white border-slate-700"
-                : "bg-emerald-900 text-white border-emerald-700"
+                  ? "bg-slate-900 text-white border-slate-700"
+                  : "bg-emerald-900 text-white border-emerald-700"
             }`}
           >
             {toastMessage.type === "error" ? (
@@ -274,10 +367,6 @@ export default function DashboardQuery() {
       {/* Page Header */}
       <div className="dash-query-header">
         <div className="dash-query-header__left">
-          <div className="dash-query-header__badge">
-            <MessageSquare size={14} className="text-blue-500" />
-            <span>Customer Inquiries</span>
-          </div>
           <h1 className="dash-query-header__title">Contact Form Queries</h1>
           <p className="dash-query-header__desc">
             View, review, and manage direct inquiries submitted through the
@@ -302,10 +391,7 @@ export default function DashboardQuery() {
             disabled={refreshing || loading}
             className="dash-query-btn dash-query-btn--primary"
           >
-            <RefreshCw
-              size={15}
-              className={refreshing ? "animate-spin" : ""}
-            />
+            <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
             <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
           </button>
         </div>
@@ -435,9 +521,16 @@ export default function DashboardQuery() {
                           {getInitials(item.name)}
                         </div>
                         <div className="dash-query-user__info min-w-0 flex-1">
-                          <span className="dash-query-user__name truncate">
-                            {item.name || "Anonymous"}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="dash-query-user__name truncate">
+                              {item.name || "Anonymous"}
+                            </span>
+                            {item.replied && (
+                              <span className="dash-query-replied-badge">
+                                <Check size={10} /> Replied
+                              </span>
+                            )}
+                          </div>
                           {relTime && (
                             <span className="dash-query-user__reltime">
                               {relTime}
@@ -496,18 +589,15 @@ export default function DashboardQuery() {
                         <span>View</span>
                       </button>
 
-                      <a
-                        href={`mailto:${item.email}?subject=Re: Athenura Logistics Inquiry&body=Dear ${encodeURIComponent(
-                          item.name || "Customer"
-                        )},%0D%0A%0D%0AThank you for contacting us regarding:%0D%0A"${encodeURIComponent(
-                          item.message || ""
-                        )}"%0D%0A%0D%0A`}
+                      <button
+                        type="button"
+                        onClick={() => openReplyModal(item)}
                         className="dash-query-mobile-btn dash-query-mobile-btn--reply"
                         title="Reply to sender via Email"
                       >
                         <Send size={14} />
                         <span>Reply</span>
-                      </a>
+                      </button>
 
                       <button
                         type="button"
@@ -553,9 +643,19 @@ export default function DashboardQuery() {
                               {getInitials(item.name)}
                             </div>
                             <div className="dash-query-user__info">
-                              <span className="dash-query-user__name">
-                                {item.name || "Anonymous"}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="dash-query-user__name">
+                                  {item.name || "Anonymous"}
+                                </span>
+                                {item.replied && (
+                                  <span
+                                    className="dash-query-replied-badge"
+                                    title="Reply has been sent to customer"
+                                  >
+                                    <Check size={10} /> Replied
+                                  </span>
+                                )}
+                              </div>
                               {relTime && (
                                 <span className="dash-query-user__reltime">
                                   {relTime}
@@ -573,12 +673,17 @@ export default function DashboardQuery() {
                               className="dash-query-email-link"
                               title={`Send email to ${item.email}`}
                             >
-                              <Mail size={13} className="shrink-0 text-slate-400" />
+                              <Mail
+                                size={13}
+                                className="shrink-0 text-slate-400"
+                              />
                               <span>{item.email}</span>
                             </a>
                             <button
                               type="button"
-                              onClick={() => copyToClipboard(item.email, "email")}
+                              onClick={() =>
+                                copyToClipboard(item.email, "email")
+                              }
                               className="dash-query-copy-btn"
                               title="Copy email address"
                             >
@@ -630,17 +735,14 @@ export default function DashboardQuery() {
                               <Eye size={15} />
                             </button>
 
-                            <a
-                              href={`mailto:${item.email}?subject=Re: Athenura Logistics Inquiry&body=Dear ${encodeURIComponent(
-                                item.name || "Customer"
-                              )},%0D%0A%0D%0AThank you for contacting us regarding:%0D%0A"${encodeURIComponent(
-                                item.message || ""
-                              )}"%0D%0A%0D%0A`}
+                            <button
+                              type="button"
+                              onClick={() => openReplyModal(item)}
                               className="dash-query-action-btn dash-query-action-btn--reply"
                               title="Reply to sender via Email"
                             >
                               <Send size={14} />
-                            </a>
+                            </button>
 
                             <button
                               type="button"
@@ -744,6 +846,31 @@ export default function DashboardQuery() {
                 <div className="dash-query-message-content">
                   {selectedQuery.message || "No message content."}
                 </div>
+
+                {selectedQuery.replied && (
+                  <div
+                    className="dash-query-reply-original"
+                    style={{ borderLeft: "4px solid #10b981", marginTop: 14 }}
+                  >
+                    <span
+                      className="dash-query-reply-original__label"
+                      style={{ color: "#059669" }}
+                    >
+                      Your Sent Reply{" "}
+                      {selectedQuery.repliedAt
+                        ? `(${new Date(selectedQuery.repliedAt).toLocaleDateString()})`
+                        : ""}
+                      :
+                    </span>
+                    <p
+                      className="dash-query-reply-original__text"
+                      style={{ fontStyle: "normal", color: "#0f172a" }}
+                    >
+                      {selectedQuery.replyMessage ||
+                        "Reply has been sent to customer."}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -765,19 +892,135 @@ export default function DashboardQuery() {
                 >
                   Close
                 </button>
-                <a
-                  href={`mailto:${selectedQuery.email}?subject=Re: Athenura Logistics Inquiry&body=Dear ${encodeURIComponent(
-                    selectedQuery.name || "Customer"
-                  )},%0D%0A%0D%0AThank you for contacting Athenura Logistics regarding:%0D%0A"${encodeURIComponent(
-                    selectedQuery.message || ""
-                  )}"%0D%0A%0D%0A`}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const q = selectedQuery;
+                    setSelectedQuery(null);
+                    openReplyModal(q);
+                  }}
                   className="dash-query-btn dash-query-btn--primary"
                 >
                   <Send size={14} />
                   <span>Reply via Email</span>
-                </a>
+                </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reply Modal with Textarea */}
+      {replyModalQuery && (
+        <div className="dash-query-modal-overlay" onClick={closeReplyModal}>
+          <div
+            className="dash-query-reply-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="dash-query-reply-modal__header">
+              <div className="dash-query-reply-modal__title-box">
+                <div className="dash-query-reply-modal__icon">
+                  <Send size={18} />
+                </div>
+                <div>
+                  <h3 className="dash-query-reply-modal__title">
+                    Reply to Customer Inquiry
+                  </h3>
+                  <p className="dash-query-reply-modal__subtitle">
+                    To: <strong>{replyModalQuery.name || "Customer"}</strong>{" "}
+                    &lt;{replyModalQuery.email}&gt;
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="dash-query-modal__close-btn"
+                onClick={closeReplyModal}
+                disabled={sendingReply}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendReply} className="dash-query-reply-form">
+              <div className="dash-query-reply-original">
+                <span className="dash-query-reply-original__label">
+                  Customer's Inquiry:
+                </span>
+                <p className="dash-query-reply-original__text">
+                  "{replyModalQuery.message}"
+                </p>
+              </div>
+
+              <div className="dash-query-reply-field">
+                <label
+                  htmlFor="replySubjectInput"
+                  className="dash-query-reply-label"
+                >
+                  Email Subject
+                </label>
+                <input
+                  type="text"
+                  id="replySubjectInput"
+                  value={replySubject}
+                  onChange={(e) => setReplySubject(e.target.value)}
+                  placeholder="Subject of the email response..."
+                  className="dash-query-reply-input"
+                  disabled={sendingReply}
+                />
+              </div>
+
+              <div className="dash-query-reply-field">
+                <label
+                  htmlFor="replyMessageTextarea"
+                  className="dash-query-reply-label"
+                >
+                  Your Response Message <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="replyMessageTextarea"
+                  rows={6}
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  placeholder="Type your response here. This will be sent directly to the customer's email address..."
+                  className="dash-query-reply-textarea"
+                  required
+                  disabled={sendingReply}
+                  autoFocus
+                />
+              </div>
+
+              <div className="dash-query-reply-footer">
+                <button
+                  type="button"
+                  className="dash-query-btn dash-query-btn--secondary"
+                  onClick={closeReplyModal}
+                  disabled={sendingReply}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="dash-query-btn dash-query-btn--primary"
+                  disabled={sendingReply || !replyMessage.trim()}
+                >
+                  {sendingReply ? (
+                    <>
+                      <RefreshCw size={15} className="dash-query-spinner" />
+                      <span>Sending Email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={15} />
+                      <span>Send Response Email</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

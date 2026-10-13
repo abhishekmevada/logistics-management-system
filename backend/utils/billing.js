@@ -82,8 +82,8 @@ function calculateShipmentCharges(data = {}) {
   const additionalItems = Array.isArray(data.additionalItems)
     ? data.additionalItems
     : Array.isArray(data.items)
-    ? data.items
-    : [];
+      ? data.items
+      : [];
 
   const additionalCharges = Math.max(
     0,
@@ -100,14 +100,13 @@ function calculateShipmentCharges(data = {}) {
 
   const manualChargesTotal = additionalItems.reduce((sum, item) => {
     const isSystem = systemKeywords.some((sys) =>
-      String(item?.description || "").toLowerCase().includes(sys),
+      String(item?.description || "")
+        .toLowerCase()
+        .includes(sys),
     );
     if (isSystem) return sum;
     const quantity = Math.max(1, Number(item.quantity) || 1);
-    const unitPrice = Math.max(
-      0,
-      Number(item.unitPrice ?? item.rate) || 0,
-    );
+    const unitPrice = Math.max(0, Number(item.unitPrice ?? item.rate) || 0);
     return sum + quantity * unitPrice;
   }, 0);
 
@@ -217,7 +216,9 @@ function calculateShipmentCharges(data = {}) {
       ? additionalItems
           .filter((item) => {
             const isSystem = systemKeywords.some((sys) =>
-              String(item?.description || "").toLowerCase().includes(sys),
+              String(item?.description || "")
+                .toLowerCase()
+                .includes(sys),
             );
             if (isSystem) return false;
             return (
@@ -234,10 +235,9 @@ function calculateShipmentCharges(data = {}) {
               Number(item.unitPrice ?? item.rate) || 0,
             );
             const amount = Math.round(quantity * unitPrice * 100) / 100;
-            const itemTaxPercent =
-              Number.isFinite(Number(item.taxPercent))
-                ? Number(item.taxPercent)
-                : Number.isFinite(Number(item.taxRate))
+            const itemTaxPercent = Number.isFinite(Number(item.taxPercent))
+              ? Number(item.taxPercent)
+              : Number.isFinite(Number(item.taxRate))
                 ? Number(item.taxRate)
                 : taxRate;
 
@@ -836,9 +836,149 @@ function generateBillingExcelReport(summary = {}, invoices = []) {
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 }
 
+const DELIVERY_TYPES = {
+  Standard: 0,
+  Express: 0.3,
+  "Same-day": 0.7,
+  Overnight: 1.0,
+};
+
+const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+function calculateShippingCost(data = {}) {
+  const packageCount = Number(data.packageCount);
+  const weight = Number(data.weight);
+  const length = Number(data.length);
+  const width = Number(data.width);
+  const height = Number(data.height);
+  const distanceKm = Number(data.distanceKm);
+  const deliveryType = String(data.deliveryType || "").trim();
+
+  if (!Number.isInteger(packageCount) || packageCount <= 0) {
+    throw new Error("Number of packages must be a positive integer.");
+  }
+
+  if (!Number.isFinite(weight) || weight <= 0) {
+    throw new Error("Actual weight per package must be greater than 0.");
+  }
+
+  if (
+    !Number.isFinite(length) ||
+    length <= 0 ||
+    !Number.isFinite(width) ||
+    width <= 0 ||
+    !Number.isFinite(height) ||
+    height <= 0
+  ) {
+    throw new Error("All package dimensions must be greater than 0 cm.");
+  }
+
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+    throw new Error("A valid route distance is required.");
+  }
+
+  if (!Object.hasOwn(DELIVERY_TYPES, deliveryType)) {
+    throw new Error("Please select a valid delivery type.");
+  }
+
+  // Weight calculation for identical packages.
+  const volumetricWeightPerPackage = (length * width * height) / 5000;
+
+  const chargeableWeightPerPackage = Math.max(
+    weight,
+    volumetricWeightPerPackage,
+  );
+
+  const actualWeight = weight * packageCount;
+  const volumetricWeight = volumetricWeightPerPackage * packageCount;
+
+  const chargeableWeight = chargeableWeightPerPackage * packageCount;
+
+  // Base freight: ₹150 for the first 1 kg, ₹40 per extra kg.
+  const weightCharges = roundMoney(Math.max(0, chargeableWeight - 1) * 40);
+
+  const baseCharges = roundMoney(150 + weightCharges);
+
+  // Delivery priority surcharge.
+  const priorityPercent = DELIVERY_TYPES[deliveryType];
+
+  const priorityCharges = roundMoney(baseCharges * priorityPercent);
+
+  // Additional shipping charges.
+  const handlingCharges = roundMoney(packageCount * 25);
+  const fuelSurcharge = roundMoney(baseCharges * 0.05);
+  const distanceCharges = roundMoney(distanceKm * 2);
+
+  const subtotal = roundMoney(
+    baseCharges +
+      priorityCharges +
+      handlingCharges +
+      fuelSurcharge +
+      distanceCharges,
+  );
+
+  // Fixed server-controlled GST rate.
+  const taxRate = 18;
+
+  const charges = [
+    { description: "Base Freight", amount: baseCharges },
+    ...(priorityCharges > 0
+      ? [
+          {
+            description: `Priority Surcharge (${deliveryType})`,
+            amount: priorityCharges,
+          },
+        ]
+      : []),
+    { description: "Handling Charges", amount: handlingCharges },
+    { description: "Fuel Surcharge", amount: fuelSurcharge },
+    { description: "Distance Charges", amount: distanceCharges },
+  ];
+
+  const breakdownItems = charges.map((item) => {
+    const taxAmount = roundMoney((item.amount * taxRate) / 100);
+
+    return {
+      ...item,
+      taxRate,
+      taxAmount,
+      totalAmount: roundMoney(item.amount + taxAmount),
+    };
+  });
+
+  const taxAmount = roundMoney(
+    breakdownItems.reduce((sum, item) => sum + item.taxAmount, 0),
+  );
+
+  return {
+    packageCount,
+    actualWeightPerPackage: weight,
+    actualWeight: roundMoney(actualWeight),
+    volumetricWeightPerPackage: roundMoney(volumetricWeightPerPackage),
+    volumetricWeight: roundMoney(volumetricWeight),
+    chargeableWeightPerPackage: roundMoney(chargeableWeightPerPackage),
+    chargeableWeight: roundMoney(chargeableWeight),
+    distanceKm,
+    deliveryType,
+    priorityPercent: priorityPercent * 100,
+    baseCharges,
+    weightCharges,
+    priorityCharges,
+    handlingCharges,
+    fuelSurcharge,
+    distanceCharges,
+    subtotal,
+    taxRate,
+    taxAmount,
+    totalAmount: roundMoney(subtotal + taxAmount),
+    breakdownItems,
+  };
+}
+
 module.exports = {
   calculateShipmentCharges,
   generateInvoicePDF,
   generateInvoiceHTML,
   generateBillingExcelReport,
+  calculateShippingCost,
 };
