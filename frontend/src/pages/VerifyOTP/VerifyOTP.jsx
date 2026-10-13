@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 export default function VerifyOTP() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -16,7 +19,9 @@ export default function VerifyOTP() {
 
   // Format seconds as MM:SS
   const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const m = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0");
     const s = (seconds % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   };
@@ -124,7 +129,7 @@ export default function VerifyOTP() {
     setError("");
 
     try {
-      const res = await fetch("http://localhost:5000/verify-otp", {
+      const res = await fetch(`${API_BASE_URL}/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp: otpCode }),

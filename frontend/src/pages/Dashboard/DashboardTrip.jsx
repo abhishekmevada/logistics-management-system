@@ -1598,12 +1598,9 @@ export default function DashboardTrip() {
       }
 
       // Shipments (fetch all shipments with status 'created' for trip attachment)
-      const shipmentsRes = await fetch(
-        `${API_BASE_URL}/shipments?status=created`,
-        {
-          headers,
-        },
-      );
+      const shipmentsRes = await fetch(`${API_BASE_URL}/shipments?status=created`, {
+        headers,
+      });
       if (shipmentsRes.ok) {
         const data = await shipmentsRes.json();
         setShipments(data.shipments || []);

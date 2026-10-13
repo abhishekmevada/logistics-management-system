@@ -47,7 +47,7 @@ export default function Landingpage() {
             vehicles, trips, warehouse operations, and deliveries all from one
             connected system.
           </h2>
-          {/* <div className="heroSectionContainerBox">
+          <div className="heroSectionContainerBox">
             <h2 style={{ fontSize: "18px", fontWeight: "500" }}>
               Track Your Shipment
             </h2>
@@ -74,14 +74,6 @@ export default function Landingpage() {
               <CircleDotDashed className="herosectiondot" />
               <p className="formBoxp">Delivery Status</p>
             </div>
-          </div> */}
-          <div className="homeHeroCtaBox">
-            <a href="/#customer" className="ladingpageCtaa">
-              Track Shipment
-            </a>
-            <Link to="/shipment-Cost-calculator" className="ladingpageCtab">
-              Calculate Shipment Cost
-            </Link>
           </div>
           <p>
             From customer creation to proof of delivery, keep every step
@@ -909,7 +901,7 @@ export default function Landingpage() {
               Track Your Shipment
             </a>
             <img
-              src="../../../public/deliveryimg.png"
+              src="/deliveryimg.png"
               alt="Logistic Management System"
               className="shipmentSectionContainercImg"
             />

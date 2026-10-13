@@ -1,204 +1,24 @@
-/* Hero Section */
 .aboutHerosection {
   position: relative;
-  padding-top: 130px;
-  padding-bottom: 60px;
-  padding-left: 1.5rem;
-  padding-right: 1.5rem;
+  padding-top: 80px;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: 1rem;
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-image: url("/abouthero.png");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  text-align: center;
-  overflow: hidden;
-}
-
-.aboutHeroOverlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.88) 0%,
-    rgba(255, 255, 255, 0.96) 100%
-  );
-  backdrop-filter: blur(4px);
-  z-index: 1;
-}
-
-.aboutHeroContent {
-  position: relative;
-  z-index: 2;
-  max-width: 820px;
-  width: 100%;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  gap: 10px;
+  background-image: url("/abouthero.png");
+  background-size: 100%;
+  background-position: center;
 }
-
-.aboutHeroBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 9999px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--primary-color, #2563eb);
-  background-color: rgba(37, 99, 235, 0.08);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-}
-
-.aboutHeroTitle {
-  font-size: 2.75rem;
-  font-weight: 800;
-  line-height: 1.2;
-  color: #111827;
-  letter-spacing: -0.02em;
-  margin: 0;
-}
-
-.aboutHeroSubtitle {
-  font-size: 1.15rem;
-  line-height: 1.6;
-  color: #4b5563;
-  max-width: 680px;
-  margin: 0 auto;
-}
-
-.aboutHeroActions {
+.aboutHeroBox {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 4px;
-}
-
-.aboutHeroBtnPrimary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background-color: var(--cta-but, #ff6b00);
-  color: white;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: 10px;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.25);
-}
-
-.aboutHeroBtnPrimary:hover {
-  opacity: 0.92;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(255, 107, 0, 0.35);
-}
-
-.aboutHeroBtnSecondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background-color: #ffffff;
-  color: #1f2937;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: 10px;
-  text-decoration: none;
-  border: 1px solid #d1d5db;
-  transition: all 0.2s ease;
-}
-
-.aboutHeroBtnSecondary:hover {
-  background-color: #f9fafb;
-  border-color: #9ca3af;
-  transform: translateY(-1px);
-}
-
-.aboutHeroFeatures {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 6px;
-}
-
-.aboutHeroFeatureItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #374151;
-  background-color: rgba(255, 255, 255, 0.95);
-  border: 1px solid #e5e7eb;
-  padding: 6px 14px;
-  border-radius: 9999px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-/* Responsive Media Queries for Hero */
-@media (max-width: 768px) {
-  .aboutHerosection {
-    padding-top: 110px;
-    padding-bottom: 45px;
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-  .aboutHeroTitle {
-    font-size: 2.1rem;
-  }
-  .aboutHeroSubtitle {
-    font-size: 1rem;
-    line-height: 1.5;
-  }
-  .aboutHeroFeatures {
-    gap: 8px;
-  }
-  .aboutHeroFeatureItem {
-    font-size: 0.8rem;
-    padding: 5px 10px;
-  }
-  .aboutHeroActions {
-    width: 100%;
-  }
-  .aboutHeroBtnPrimary,
-  .aboutHeroBtnSecondary {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-@media (max-width: 480px) {
-  .aboutHerosection {
-    padding-top: 95px;
-    padding-bottom: 35px;
-  }
-  .aboutHeroTitle {
-    font-size: 1.65rem;
-  }
-  .aboutHeroSubtitle {
-    font-size: 0.9rem;
-  }
-  .aboutHeroFeatures {
-    flex-direction: column;
-    width: 100%;
-  }
-  .aboutHeroFeatureItem {
-    width: 100%;
-    justify-content: center;
-    box-sizing: border-box;
-  }
+  gap: 10px;
 }
 .aboutPerposeSection {
   position: relative;

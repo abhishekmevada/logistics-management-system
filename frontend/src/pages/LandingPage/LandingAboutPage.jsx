@@ -2,13 +2,7 @@ import React from "react";
 import Header from "./Header";
 import { Link } from "react-router-dom";
 import "../../styles/LandingAbout.css";
-import {
-  Waypoints,
-  UserShield,
-  RefreshCcwDot,
-  Info,
-  ArrowRight,
-} from "lucide-react";
+import { Waypoints, UserShield, RefreshCcwDot } from "lucide-react";
 import Footer from "./Footer";
 
 export default function LandingAboutPage() {
@@ -16,38 +10,33 @@ export default function LandingAboutPage() {
     <>
       <Header />
       <section className="aboutHerosection">
-        <div className="aboutHeroOverlay"></div>
-        <div className="aboutHeroContent">
-          <h1 className="aboutHeroTitle">
-            Built to Connect the Entire Logistics Operation.
-          </h1>
-          <p className="aboutHeroSubtitle">
-            A centralized logistics management platform designed to connect
-            customers, shipments, transportation, warehouse operations, and
-            deliveries through one structured workflow.
-          </p>
-          <div className="aboutHeroActions">
-            <Link to="/platform" className="aboutHeroBtnPrimary">
-              Explore the Platform <ArrowRight size={16} />
-            </Link>
-            <Link to="/contact" className="aboutHeroBtnSecondary">
-              Contact Us
-            </Link>
-          </div>
-          <div className="aboutHeroFeatures">
-            <span className="aboutHeroFeatureItem">
-              <Waypoints size={14} className="text-blue-500" /> End-to-End
-              Connectivity
-            </span>
-            <span className="aboutHeroFeatureItem">
-              <UserShield size={14} className="text-emerald-500" /> Enterprise
-              Reliability
-            </span>
-            <span className="aboutHeroFeatureItem">
-              <RefreshCcwDot size={14} className="text-amber-500" /> Real-Time
-              Operations
-            </span>
-          </div>
+        <p className="heroSectionContaineramin">ABOUT THE PLATFORM</p>
+        <h2 style={{ fontSize: "2.5rem", textAlign: "center" }}>
+          Built to Connect the Entire Logistics Operation.
+        </h2>
+        <p
+          className="platformOverviewSubtitle"
+          style={{ textAlign: "center", fontSize: "1.2rem" }}
+        >
+          A centralized logistics management platform designed to connect
+          customers, shipments, transportation, warehouse operations, and
+          deliveries through one structured workflow.
+        </p>
+        <div className="aboutHeroBox">
+          <Link
+            to="/platform"
+            className="ladingpageCtaa"
+            style={{ width: "max-content" }}
+          >
+            Explore the Platform
+          </Link>
+          <Link
+            to="/contact"
+            className="ladingpageCtab"
+            style={{ width: "max-content" }}
+          >
+            Contact Us
+          </Link>
         </div>
       </section>
       <section className="aboutPerposeSection">
@@ -249,13 +238,29 @@ export default function LandingAboutPage() {
           deliveries together in one connected platform. Explore the system and
           see how your logistics workflow can work as one.
         </p>
+        <div className="aboutHeroBox">
+          <Link
+            to="/#customer"
+            className="ladingpageCtaa"
+            style={{ width: "max-content" }}
+          >
+            Get Started
+          </Link>
+          <Link
+            to="/platform"
+            className="ladingpageCtab"
+            style={{ width: "max-content" }}
+          >
+            Explore Platform
+          </Link>
+        </div>
         <p style={{ textAlign: "center", marginTop: "20px" }}>
           <strong>Already have a shipment?</strong> <br />
           Track your shipment and stay updated on its delivery progress.
         </p>
         <Link
           to="/#customer"
-          className="aboutHeroBtnPrimary"
+          className="ladingpageCtaa"
           style={{ width: "max-content" }}
         >
           Track Shipment

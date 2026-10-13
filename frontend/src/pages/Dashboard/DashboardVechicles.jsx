@@ -1673,7 +1673,7 @@ function VehicleDetailsModal({
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full sm:w-[860px] max-w-4xl my-auto sm:my-6 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full sm:w-215 max-w-4xl my-auto sm:my-6 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
         <div
           className="px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-center justify-between text-slate-800 gap-2 sm:gap-3 shrink-0"
           style={{ background: "hsl(0deg, 0%, 95%)" }}
@@ -1931,7 +1931,9 @@ function VehicleDetailsModal({
                     </span>
                     <span className="font-bold text-slate-800 flex items-center space-x-1">
                       <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="break-words">{vehicle.location || "Central Depot"}</span>
+                      <span className="wrap-break-words">
+                        {vehicle.location || "Central Depot"}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -1971,7 +1973,7 @@ function VehicleDetailsModal({
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">
                           Origin
                         </span>
-                        <span className="font-semibold text-slate-800 break-words">
+                        <span className="font-semibold text-slate-800 wrap-break-words">
                           {vehicle.currentTrip.origin}
                         </span>
                       </div>
@@ -1979,7 +1981,7 @@ function VehicleDetailsModal({
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">
                           Destination
                         </span>
-                        <span className="font-semibold text-slate-800 break-words">
+                        <span className="font-semibold text-slate-800 wrap-break-words">
                           {vehicle.currentTrip.destination}
                         </span>
                       </div>
@@ -2209,7 +2211,7 @@ function VehicleDetailsModal({
                             ).toLocaleString("en-IN")}
                           </span>
                         </div>
-                        <p className="text-slate-600 text-[11px] mt-1 break-words">
+                        <p className="text-slate-600 text-[11px] mt-1 wrap-break-words">
                           {m.description}
                         </p>
                         <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 flex-wrap gap-x-3 gap-y-1">
@@ -2445,7 +2447,7 @@ function VehicleDetailsModal({
                               {t.tripId}
                             </span>
                             <span className="text-slate-400">•</span>
-                            <span className="font-semibold text-slate-800 break-words">
+                            <span className="font-semibold text-slate-800 wrap-break-words">
                               {t.origin} &rarr; {t.destination}
                             </span>
                           </div>
@@ -3269,7 +3271,10 @@ function MaintenanceModal({
                       required
                       value={formData.serviceDate}
                       onChange={(e) =>
-                        setFormData({ ...formData, serviceDate: e.target.value })
+                        setFormData({
+                          ...formData,
+                          serviceDate: e.target.value,
+                        })
                       }
                       className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
                     />
@@ -3297,7 +3302,8 @@ function MaintenanceModal({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                 <div className="sm:col-span-1">
                   <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
-                    Service Provider / Workshop <span className="text-rose-500">*</span>
+                    Service Provider / Workshop{" "}
+                    <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -3343,7 +3349,10 @@ function MaintenanceModal({
                       placeholder="e.g. 8500"
                       value={formData.serviceCost}
                       onChange={(e) =>
-                        setFormData({ ...formData, serviceCost: e.target.value })
+                        setFormData({
+                          ...formData,
+                          serviceCost: e.target.value,
+                        })
                       }
                       className="w-full px-2.5 py-2 sm:py-1.5 text-sm sm:text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors"
                     />
@@ -3354,7 +3363,8 @@ function MaintenanceModal({
               {/* Row 3: Work Description */}
               <div>
                 <label className="block text-xs sm:text-[11px] font-semibold text-slate-700 mb-1 sm:mb-0.5">
-                  Work Description &amp; Parts Replaced <span className="text-rose-500">*</span>
+                  Work Description &amp; Parts Replaced{" "}
+                  <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   rows="2"
@@ -3688,7 +3698,8 @@ function FuelRecordsModal({ isOpen, onClose, vehicle, onAddFuelRecord }) {
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block sm:block">
-                Track fuel fillings, dispense volumes, costs and monitor mileage.
+                Track fuel fillings, dispense volumes, costs and monitor
+                mileage.
               </p>
             </div>
           </div>
@@ -4224,7 +4235,8 @@ function TripHistoryModal({ isOpen, onClose, vehicle, onAddTrip }) {
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block sm:block">
-                Log completed journeys, track active shipments and calculate fleet utilization.
+                Log completed journeys, track active shipments and calculate
+                fleet utilization.
               </p>
             </div>
           </div>
@@ -4604,7 +4616,7 @@ function ServiceReminderModal({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <span className="font-bold text-slate-900 text-xs truncate max-w-[150px] sm:max-w-none">
+                      <span className="font-bold text-slate-900 text-xs truncate max-w-37.5 sm:max-w-none">
                         {r.model}
                       </span>
                       <span className="font-mono font-bold text-xs bg-slate-200 text-slate-800 px-1.5 py-0.2 rounded">
@@ -5313,7 +5325,8 @@ export default function Vehicles({ onVehicleCountChange }) {
             // Match active trip for this vehicle if assigned
             const activeTrip = tripList.find((t) => {
               const matchesVehicle =
-                (t.vehicleId?._id && String(t.vehicleId._id) === String(v._id)) ||
+                (t.vehicleId?._id &&
+                  String(t.vehicleId._id) === String(v._id)) ||
                 (t.vehicleId && String(t.vehicleId) === String(v._id)) ||
                 (t.vehicleId?.vregistrationnumber &&
                   t.vehicleId.vregistrationnumber.toUpperCase() === regNum);
@@ -5480,17 +5493,11 @@ export default function Vehicles({ onVehicleCountChange }) {
 
             const latestMaint = matchedMaintLogs[0];
             const nextServiceDate =
-              latestMaint?.nextServiceDate ||
-              latestMaint?.nextDueDate ||
-              null;
+              latestMaint?.nextServiceDate || latestMaint?.nextDueDate || null;
             const lastServiceDate =
-              latestMaint?.serviceDate ||
-              latestMaint?.date ||
-              null;
+              latestMaint?.serviceDate || latestMaint?.date || null;
             const serviceCenter =
-              latestMaint?.serviceProvider ||
-              latestMaint?.serviceCenter ||
-              "";
+              latestMaint?.serviceProvider || latestMaint?.serviceCenter || "";
             const lastCost =
               Number(latestMaint?.serviceCost ?? latestMaint?.cost) || 0;
             const totalMaintenanceCost = matchedMaintLogs.reduce(
