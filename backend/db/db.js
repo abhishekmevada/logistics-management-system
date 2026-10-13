@@ -1,8 +1,10 @@
+require("dotenv").config();
+
 const mongosse = require("mongoose");
 
 const connectDb = async () => {
   try {
-    await mongosse.connect("mongodb://localhost:27017/logisticmanagement");
+    await mongosse.connect(process.env.DB);
     console.log("db connect");
 
     try {
