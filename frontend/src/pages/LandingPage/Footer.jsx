@@ -39,11 +39,20 @@ export default function Footer() {
                 <Link to="/about" className="footerContainerbLinkp">
                   About
                 </Link>
-                <Link to="/platform" className="footerContainerbLinkp">
-                  Platform
+                <Link
+                  to="/shipment-cost-calculator"
+                  className="footerContainerbLinkp"
+                >
+                  Shipping Cost Calculator
+                </Link>
+                <Link to="/faq" className="footerContainerbLinkp">
+                  FAQ
                 </Link>
                 <Link to="/contact" className="footerContainerbLinkp">
                   Contact
+                </Link>
+                <Link to="/faq" className="footerContainerbLinkp">
+                  FAQ
                 </Link>
               </div>
             </div>
